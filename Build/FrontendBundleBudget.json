@@ -7,11 +7,11 @@
     {
       "id": "bootstrap",
       "includeEntryDocument": true,
-      "roots": ["index.html"],
+      "roots": ["console-entry"],
       "requiredAssets": [{ "extension": ".woff2", "minimumCount": 1 }],
       "limits": {
-        "resourceCount": 9,
-        "identityBytes": 820224,
+        "resourceCount": 10,
+        "identityBytes": 835584,
         "gzipBytes": 325000,
         "brotliBytes": 305500
       }
@@ -21,7 +21,7 @@
       "extends": ["bootstrap"],
       "roots": ["App"],
       "limits": {
-        "resourceCount": 17,
+        "resourceCount": 22,
         "identityBytes": 1630000,
         "gzipBytes": 560000,
         "brotliBytes": 515000
@@ -32,7 +32,7 @@
       "extends": ["authenticated-main"],
       "roots": ["src/features/settings/SettingsOverlay.tsx"],
       "limits": {
-        "resourceCount": 22,
+        "resourceCount": 23,
         "identityBytes": 1830000,
         "gzipBytes": 615000,
         "brotliBytes": 565000

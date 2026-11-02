@@ -11,7 +11,7 @@
     },
     "preview": { "body": { "pointer": "/records/item", "from": "result" } }
   },
-  "description": "按语义、MemOS 节点引用或 Asia/Shanghai 时间范围检索知识和日/月摘要。",
+  "description": "按语义、记忆引用或时间范围检索知识与证据。日记与月记保存在工作区 Markdown 文件中，先通过 senera diary list 查看标题，再按需 diary read 读取正文。",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
@@ -19,32 +19,42 @@
       "query": {
         "description": "Natural-language description of the knowledge or completed scenario.",
         "type": "string",
-        "minLength": 1
+        "minLength": 1,
+        "pattern": "\\S"
       },
       "refs": {
         "description": "Exact memos:<node-id> references to read.",
         "minItems": 1,
         "type": "array",
-        "items": { "type": "string", "minLength": 7, "pattern": "^memos:.*" }
+        "items": { "type": "string", "pattern": "^memos:\\S+$" }
       },
       "from": {
         "description": "Start date (YYYY-MM-DD) or RFC 3339 instant. Dates use Asia/Shanghai.",
         "type": "string",
-        "minLength": 1
+        "minLength": 1,
+        "pattern": "\\S"
       },
       "to": {
         "description": "Inclusive end date (YYYY-MM-DD), or exclusive RFC 3339 end instant.",
         "type": "string",
-        "minLength": 1
+        "minLength": 1,
+        "pattern": "\\S"
       }
     },
-    "additionalProperties": false
+    "additionalProperties": false,
+    "allOf": [
+      { "anyOf": [{ "required": ["query"] }, { "required": ["refs"] }, { "required": ["from", "to"] }] },
+      {
+        "if": { "required": ["from"] },
+        "then": { "required": ["to"] },
+        "else": { "if": { "required": ["to"] }, "then": { "required": ["from"] } }
+      }
+    ]
   },
   "permissions": ["memory:read"],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {
     "Lifecycle": "Immediate",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "Parallel",
     "Capabilities": { "Cancellation": true }
@@ -54,20 +64,20 @@
     {
       "Id": "continuity",
       "Title": "MemOS",
-      "Description": "Semantic knowledge, immutable turn fragments, and daily/monthly summaries."
+      "Description": "Semantic knowledge and its original source provenance. Diary documents are read through senera CLI."
     }
   ],
   "search": {
-    "Summary": "从 MemOS 召回相关知识、历史片段和日/月摘要。",
+    "Summary": "从 MemOS 召回相关知识与证据；按日期阅读日记使用 senera diary list 与 diary read。",
     "Tags": ["记忆", "时间摘要", "用户偏好", "关系", "历史片段"],
     "Capabilities": [
       {
         "Id": "memory.recall",
         "Title": "分层记忆召回",
-        "Description": "Read semantic knowledge, turn fragments, or calendar summaries from MemOS by query, node reference, or time range.",
+        "Description": "Read semantic knowledge and its original evidence by query, node reference, or time range. Read calendar diaries through senera diary list and diary read.",
         "Facets": {
           "Actions": ["read", "recall", "inspect"],
-          "Targets": ["semantic-knowledge", "turn-fragment", "calendar-summary"],
+          "Targets": ["semantic-knowledge", "memory-evidence"],
           "Inputs": ["natural-language-query", "time-range", "memos-node-reference"],
           "Outputs": ["memos-node"],
           "Evidence": ["continuity_recall"],
@@ -94,6 +104,7 @@
           "content": "$.content",
           "occurredAt": "$.occurredAt",
           "score": "$.score",
+          "quality": "$.quality",
           "matchedBy": "$.matchedBy",
           "scores": "$.scores"
         },
@@ -105,10 +116,10 @@
           "Source": "continuity"
         },
         "ModelProjection": {
-          "Slots": ["uri", "type", "summary", "content", "occurredAt", "score", "matchedBy", "scores"]
+          "Slots": ["uri", "type", "summary", "content", "occurredAt", "score", "quality", "matchedBy", "scores"]
         },
         "PlannerMemory": {
-          "Facts": ["uri", "type", "summary", "occurredAt", "score", "matchedBy", "scores"],
+          "Facts": ["uri", "type", "summary", "occurredAt", "score", "quality", "matchedBy", "scores"],
           "ArtifactRefs": ["projection", "evidence"]
         },
         "Projection": {
@@ -137,9 +148,9 @@
       "budget": {
         "type": "object",
         "properties": {
-          "maxTokens": { "type": "number" },
-          "matchedRecords": { "type": "number" },
-          "returnedRecords": { "type": "number" }
+          "maxTokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "matchedRecords": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+          "returnedRecords": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
         },
         "required": ["maxTokens", "matchedRecords", "returnedRecords"],
         "additionalProperties": false
@@ -148,6 +159,7 @@
         "type": "object",
         "properties": {
           "item": {
+            "readOnly": true,
             "type": "array",
             "items": {
               "type": "object",
@@ -159,8 +171,40 @@
                 "summary": { "type": "string" },
                 "occurredAt": { "type": "string" },
                 "score": { "type": "number" },
-                "matchedBy": { "type": "array", "items": { "type": "string" } },
-                "scores": { "type": "object" },
+                "quality": {
+                  "type": "object",
+                  "properties": {
+                    "weight": { "type": "number", "minimum": 0, "maximum": 100 },
+                    "recallCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                    "helpfulCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                    "unhelpfulCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                    "unusedCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                    "uncertainCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                    "pendingCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+                  },
+                  "required": [
+                    "weight",
+                    "recallCount",
+                    "helpfulCount",
+                    "unhelpfulCount",
+                    "unusedCount",
+                    "uncertainCount",
+                    "pendingCount"
+                  ],
+                  "additionalProperties": false
+                },
+                "matchedBy": { "readOnly": true, "type": "array", "items": { "type": "string" } },
+                "scores": {
+                  "type": "object",
+                  "properties": {
+                    "keyword": { "type": "number" },
+                    "semantic": { "type": "number" },
+                    "hybrid": { "type": "number" },
+                    "relevance": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "recency": { "type": "number", "minimum": 0, "maximum": 1 }
+                  },
+                  "additionalProperties": false
+                },
                 "period": {
                   "type": "object",
                   "properties": {
@@ -182,6 +226,19 @@
       }
     },
     "required": ["budget", "records"],
-    "additionalProperties": false
+    "additionalProperties": false,
+    "x-senera-model-output": {
+      "omit": [
+        "/query",
+        "/budget/maxTokens",
+        "/records/item/*/uri",
+        "/records/item/*/revision",
+        "/records/item/*/summary",
+        "/records/item/*/score",
+        "/records/item/*/quality",
+        "/records/item/*/matchedBy",
+        "/records/item/*/scores"
+      ]
+    }
   }
 }

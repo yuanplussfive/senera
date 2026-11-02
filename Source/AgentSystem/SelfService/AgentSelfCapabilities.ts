@@ -1,6 +1,14 @@
 import { AgentSelfPhilosophy } from "./AgentSelfPhilosophy.js";
-import { projectAgentSelfCommandCapabilities, type AgentSelfCommandCapability } from "./AgentSelfCommandRegistry.js";
-import { projectAgentSelfCommandContract, type AgentSelfCommandContractSnapshot } from "./AgentSelfCommandContract.js";
+import {
+  findAgentSelfCommandSpec,
+  projectAgentSelfCommandCapabilities,
+  type AgentSelfCommandCapability,
+} from "./AgentSelfCommandRegistry.js";
+import {
+  projectAgentSelfCommandContract,
+  projectAgentSelfCommandInputSchema,
+  type AgentSelfCommandContractSnapshot,
+} from "./AgentSelfCommandContract.js";
 import {
   AgentWorkbenchContract,
   projectAgentWorkbenchRuleIndex,
@@ -9,6 +17,7 @@ import {
 import { projectAgentSelfHarnessDisclosure, type AgentSelfHarnessDisclosure } from "./AgentSelfHarness.js";
 
 export interface AgentSelfCapabilitiesReport {
+  readonly inputSchema?: Readonly<Record<string, unknown>>;
   readonly protocolVersion: 1;
   readonly workbenchContract: AgentWorkbenchContractIndexProjection;
   readonly commandContract: Pick<AgentSelfCommandContractSnapshot, "version" | "revision">;
@@ -18,7 +27,12 @@ export interface AgentSelfCapabilitiesReport {
   readonly mutationWorkflow: readonly string[];
 }
 
-export function projectAgentSelfCapabilities(): AgentSelfCapabilitiesReport {
+export function projectAgentSelfCapabilities(domain?: string, action?: string): AgentSelfCapabilitiesReport {
+  if (action && !domain) throw new Error("A capability action requires a domain.");
+  const commands = projectAgentSelfCommandCapabilities(domain, action);
+  if (commands.length === 0) throw new Error(`Unknown Senera command: ${[domain, action].filter(Boolean).join(" ")}`);
+  const builtinAction = domain ? findAgentSelfCommandSpec(domain, action)?.action : undefined;
+  const { version, revision } = projectAgentSelfCommandContract();
   return {
     protocolVersion: 1,
     workbenchContract: {
@@ -28,8 +42,13 @@ export function projectAgentSelfCapabilities(): AgentSelfCapabilitiesReport {
       revision: AgentWorkbenchContract.revision,
       rules: projectAgentWorkbenchRuleIndex(),
     },
-    commandContract: projectAgentSelfCommandContract(),
-    commands: projectAgentSelfCommandCapabilities(),
+    commandContract: { version, revision },
+    commands,
+    ...(domain && commands.every((command) => command.source === "builtin")
+      ? {
+          inputSchema: projectAgentSelfCommandInputSchema(domain, builtinAction),
+        }
+      : {}),
     harness: projectAgentSelfHarnessDisclosure(),
     invariants: AgentSelfPhilosophy,
     mutationWorkflow: [
@@ -43,6 +62,7 @@ export function projectAgentSelfCapabilities(): AgentSelfCapabilitiesReport {
       "排查运行问题先用 logs health/streams 确认日志存储和流，再按意图使用 logs latest/range/session/trace；有 nextCursor 时只用 logs next 继续读取，不要直接扫描或修改 .senera/logs。",
       "需要还原一次请求时用 logs trace REQUEST_ID，再用返回的 detailId 调用 logs detail；日志是脱敏证据，不能替代运行时快照。",
       "Skill 使用先用 skills list/search/inspect/read/check 确认来源与 revision，再用 logs latest/range/trace 核验实际激活、工具调用和失败原因。",
+      "历史日记先读最近一周标题索引，再用 diary list YYYY-MM 查找月份，按需 diary read YYYY-MM-DD 或 YYYY-MM 阅读正文；模型调用绑定当前 Agent。",
     ],
   };
 }
@@ -54,8 +74,9 @@ export function describeAgentSelfCapabilities(report: AgentSelfCapabilitiesRepor
     `自服务协议 v${report.protocolVersion} · 内置命令 ${builtIns} 个 · 插件命令 ${plugins} 个`,
     `Workbench 合同 ${report.workbenchContract.id}/v${report.workbenchContract.version} · revision ${report.workbenchContract.revision}`,
     `命令合同 v${report.commandContract.version} · revision ${report.commandContract.revision}`,
-    `Harness 板块: ${report.harness.domains.join(", ")} · 入口: ${report.harness.tool} ${report.harness.discovery}`,
+    `Harness 板块: ${report.harness.domains.join(", ")} · 入口: ${report.harness.command} ${report.harness.discovery}`,
+    ...report.commands.map((command) => `${command.usage} — ${command.description}`),
     "变更流程: 读取事实 → 最小变更 → 验证 revision → 必要时回滚。",
-    "所有宿主配置和状态变更必须通过 SeneraCommand；不可直接写 .senera 或数据库。",
+    "所有宿主配置和状态变更必须通过 senera CLI；不可直接写 .senera 或数据库。",
   ].join("\n");
 }

@@ -1,0 +1,94 @@
+{
+  "name": "send_message",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "agent-input",
+    "icon": "message",
+    "activity": {
+      "action": {
+        "zh-CN": "发送",
+        "en-US": "Message"
+      },
+      "argumentPath": "/message",
+      "detailPaths": ["/agent_id"]
+    }
+  },
+  "description": "Message a direct child or your parent using its persistent agent_id. Working children receive steering input; idle or restored children start a new turn. Never use polling messages.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "agent_id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "message": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": ["agent_id", "message"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "accepted": {
+        "type": "boolean"
+      },
+      "message_id": {
+        "type": "string"
+      }
+    },
+    "required": ["accepted", "message_id"],
+    "additionalProperties": false
+  },
+  "permissions": ["orchestration:manage"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Progress": true,
+      "ResumableEvents": true
+    }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "orchestration",
+      "Title": "Orchestration",
+      "Description": "Child-agent runs managed by Senera."
+    }
+  ],
+  "search": {
+    "Summary": "Message a direct child or your parent using its persistent agent_id. Working children receive steering input; idle or restored children start a new turn. Never use polling messages.",
+    "Tags": ["agent", "协作"],
+    "Capabilities": [
+      {
+        "Id": "orchestration.send_message",
+        "Title": "send_message",
+        "Description": "Message a direct child or your parent using its persistent agent_id. Working children receive steering input; idle or restored children start a new turn. Never use polling messages.",
+        "Facets": {
+          "Actions": ["send_message"],
+          "Targets": ["agent-session"],
+          "Inputs": ["agent_id", "message"],
+          "Outputs": ["accepted", "message_id"],
+          "Effects": ["session-state"]
+        },
+        "Risk": {
+          "SideEffect": "session-state",
+          "Permission": "orchestration"
+        },
+        "Aliases": ["send_message"]
+      }
+    ],
+    "UseCases": ["独立分工与持续协作"],
+    "Avoid": ["不要用空泛催促代替完成通知"]
+  },
+  "evidenceCapabilities": []
+}

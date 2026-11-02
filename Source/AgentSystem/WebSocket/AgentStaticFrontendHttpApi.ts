@@ -13,6 +13,8 @@ import {
 export interface AgentStaticFrontendHttpApiOptions {
   rootDir: string;
   runtimeConfigFileName?: string;
+  /** Resource hosts supply their document isolation and media response policy. */
+  contentHeaders?: (filePath: string) => Readonly<Record<string, string>>;
 }
 
 export class AgentStaticFrontendHttpApi {
@@ -20,7 +22,7 @@ export class AgentStaticFrontendHttpApi {
   private readonly canonicalRootDir: string;
   private readonly runtimeConfigFileName: string;
 
-  constructor(options: AgentStaticFrontendHttpApiOptions) {
+  constructor(private readonly options: AgentStaticFrontendHttpApiOptions) {
     this.rootDir = path.resolve(options.rootDir);
     this.canonicalRootDir = fs.realpathSync(this.rootDir);
     this.runtimeConfigFileName = options.runtimeConfigFileName ?? "senera-runtime-config.js";
@@ -106,6 +108,7 @@ export class AgentStaticFrontendHttpApi {
       "Content-Length": byteLength,
       Vary: "Accept-Encoding",
       ...(representation.contentEncoding ? { "Content-Encoding": representation.contentEncoding } : {}),
+      ...this.options.contentHeaders?.(filePath),
     });
 
     if (request.method === "HEAD") {

@@ -16,7 +16,7 @@ import {
   type AppearanceSummaryItem,
   type ResolvedTheme,
 } from "../../../shared/theme";
-import { AppIcon, Button, MetaLabel } from "../../../shared/ui";
+import { AppIcon, IconButton, MetaLabel } from "../../../shared/ui";
 import { SettingsPanel } from "../SettingsPanel";
 
 export function AppearanceSettings(): JSX.Element {
@@ -33,15 +33,16 @@ export function AppearanceSettings(): JSX.Element {
         >
           <AppearancePreferenceControl />
           <div className="flex flex-wrap items-center justify-end gap-3 border-t border-line-subtle pt-4">
-            <Button
-              variant="outline"
-              size="sm"
+            <IconButton
+              label={frontendMessage("settings.appearance.reset")}
+              tooltip={frontendMessage("settings.appearance.reset")}
+              tone="muted"
+              touchSafe
               disabled={usesDefault}
               onClick={() => setAppearancePreference(defaultAppearancePreference)}
             >
               <AppIcon icon="refresh" size={14} aria-hidden="true" />
-              {frontendMessage("settings.appearance.reset")}
-            </Button>
+            </IconButton>
           </div>
         </SettingsPanel>
         <SettingsPanel

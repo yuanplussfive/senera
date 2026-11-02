@@ -1,8 +1,10 @@
 import { useState, type AnchorHTMLAttributes, type ReactNode } from "react";
-import { ExternalLink } from "lucide-react";
+import { AppIcon } from "../ui/AppIcon";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/Popover";
+import { openExternalUrl } from "../../app/desktopBridge";
+import { toast } from "sonner";
 
 export interface MarkdownCitationLinkProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
   href?: string;
@@ -30,7 +32,7 @@ export function MarkdownCitationLink({
   }
 
   const sourceTitle = typeof title === "string" ? title.trim() : "";
-  const ariaLabel = frontendMessage("markdown.citation.view", { host: metadata.host });
+  const ariaLabel = frontendMessage("markdown.citation.view", { host: metadata.label });
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -59,7 +61,7 @@ export function MarkdownCitationLink({
             }
           }}
         >
-          <span className="markdown-renderer__citation-host">{metadata.host}</span>
+          <span className="markdown-renderer__citation-host">{metadata.label}</span>
         </a>
       </PopoverTrigger>
       <PopoverContent
@@ -69,7 +71,7 @@ export function MarkdownCitationLink({
       >
         <div className="px-3.5 py-3">
           <div className="flex min-w-0 items-center gap-2 text-[12px] text-content-secondary">
-            <span className="min-w-0 truncate font-medium text-content-primary">{metadata.host}</span>
+            <span className="min-w-0 truncate font-medium text-content-primary">{metadata.label}</span>
             <span className="shrink-0 text-content-muted">{frontendMessage("markdown.citation.source")}</span>
           </div>
           {sourceTitle ? <div className="mt-2 text-[13px] font-medium text-content-primary">{sourceTitle}</div> : null}
@@ -79,10 +81,16 @@ export function MarkdownCitationLink({
           href={href}
           target="_blank"
           rel="noreferrer noopener"
+          onClick={(event) => {
+            event.preventDefault();
+            void openExternalUrl(href!).then((result) => {
+              if (result === "blocked") toast.error(frontendMessage("link.openFailed"));
+            });
+          }}
           className="flex items-center justify-between border-t border-line-subtle px-3.5 py-2.5 text-[12px] font-medium text-accent-content transition-colors hover:bg-surface-hover hover:text-accent-content-hover"
         >
           <span>{frontendMessage("markdown.citation.open")}</span>
-          <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+          <AppIcon icon="external-link" className="h-3.5 w-3.5" aria-hidden="true" />
         </a>
       </PopoverContent>
     </Popover>
@@ -91,6 +99,7 @@ export function MarkdownCitationLink({
 
 interface CitationUrlMetadata {
   host: string;
+  label: string;
 }
 
 function readCitationUrl(href: string | undefined): CitationUrlMetadata | undefined {
@@ -98,9 +107,22 @@ function readCitationUrl(href: string | undefined): CitationUrlMetadata | undefi
 
   try {
     const url = new URL(href);
-    const host = url.hostname.replace(/^www\./i, "");
-    return host ? { host } : undefined;
+    const host = url.host.replace(/^www\./i, "");
+    if (!host) return undefined;
+
+    const hasLocationDetail = url.pathname !== "/" || Boolean(url.search || url.hash);
+    const suffix = `${hasLocationDetail ? url.pathname : ""}${url.search}${url.hash}`;
+    return { host, label: compactCitationLabel(`${host}${suffix}`, host) };
   } catch {
     return undefined;
   }
+}
+
+function compactCitationLabel(value: string, host: string): string {
+  const maxLength = 48;
+  if (value.length <= maxLength) return value;
+
+  const suffix = value.slice(host.length);
+  const tailLength = Math.max(12, maxLength - host.length - 2);
+  return `${host}/…${suffix.slice(-tailLength)}`;
 }

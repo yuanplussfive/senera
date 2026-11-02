@@ -12,6 +12,39 @@ import type {
 import { SeneraTerminalCapabilityNames } from "../../../Source/AgentSystem/Execution/SeneraTerminalTypes.js";
 
 describe("PTY execution resources", () => {
+  it.each([false, true])(
+    "publishes Agent jobs only for request-owned terminals (request-owned=%s)",
+    async (requestOwned) => {
+      const terminal = new FakeTerminalChild();
+      const eventSink = vi.fn();
+      const broker = createTerminalBroker(async () => terminal, eventSink);
+      const agentOwner = sessionOwner("terminal-job-owner");
+      const owner = requestOwned
+        ? agentOwner
+        : { workspaceRoot: agentOwner.workspaceRoot, sessionId: agentOwner.sessionId };
+      const observer = vi.fn();
+      const unobserve = broker.observeJobs(observer);
+      try {
+        const started = await broker.startTerminal({ ...startRequest(agentOwner), owner });
+        expect(broker.list(owner)).toHaveLength(1);
+        await broker.release(started.resourceId, owner);
+        if (requestOwned) {
+          expect(observer).toHaveBeenCalledWith(
+            owner,
+            expect.objectContaining({ resourceId: started.resourceId, state: "cancelled" }),
+          );
+        } else {
+          expect(observer).not.toHaveBeenCalled();
+        }
+        expect(eventSink).toHaveBeenCalledWith(expect.objectContaining({ kind: "execution.resource.created" }));
+        expect(eventSink).toHaveBeenCalledWith(expect.objectContaining({ kind: "execution.resource.removed" }));
+      } finally {
+        unobserve();
+        await broker.close();
+      }
+    },
+  );
+
   it("shares ownership, replay, list, input, resize, and stop controls through the broker", async () => {
     const terminal = new FakeTerminalChild();
     const eventSink = vi.fn();

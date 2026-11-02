@@ -9,6 +9,19 @@ import type {
 } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 
 describe("provider model update semantics", () => {
+  it("keeps price overrides independent and removes them when a replacement resumes automatic pricing", () => {
+    const config = modelConfig();
+    const replacement = { ...replacementModel(), Pricing: { input: 1.25, output: 0, cacheRead: 0.1, cacheWrite: 2 } };
+    const updated = upsertProviderModel(config, { commandId: "set-prices", model: replacement });
+    expect(updated.ModelProviders[0].Pricing).toEqual(replacement.Pricing);
+    expect(updated.ModelProviders[0].Pricing).not.toBe(replacement.Pricing);
+    expect(config.ModelProviders[0].Pricing).toBeUndefined();
+
+    const cleared = upsertProviderModel(updated, { commandId: "clear-prices", model: replacementModel() });
+    expect(cleared.ModelProviders[0].Pricing).toBeUndefined();
+    expect(updated.ModelProviders[0].Pricing).toEqual(replacement.Pricing);
+  });
+
   it("treats upsert payloads as complete replacements", () => {
     const config = modelConfig();
     const replacement: AgentModelProviderConfig = {

@@ -1,4 +1,7 @@
 import type Database from "better-sqlite3";
+import { AgentSqliteSessionInputStore } from "../SessionPersistence/AgentSqliteSessionInputStore.js";
+import type { AgentSessionQueuedInput } from "./AgentSessionQueuedInput.js";
+import type { AgentDirectorySnapshot } from "../Core/AgentDirectoryContract.js";
 import type { AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentEventEnvelope } from "../Events/AgentEventBase.js";
 import { parseJsonObject } from "../SessionPersistence/AgentSessionCodec.js";
@@ -17,7 +20,8 @@ import {
   prepareAgentSessionSqlStatements,
   type AgentSessionSqlStatements,
 } from "../SessionPersistence/AgentSessionSqlStatements.js";
-import { deriveAgentSessionTitle, rowToAgentSession } from "./AgentSqliteSessionMapper.js";
+import { rowToAgentSession } from "./AgentSqliteSessionMapper.js";
+import { deriveAgentSessionTitle } from "./AgentSessionTitleProjector.js";
 import {
   AgentSqliteSessionHistoryStore,
   type AgentSqliteSessionEntryDecodeIssueSink,
@@ -27,6 +31,7 @@ import type {
   AgentSessionForkHistory,
   AgentSessionCursorPage,
   AgentSessionCursorPageRequest,
+  AgentSessionRunEventPageRequest,
   AgentSessionHistoryView,
   AgentSessionRepository,
   AgentStepTraceCursor,
@@ -73,6 +78,7 @@ export class SqliteSessionRepository implements AgentSessionRepository {
   private readonly db: Database.Database;
   private readonly stmts: AgentSessionSqlStatements;
   private readonly history: AgentSqliteSessionHistoryStore;
+  private readonly inputs: AgentSqliteSessionInputStore;
 
   constructor(
     databasePath: string,
@@ -87,6 +93,52 @@ export class SqliteSessionRepository implements AgentSessionRepository {
     this.db = this.kernel.connection;
     this.stmts = prepareAgentSessionSqlStatements(this.db);
     this.history = new AgentSqliteSessionHistoryStore(this.db, this.stmts, onDecodeIssue);
+    this.inputs = new AgentSqliteSessionInputStore(this.db);
+  }
+
+  saveQueuedInput(input: AgentSessionQueuedInput): void {
+    this.db.transaction(() => {
+      this.inputs.saveQueuedInput(input);
+      if (input.parentRequestId === input.requestId && input.state !== "pending") {
+        this.db
+          .prepare(
+            "UPDATE conversation_entries SET data=json_remove(data,'$.metadata.queue') WHERE session_id=? AND request_id=? AND kind='user.message'",
+          )
+          .run(input.sessionId, input.requestId);
+      } else {
+        this.db
+          .prepare(
+            `UPDATE conversation_entries SET data=json_set(data,'$.metadata.queue',json(?))
+        WHERE session_id=? AND request_id=? AND kind='user.message'`,
+          )
+          .run(
+            JSON.stringify({
+              parentRequestId: input.parentRequestId,
+              mode: input.request.queueMode,
+              status: input.state,
+              ...(input.errorMessage ? { message: input.errorMessage } : {}),
+            }),
+            input.sessionId,
+            input.requestId,
+          );
+      }
+      if (!this.history.hasRequest(input.sessionId, input.requestId)) {
+        const sequence = this.db
+          .prepare<[string], { sequence: number }>(
+            "SELECT coalesce(max(sequence),-1)+1 AS sequence FROM conversation_entries WHERE session_id=?",
+          )
+          .get(input.sessionId)!.sequence;
+        this.history.appendEntry(input.sessionId, input.entry, sequence);
+      }
+    })();
+  }
+
+  loadQueuedInput(sessionId: string, requestId: string): AgentSessionQueuedInput | undefined {
+    return this.inputs.loadQueuedInput(sessionId, requestId);
+  }
+
+  listQueuedInputs(sessionId?: string): AgentSessionQueuedInput[] {
+    return this.inputs.listQueuedInputs(sessionId);
   }
 
   // ---- 接口实现 ----
@@ -121,6 +173,17 @@ export class SqliteSessionRepository implements AgentSessionRepository {
 
   captureHistorySnapshot(sessionId: string): AgentSessionHistoryView | undefined {
     return this.history.captureSnapshot(sessionId);
+  }
+
+  loadHistoryRequestPage(
+    sessionId: string,
+    request: import("./AgentSessionHistoryWindow.js").AgentSessionHistoryRequestPageInput,
+  ) {
+    return this.history.loadHistoryRequestPage(sessionId, request);
+  }
+
+  loadStepTracesForRequests(sessionId: string, requestIds: readonly string[], throughRowId: number) {
+    return this.history.loadStepTracesForRequests(sessionId, requestIds, throughRowId);
   }
 
   listPendingHistoryMutations(): AgentSessionHistoryMutation[] {
@@ -437,7 +500,7 @@ export class SqliteSessionRepository implements AgentSessionRepository {
   }
 
   renameSession(sessionId: string, title: string): void {
-    this.stmts.renameSession.run(title, new Date().toISOString(), sessionId);
+    this.stmts.renameSession.run({ id: sessionId, title, updated_at: new Date().toISOString() });
   }
 
   deleteSession(sessionId: string): boolean {
@@ -468,7 +531,7 @@ export class SqliteSessionRepository implements AgentSessionRepository {
 
   loadRunEventPage(
     sessionId: string,
-    request: AgentSessionCursorPageRequest,
+    request: AgentSessionRunEventPageRequest,
   ): AgentSessionCursorPage<AgentEventEnvelope> {
     return this.history.loadRunEventPage(sessionId, request);
   }
@@ -485,6 +548,19 @@ export class SqliteSessionRepository implements AgentSessionRepository {
     const row = this.stmts.selectSetting.get(USER_PROFILE_SETTING_KEY);
     if (!row) return createDefaultAgentUserProfile();
     return parseStoredAgentUserProfile(parseJsonObject(row.value), row.updated_at);
+  }
+
+  loadAgentDirectory(): unknown {
+    const row = this.stmts.selectSetting.get("agents.directory");
+    return row ? JSON.parse(row.value) : undefined;
+  }
+
+  saveAgentDirectory(snapshot: AgentDirectorySnapshot): void {
+    this.stmts.upsertSetting.run({
+      key: "agents.directory",
+      value: JSON.stringify(snapshot),
+      updated_at: new Date().toISOString(),
+    });
   }
 
   saveUserProfile(profile: AgentUserProfileInput): AgentUserProfile {

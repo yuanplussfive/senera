@@ -5,82 +5,27 @@ import path from "node:path";
 import { z } from "zod";
 import { extension as mimeExtension, lookup as lookupMime } from "mime-types";
 import { fileTypeFromBuffer } from "file-type";
-import type { ConfigFormDocument } from "../Config/AgentConfigFormDocument.js";
-import type { AgentExtensionLocalizedText } from "../Extensions/AgentExtensionLocalization.js";
 import { extractAgentDocument } from "../Documents/AgentDocumentExtract.js";
 import { probeAgentDocument } from "../Documents/AgentDocumentProbe.js";
 import {
   AgentDocumentToolConfigurationSchema,
   DefaultAgentDocumentToolConfiguration,
 } from "../Documents/AgentDocumentToolConfiguration.js";
-import { defineSystemTool } from "./AgentSystemToolDefinition.js";
+import { defineSystemTool, systemToolArguments } from "./AgentSystemToolDefinition.js";
 import { resolveAgentSystemLocalResource } from "./AgentSystemResource.js";
-import { AgentResourceSourceSchema, type AgentResourceSource } from "../Resources/AgentResourceSource.js";
+import type { AgentResourceSource } from "../Resources/AgentResourceSource.js";
 import { AgentWebToolsConfigurationSchema } from "../Web/AgentWebConfiguration.js";
 import { fetchWebResource } from "../Web/AgentWebHttpClient.js";
 import { sha256Hex } from "../Core/AgentHash.js";
 import { removeAgentPathWithRetry } from "../Core/AgentFs.js";
 import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
+import type { AgentDocumentExtractResult } from "../Documents/AgentDocumentExtractTypes.js";
 
-const DocumentExtractInput = z
-  .object({
-    source: AgentResourceSourceSchema.describe(
-      "Document source: workspace-local path, Senera resource, or HTTP(S) URL.",
-    ),
-    mode: z.enum(["auto", "probe", "extract"]).default("auto"),
-  })
-  .strict();
-
-const DocumentProbe = z.object({}).passthrough();
-const DocumentExtraction = z
-  .object({
-    status: z.literal("extracted"),
-    parser: z.string(),
-    fileType: z.string(),
-    textPreview: z.string(),
-    markdownPreview: z.string(),
-    textLength: z.number().int().nonnegative(),
-    markdownLength: z.number().int().nonnegative(),
-    metadata: z.record(z.string(), z.unknown()),
-    structure: z
-      .object({
-        topLevelNodeCount: z.number().int().nonnegative(),
-        attachmentCount: z.number().int().nonnegative(),
-        warningCount: z.number().int().nonnegative(),
-      })
-      .strict(),
-    chunks: z.array(
-      z
-        .object({
-          index: z.number().int().nonnegative(),
-          text: z.string(),
-          length: z.number().int().nonnegative(),
-          metadata: z.record(z.string(), z.unknown()).optional(),
-        })
-        .strict(),
-    ),
-    warnings: z.array(
-      z.object({ type: z.enum(["warning", "info", "error"]), code: z.string(), message: z.string() }).strict(),
-    ),
-  })
-  .strict();
-
-const DocumentExtractOutput = z
-  .object({
-    document: z
-      .object({
-        source: AgentResourceSourceSchema,
-        name: z.string(),
-        mime: z.string(),
-        size: z.number().int().nonnegative(),
-        sha256: z.string(),
-        status: z.enum(["probed", "extracted"]),
-        probe: DocumentProbe,
-        extraction: DocumentExtraction.optional(),
-      })
-      .strict(),
-  })
-  .strict();
+interface DocumentExtractArguments extends Record<string, unknown> {
+  readonly source: AgentResourceSource;
+  readonly mode: "auto" | "probe" | "extract";
+  readonly format?: "markdown" | "text";
+}
 
 const DefaultDocumentExtensionConfiguration = {
   probe: DefaultAgentDocumentToolConfiguration.probe,
@@ -167,74 +112,6 @@ export const AgentDocumentExtensionConfigurationSchema = z
   })
   .strict();
 
-const AgentDocumentExtensionConfigurationUi = {
-  form: {
-    version: 1 as const,
-    sections: [
-      {
-        id: "probe",
-        label: localized("文档探测", "Document probing"),
-        description: localized(
-          "控制容器探测的读取预算和安全边界。",
-          "Control read budgets and safety boundaries for container probing.",
-        ),
-        fields: [
-          numberField(["probe", "sampleBytes"], "探测采样字节", "Probe sample bytes", 4_096, 4_194_304),
-          numberField(["probe", "containerMaxEntries"], "容器最大条目数", "Maximum container entries", 1, 10_000),
-          numberField(
-            ["probe", "containerMaxEntryBytes"],
-            "单条目最大字节",
-            "Maximum bytes per container entry",
-            1_024,
-            16_777_216,
-          ),
-          textField(["probe", "contentTypesEntryName"], "内容类型清单文件", "Content types manifest file"),
-        ],
-      },
-      {
-        id: "parse",
-        label: localized("解析策略", "Parsing policy"),
-        description: localized(
-          "控制正文、批注、附件和版式内容的解析方式。",
-          "Control how body text, comments, attachments, and layout content are parsed.",
-        ),
-        fields: [
-          booleanField(["parse", "ocr"], "启用 OCR", "Enable OCR"),
-          booleanField(["parse", "extractAttachments"], "提取附件", "Extract attachments"),
-          booleanField(["parse", "includeRawContent"], "保留原始内容", "Include raw content"),
-          booleanField(["parse", "ignoreNotes"], "忽略备注", "Ignore notes"),
-          booleanField(["parse", "ignoreComments"], "忽略批注", "Ignore comments"),
-          booleanField(["parse", "ignoreHeadersAndFooters"], "忽略页眉页脚", "Ignore headers and footers"),
-          booleanField(["parse", "ignoreSlideMasters"], "忽略幻灯片母版", "Ignore slide masters"),
-          booleanField(["parse", "ignoreInternalLinks"], "忽略内部链接", "Ignore internal links"),
-          textField(["parse", "newlineDelimiter"], "换行分隔符", "Newline delimiter"),
-        ],
-      },
-      {
-        id: "output",
-        label: localized("输出预算", "Output budgets"),
-        description: localized(
-          "限制单次提取的文件大小、文本长度和分块数量。",
-          "Limit file size, text length, and chunk counts for one extraction.",
-        ),
-        fields: [
-          numberField(["output", "maxFileBytes"], "最大文件字节", "Maximum file bytes", 1_024, 1_073_741_824),
-          numberField(["output", "maxTextChars"], "纯文本最大字符", "Maximum plain-text characters", 0, 10_000_000),
-          numberField(
-            ["output", "maxMarkdownChars"],
-            "Markdown 最大字符",
-            "Maximum Markdown characters",
-            0,
-            10_000_000,
-          ),
-          numberField(["output", "maxChunks"], "最大分块数", "Maximum chunks", 0, 10_000),
-          numberField(["output", "maxChunkChars"], "单分块最大字符", "Maximum characters per chunk", 0, 1_000_000),
-        ],
-      },
-    ],
-  },
-} satisfies ConfigFormDocument<AgentExtensionLocalizedText>;
-
 export function createDocumentExtractSystemTool(extensionConfiguration?: Record<string, unknown>) {
   const settings = AgentDocumentExtensionConfigurationSchema.parse(extensionConfiguration ?? {});
   const configuration = AgentDocumentToolConfigurationSchema.parse({
@@ -244,56 +121,10 @@ export function createDocumentExtractSystemTool(extensionConfiguration?: Record<
     output: settings.output,
   });
   return defineSystemTool({
-    extension: {
-      name: "agent-document-tools",
-      displayName: {
-        "zh-CN": "文档理解",
-        "en-US": "Document Understanding",
-      },
-      description: {
-        "zh-CN": "探测并提取统一资源中文档的文本、结构和元数据。",
-        "en-US": "Probes and extracts text, structure, and metadata from canonical Senera document resources.",
-      },
-      priority: 8,
-      skills: ["document-understanding"],
-      configuration: {
-        schema: AgentDocumentExtensionConfigurationSchema,
-        ui: AgentDocumentExtensionConfigurationUi,
-      },
-    },
-    metadata: {
-      description:
-        "Probe or extract text, structure, metadata, and warnings from a workspace-relative or absolute local path, canonical Senera resource, or public HTTP(S) document URL. Prefer an attachment's local_path when present; use its resource_uri as the stable fallback.",
-      permissions: ["resources:read"],
-      execution: { Targets: ["Local"], Network: "Allow", Workspace: "ReadOnly" },
-      search: {
-        Summary: "读取文档的类型、结构、元数据和文本内容，必要时提取可检索的 Markdown。",
-        Tags: ["document", "extract", "text", "metadata"],
-        Capabilities: [
-          {
-            Id: "document.extract",
-            Title: "Document extraction",
-            Description: "检查文档并提取文本、结构、元数据和解析警告。",
-            Facets: {
-              Actions: ["probe", "extract", "inspect"],
-              Targets: ["workspace-document-path", "document-resource", "public-document-url"],
-              Inputs: ["source", "mode"],
-              Outputs: ["document-metadata", "text", "markdown", "structure", "warnings"],
-              Effects: ["none"],
-            },
-            Aliases: ["读取文档", "提取文本", "解析文件", "document extraction"],
-            Risk: { SideEffect: "read-only", Permission: "resources-read" },
-          },
-        ],
-        UseCases: ["用户提供文档资源，并希望查看内容、结构、元数据或解析警告。"],
-        Avoid: ["不要读取工作区以外的本地路径或绕过网络安全策略；需要修改文档时使用对应的工作区工具。"],
-      },
-    },
-    name: "DocumentExtract",
-    input: DocumentExtractInput,
-    output: DocumentExtractOutput,
+    capability: "system.tool.agent-document-tools.DocumentExtract",
     async execute(input, context) {
-      const resource = await resolveDocumentSource(input.source, context, configuration.output.maxFileBytes);
+      const args = systemToolArguments<DocumentExtractArguments>(input);
+      const resource = await resolveDocumentSource(args.source, context, configuration.output.maxFileBytes);
       try {
         const document = {
           filePath: resource.filePath,
@@ -311,14 +142,14 @@ export function createDocumentExtractSystemTool(extensionConfiguration?: Record<
             contentTypesEntryName: configuration.probe.contentTypesEntryName,
           },
         });
-        if (input.mode === "probe") {
-          return DocumentExtractOutput.parse({
+        if (args.mode === "probe") {
+          return {
             document: {
               ...publicDocument(resource),
               status: "probed" as const,
               probe,
             },
-          });
+          };
         }
         const extraction = await extractAgentDocument(
           {
@@ -336,14 +167,15 @@ export function createDocumentExtractSystemTool(extensionConfiguration?: Record<
           },
           { parse: configuration.parse, output: configuration.output },
         );
-        return DocumentExtractOutput.parse({
+        return {
           document: {
             ...publicDocument(resource),
             status: "extracted" as const,
             probe,
+            content: documentContent(extraction, args.format),
             extraction,
           },
-        });
+        };
       } finally {
         await resource.cleanup?.();
       }
@@ -432,39 +264,9 @@ function publicDocument(resource: ResolvedDocumentSource) {
   };
 }
 
-function numberField(path: string[], label: string, enUsLabel: string, min: number, max: number) {
-  return {
-    path,
-    label: localized(label, enUsLabel),
-    type: "number" as const,
-    min,
-    max,
-    step: 1,
-    required: false,
-    essential: true,
-  };
-}
-
-function booleanField(path: string[], label: string, enUsLabel: string) {
-  return {
-    path,
-    label: localized(label, enUsLabel),
-    type: "boolean" as const,
-    required: false,
-    essential: true,
-  };
-}
-
-function textField(path: string[], label: string, enUsLabel: string) {
-  return {
-    path,
-    label: localized(label, enUsLabel),
-    type: "string" as const,
-    required: false,
-    essential: true,
-  };
-}
-
-function localized(zhCn: string, enUs: string) {
-  return { "zh-CN": zhCn, "en-US": enUs } as const;
+function documentContent(extraction: AgentDocumentExtractResult, format: DocumentExtractArguments["format"]) {
+  const representation = format === "text" ? "text" : "markdown";
+  const text = representation === "text" ? extraction.textPreview : extraction.markdownPreview;
+  const length = representation === "text" ? extraction.textLength : extraction.markdownLength;
+  return { format: representation, text, truncated: text.length < length };
 }

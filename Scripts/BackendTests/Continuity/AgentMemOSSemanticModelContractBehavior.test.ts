@@ -8,6 +8,8 @@ import {
 } from "../../../Source/AgentSystem/Continuity/AgentMemOSSemanticModelClient.js";
 import type { AgentMemOSFragmentPromptInput } from "../../../Source/AgentSystem/Continuity/AgentMemOSSemanticTypes.js";
 import { AgentModelTokenEstimator } from "../../../Source/AgentSystem/Text/AgentTextBudget.js";
+import { AgentMemoryDiaryModel } from "../../../Source/AgentSystem/Continuity/AgentMemoryDiaryModel.js";
+import { AgentMemoryDiaryDefaults } from "../../../Source/AgentSystem/Continuity/AgentMemoryDiaryContract.js";
 import { createModelProvider } from "../Support/AgentTestFixtures.js";
 import { completedTestPiStream } from "../Support/AgentPiModelTestStream.js";
 
@@ -16,7 +18,7 @@ vi.mock("../../../Source/AgentSystem/ModelEndpoints/AgentPiConfiguredProvider.js
   createAgentPiConfiguredProvider: createConfiguredProvider,
 }));
 
-const baseFragment = { topic: "饮食偏好", summary: "用户喜欢牛肉。", type: "preference" };
+const baseFragment = { topic: "饮食偏好", summary: "用户喜欢牛肉。", type: "preference", assessments: [] };
 const current: AgentMemOSFragmentPromptInput = {
   user: "我喜欢牛肉",
   assistant: "记住了。",
@@ -62,11 +64,114 @@ function publishedTool(request: Context): Tool {
 }
 
 describe("MemOS semantic model source contract", () => {
-  test("permits an explicit no-learning decision without fragment fields", async () => {
-    const f = nativeClient([{ action: "skip" }]);
-    expect(await f.client.extractFragment(current, "extract-skip")).toEqual({ action: "skip" });
+  test("diaries share the Pi native tool contract and preserve the complete Markdown body", async () => {
+    const body = "## 今日进展\n\n" + "具体结果与仍待验证的事项。".repeat(200);
+    const f = nativeClient([{ title: "上传链路统一", body }], "MemoryDiary");
+    const client = new AgentMemoryDiaryModel(
+      createModelProvider({ ToolPlanningMode: "native", Capabilities: { ToolCalling: true } }),
+      "test",
+    );
+    const prompt = client.monthly(
+      "2026-09",
+      [{ key: "2026-09-01", title: "完成上传", body: "验证了上传流程。" }],
+      AgentMemoryDiaryDefaults,
+    );
+    expect(await client.generate(prompt, "native-diary")).toEqual({ title: "上传链路统一", body });
     const validate = publishedSchema(f.requests);
-    expect(validate({ action: "skip" })).toBe(true);
+    expect(validate({ title: "标题", body: "正文" })).toBe(true);
+    expect(validate({ title: "标题", summary: "错误字段" })).toBe(false);
+    expect(validate({ title: "标题", body: "正文", extra: 1 })).toBe(false);
+    expect(validate({ title: "", body: "正文" })).toBe(false);
+  });
+
+  test("diaries validate identical title/body output through BAML without truncating Markdown", async () => {
+    nativeClient([]);
+    const result = { title: "九月进展", body: "## 已完成\n\n保留 Markdown 和事实边界。" };
+    const complete = vi
+      .spyOn(AgentActionPlannerModelTransport.prototype, "complete")
+      .mockResolvedValue(JSON.stringify(result));
+    const client = new AgentMemoryDiaryModel(createModelProvider({ ToolPlanningMode: "baml" }), "test");
+    const prompt = client.monthly(
+      "2026-09",
+      [{ key: "2026-09-01", title: "完成", body: "真实结果" }],
+      AgentMemoryDiaryDefaults,
+    );
+    expect(await client.generate(prompt, "baml-diary")).toEqual(result);
+    expect(complete.mock.calls[0]![0].retryMode).toBe("pi");
+    complete.mockResolvedValueOnce(JSON.stringify({ summary: "retired output" }));
+    await expect(client.generate(prompt, "bad-diary")).rejects.toThrow();
+  });
+  test("requires exactly one reasoned task assessment per delivered memory even on skip", async () => {
+    const assessments = [
+      {
+        candidate: 3,
+        usefulness: "helpful",
+        reason: "The final answer was tailored to this preference.",
+      },
+    ];
+    const input = {
+      ...current,
+      sources: [{ ref: 0, kind: "user_message", text: "I still prefer concise replies" }],
+      candidates: [{ ref: 3, summary: "Prefers concise replies", type: "preference" as const, delivered: true }],
+    };
+    const f = nativeClient([{ action: "skip", assessments }]);
+    expect(await f.client.extractFragment(input, "assess-delivered")).toEqual({ action: "skip", assessments });
+    await expect(
+      f.client.extractFragment(
+        { ...input, candidates: input.candidates.map((entry) => ({ ...entry, delivered: false })) },
+        "not-delivered",
+      ),
+    ).rejects.toThrow("invalid arguments");
+    expect(
+      await f.client.extractFragment(
+        { ...input, sources: [{ ...input.sources[0]!, text: "A different statement" }] },
+        "no-quote-gate",
+      ),
+    ).toEqual({ action: "skip", assessments });
+    for (const invalid of [[], [...assessments, ...assessments], [{ ...assessments[0]!, reason: "" }]]) {
+      const broken = nativeClient([{ action: "skip", assessments: invalid }]);
+      await expect(broken.client.extractFragment(input, "incomplete-assessment")).rejects.toThrow("invalid arguments");
+    }
+  });
+
+  test("parses a BAML skip with assessments without requiring a fabricated fragment", async () => {
+    const assessments = [{ candidate: 3, usefulness: "unused", reason: "Not used in this task." }];
+    vi.spyOn(AgentActionPlannerModelTransport.prototype, "complete").mockResolvedValueOnce(
+      JSON.stringify({ action: "skip", assessments }),
+    );
+    const client = new AgentMemOSSemanticModelClient(createModelProvider({ ToolPlanningMode: "baml" }), "test", 50);
+    expect(
+      await client.extractFragment(
+        { ...current, candidates: [{ ref: 3, summary: "Existing preference", type: "preference", delivered: true }] },
+        "baml-skip",
+      ),
+    ).toEqual({ action: "skip", assessments });
+  });
+
+  test("retires quoted evidence and model-assigned truth scores from the learning contract", async () => {
+    const f = nativeClient([{ ...baseFragment, action: "new" }]);
+    expect((await f.client.extractFragment(current, "no-quote-gate")).action).toBe("new");
+    const retired = nativeClient([
+      { ...baseFragment, action: "new", evidence: [{ source: 0, quote: current.user, relation: "supports" }] },
+    ]);
+    // Complete the normal probe before replacing the shared provider mock.
+    await expect(retired.client.extractFragment(current, "retired-evidence")).rejects.toThrow("invalid arguments");
+    const supported = nativeClient([{ ...baseFragment, action: "new" }]);
+    expect(
+      (
+        await supported.client.extractFragment(
+          { ...current, sources: [{ ref: 0, kind: "user_message", text: current.user }] },
+          "source-backed",
+        )
+      ).action,
+    ).toBe("new");
+  });
+  test("permits an explicit no-learning decision without fragment fields", async () => {
+    const f = nativeClient([{ action: "skip", assessments: [] }]);
+    expect(await f.client.extractFragment(current, "extract-skip")).toEqual({ action: "skip", assessments: [] });
+    const validate = publishedSchema(f.requests);
+    expect(validate({ action: "skip", assessments: [] })).toBe(true);
+    expect(validate({ action: "skip" })).toBe(false);
     expect(validate({ action: "skip", summary: "not allowed" })).toBe(false);
     expect(validate({ ...baseFragment, action: "skip" })).toBe(false);
   });
@@ -124,7 +229,7 @@ describe("MemOS semantic model source contract", () => {
     const validate = publishedSchema(f.requests);
     expect(validate({ ...baseFragment, action: "new" })).toBe(true);
     expect(validate({ ...baseFragment, action: "new", type: "profile" })).toBe(false);
-    expect(validate({ ...baseFragment, action: "new", type: "entity" })).toBe(true);
+    expect(validate({ ...baseFragment, action: "new", type: "entity" })).toBe(false);
     expect(validate({ ...baseFragment, action: "new", topic: "" })).toBe(false);
     expect(validate({ ...baseFragment, action: "new", explanation: "extra" })).toBe(false);
   });
@@ -137,24 +242,6 @@ describe("MemOS semantic model source contract", () => {
     const result = await f.client.extractFragment(current, "extract-token-limit");
     expect(result.action).not.toBe("skip");
     if (result.action === "skip") throw new Error("Expected a fragment decision.");
-    expect(estimator.estimate(result.summary).tokenCount).toBeLessThanOrEqual(50);
-    expect(result.summary).not.toBe(oversized);
-    expect(f.stream).toHaveBeenCalledOnce();
-  });
-
-  test("projects oversized period digests with the same token contract", async () => {
-    const estimator = new AgentModelTokenEstimator({ model: "test-model" });
-    let oversized = "summary";
-    while (estimator.estimate(oversized).tokenCount <= 50) oversized += " detail";
-    const f = nativeClient([{ summary: oversized }], "MemOSPeriodDigest");
-    const result = await f.client.summarizePeriod(
-      {
-        period: "day",
-        periodKey: "2026-10-13",
-        entries: [{ summary: "记忆", type: "context", occurredAt: "2026-10-13T00:00:00Z" }],
-      },
-      "digest-token-limit",
-    );
     expect(estimator.estimate(result.summary).tokenCount).toBeLessThanOrEqual(50);
     expect(result.summary).not.toBe(oversized);
     expect(f.stream).toHaveBeenCalledOnce();
@@ -190,8 +277,13 @@ describe("MemOS semantic model source contract", () => {
 
   test("reads persisted decisions strictly without requesting the model again", () => {
     const schema = createAgentMemOSExtractionRecordSchema(50);
-    const created = { fragment: { ...baseFragment, action: "new" } };
-    const updated = { fragment: { ...baseFragment, action: "update", candidate: 3 }, candidateId: "real-node" };
+    const created = { fragment: { ...baseFragment, action: "new" }, assessmentVersion: 2, assessmentTargets: [] };
+    const updated = {
+      fragment: { ...baseFragment, action: "update", candidate: 3 },
+      candidateId: "real-node",
+      assessmentVersion: 2,
+      assessmentTargets: ["candidate-0", "candidate-1", "candidate-2", "real-node"],
+    };
     expect(schema.parse(created)).toEqual(created);
     expect(schema.parse(updated)).toEqual(updated);
     expect(() => schema.parse({ ...created, candidateId: "real-node" })).toThrow();

@@ -1,3 +1,4 @@
+import { OverlayScrollFixture } from "../../dev/OverlayScrollFixture";
 import type { Story } from "@ladle/react";
 import { useState } from "react";
 import { Button } from "./Button";
@@ -109,3 +110,5 @@ export const InitiallyOpenDialog: Story = () => (
     </Dialog>
   </div>
 );
+
+export const ModalScrolling: Story = () => <OverlayScrollFixture />;

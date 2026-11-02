@@ -14,6 +14,7 @@ export const AgentResourceHttpRoutes = {
   WorkspaceContent: "/api/resources/content",
   WorkspaceTree: "/api/resources/tree",
   WorkspaceChanges: "/api/resources/changes",
+  WorkspaceCheckpointUndo: "/api/workspace/checkpoints/undo",
   ProfileAvatar: "/api/profile/avatar",
   ArtifactRead: "/api/artifacts/read",
 } as const;

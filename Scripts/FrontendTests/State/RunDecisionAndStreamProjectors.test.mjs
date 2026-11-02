@@ -2,6 +2,69 @@ import { expect, test } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { applyEvent } from "../../../Frontend/src/store/session/sessionProjector.ts";
 import { createEvent, createTestState, TestRequestId, TestSessionId } from "./sessionProjectorTestUtils.mjs";
+import { projectAgentContinuitySnapshot } from "../../../Source/AgentSystem/Continuity/AgentContinuitySnapshot.ts";
+
+test("interleaved agent sessions retain independent channel messages and tools-only terminal turns", () => {
+  const state = createTestState();
+  const lanes = ["agent-a-session", "agent-b-session"];
+  for (const sessionId of lanes) {
+    applyEvent(
+      state,
+      createEvent(
+        EventKinds.RunStarted,
+        {
+          input: "你们两个呢",
+          title: "测试群 · 10/25 12:23",
+        },
+        { sessionId, requestId: sessionId, sequence: 1, scope: { channel: "onebot11" } },
+      ),
+    );
+  }
+  for (const sessionId of [...lanes].reverse()) {
+    for (const [sequence, kind] of [
+      [2, EventKinds.ToolCallStarted],
+      [3, EventKinds.ToolCallCompleted],
+    ]) {
+      applyEvent(
+        state,
+        createEvent(
+          kind,
+          {
+            index: 0,
+            toolName: "ChannelSendMessage",
+            callId: `send-${sessionId}`,
+          },
+          { sessionId, requestId: sessionId, sequence, phase: "tool", step: 1 },
+        ),
+      );
+    }
+  }
+  for (const sessionId of lanes) {
+    applyEvent(
+      state,
+      createEvent(
+        EventKinds.AssistantMessageCreated,
+        {
+          id: `empty-${sessionId}`,
+          content: "",
+          terminal: true,
+        },
+        { sessionId, requestId: sessionId, sequence: 4 },
+      ),
+    );
+    applyEvent(state, createEvent(EventKinds.RunCompleted, {}, { sessionId, requestId: sessionId, sequence: 5 }));
+    const { messages, runs, title } = state.sessions[sessionId];
+    expect(title).toBe("测试群 · 10/25 12:23");
+    expect(messages).toEqual([expect.objectContaining({ role: "user", requestId: sessionId, content: "你们两个呢" })]);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({
+      requestId: sessionId,
+      status: "completed",
+      steps: expect.arrayContaining([expect.objectContaining({ callId: `send-${sessionId}`, status: "done" })]),
+    });
+    expect(runs[0].steps.some((step) => step.callId === `send-${lanes.find((id) => id !== sessionId)}`)).toBe(false);
+  }
+});
 
 test("regeneration truncation acknowledgement preserves the optimistic replacement request", () => {
   const state = createTestState();
@@ -63,16 +126,153 @@ test("regeneration truncation acknowledgement preserves the optimistic replaceme
   expect(state.sessions[TestSessionId].activeRequestId).toBe(replacementRequestId);
 });
 
+test("queued user input receives an authoritative queue status without creating a second run", () => {
+  const state = createTestState();
+  const parentRequestId = "request-active";
+  const queuedRequestId = "request-queued";
+  applyEvent(
+    state,
+    createEvent(EventKinds.RunStarted, { input: "Long task" }, { requestId: parentRequestId, sequence: 1 }),
+  );
+  state.sessions[TestSessionId].messages.push({
+    id: `${queuedRequestId}-user`,
+    role: "user",
+    content: "Change direction",
+    createdAt: "2026-07-09T00:00:01.000Z",
+    requestId: queuedRequestId,
+    queueAdmission: { mode: "steer", status: "pending" },
+  });
+
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionMessageQueued,
+      {
+        sessionId: TestSessionId,
+        requestId: queuedRequestId,
+        parentRequestId,
+        mode: "steer",
+      },
+      { requestId: queuedRequestId, sequence: 2, phase: "session" },
+    ),
+  );
+
+  const queued = state.sessions[TestSessionId].messages.find((message) => message.requestId === queuedRequestId);
+  expect(queued).toMatchObject({
+    metadata: { queue: { parentRequestId, mode: "steer" } },
+  });
+  expect(queued?.queueAdmission).toBeUndefined();
+  expect(state.sessions[TestSessionId].runs.map((run) => run.requestId)).toEqual([parentRequestId]);
+});
+
+test("another client receives queued content, attachments, and terminal state under its own request identity", () => {
+  const state = createTestState();
+  const entry = {
+    kind: "user.message",
+    id: "supplement:user",
+    requestId: "supplement",
+    timestamp: "2026-07-09T00:00:01.000Z",
+    content: "Use the image",
+    attachments: [
+      { resourceUri: "senera://resource/a1b2c3", name: "image.png", mime: "image/png", size: 12, status: "uploaded" },
+    ],
+  };
+  for (const [index, status] of ["pending", "delivered", "failed"].entries()) {
+    applyEvent(
+      state,
+      createEvent(
+        EventKinds.SessionMessageQueued,
+        {
+          sessionId: TestSessionId,
+          requestId: entry.requestId,
+          parentRequestId: TestRequestId,
+          mode: "steer",
+          status,
+          entry,
+          ...(status === "failed" ? { message: "Provider disconnected" } : {}),
+        },
+        { requestId: TestRequestId, sequence: index + 1 },
+      ),
+    );
+  }
+  const messages = state.sessions[TestSessionId].messages.filter((message) => message.requestId === entry.requestId);
+  expect(messages).toHaveLength(1);
+  expect(messages[0]).toMatchObject({
+    content: entry.content,
+    attachments: entry.attachments,
+    metadata: {
+      queue: {
+        parentRequestId: TestRequestId,
+        status: "failed",
+        message: "Provider disconnected",
+      },
+    },
+  });
+  expect(state.sessions[TestSessionId].runs.some((run) => run.requestId === entry.requestId)).toBe(false);
+});
+
+test("a queued submission becomes a normal thinking turn when the host opens a fresh run", () => {
+  const state = createTestState();
+  const requestId = "request-raced-into-new-run";
+  applyEvent(
+    state,
+    createEvent(EventKinds.RunStarted, { input: "Long task" }, { requestId: "request-active", sequence: 1 }),
+  );
+  state.sessions[TestSessionId].messages.push({
+    id: `${requestId}-user`,
+    role: "user",
+    content: "Continue separately",
+    createdAt: "2026-07-09T00:00:01.000Z",
+    requestId,
+    queueAdmission: { mode: "follow_up", status: "pending" },
+  });
+
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "Continue separately" }, { requestId, sequence: 2 }));
+
+  const message = state.sessions[TestSessionId].messages.find((item) => item.requestId === requestId);
+  expect(message?.queueAdmission).toBeUndefined();
+  expect(state.sessions[TestSessionId].runs).toEqual(
+    expect.arrayContaining([expect.objectContaining({ requestId, status: "running" })]),
+  );
+});
+
+test("a rejected queued submission keeps a visible state on its user message", () => {
+  const state = createTestState();
+  const requestId = "request-queue-rejected";
+  applyEvent(
+    state,
+    createEvent(EventKinds.RunStarted, { input: "Long task" }, { requestId: "request-active", sequence: 1 }),
+  );
+  state.sessions[TestSessionId].messages.push({
+    id: `${requestId}-user`,
+    role: "user",
+    content: "Change direction",
+    createdAt: "2026-07-09T00:00:01.000Z",
+    requestId,
+    queueAdmission: { mode: "steer", status: "pending" },
+  });
+
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.RequestInvalid,
+      { code: "request_execution_failed", message: "Queue unavailable" },
+      { requestId, sequence: 2, phase: "request", layer: "error" },
+    ),
+  );
+
+  expect(
+    state.sessions[TestSessionId].messages.find((message) => message.requestId === requestId)?.queueAdmission,
+  ).toEqual({
+    mode: "steer",
+    status: "rejected",
+    message: "Queue unavailable",
+  });
+});
+
 test("user cancellation keeps the current message and completed tool evidence", () => {
   const state = createTestState();
   applyEvent(state, createEvent(EventKinds.RunStarted, { input: "检查当前配置" }, { sequence: 1 }));
-  state.sessions[TestSessionId].messages.push({
-    id: `${TestRequestId}-user`,
-    role: "user",
-    content: "检查当前配置",
-    createdAt: "2026-07-09T00:00:00.000Z",
-    requestId: TestRequestId,
-  });
   applyEvent(
     state,
     createEvent(
@@ -173,7 +373,6 @@ test("native memory snapshots remain attached to their run", () => {
       EventKinds.ContinuitySnapshot,
       {
         enabled: true,
-        periodDigests: [],
         eventCandidates: [
           {
             id: "1",
@@ -187,7 +386,6 @@ test("native memory snapshots remain attached to their run", () => {
           },
         ],
         selection: {
-          digests: { available: 0, matched: 0, selected: 0 },
           events: { available: 1, matched: 1, selected: 1 },
           usedTokens: 24,
           maxTokens: 2048,
@@ -199,6 +397,82 @@ test("native memory snapshots remain attached to their run", () => {
   expect(readTestRun(state).steps).toHaveLength(count);
   expect(readTestRun(state).continuity).toMatchObject({ eventCandidates: [{ uri: "memos:1", summary: "先给结论。" }] });
 });
+
+test.each(["live", "history"])(
+  "current memory producer retains task records, quality and diagnostics in %s projection",
+  (mode) => {
+    const state = createTestState();
+    const snapshot = projectAgentContinuitySnapshot({
+      enabled: true,
+      query: "Continue debugging",
+      snapshotGeneration: 2,
+      eventCandidates: [
+        {
+          id: "fact",
+          uri: "memos:fact",
+          revision: "v1",
+          type: "fact",
+          summary: "Verified fact",
+          occurredAt: "2026-10-27T00:00:00Z",
+          score: 0.4,
+          matchedBy: ["memos", "relevance_assessment"],
+          scores: { relevance: 0.8 },
+          quality: {
+            weight: 50,
+            recallCount: 0,
+            helpfulCount: 0,
+            unhelpfulCount: 0,
+            unusedCount: 0,
+            uncertainCount: 0,
+            pendingCount: 0,
+          },
+          dedupeKeys: ["private"],
+        },
+      ],
+      taskCandidates: [
+        {
+          id: "task",
+          uri: "memos:task",
+          revision: "v2",
+          type: "context",
+          summary: "Current finding",
+          occurredAt: "2026-10-27T00:01:00Z",
+          score: 0.7,
+          matchedBy: ["task"],
+          scores: { relevance: 0.8, recency: 0.9 },
+        },
+      ],
+      diagnostics: {
+        unassigned: 3,
+        otherSubject: 2,
+        irrelevant: 1,
+        snapshotReused: false,
+        relevanceStatus: "completed",
+      },
+      selection: {
+        events: { available: 2, matched: 1, selected: 1 },
+        tasks: { available: 2, matched: 2, selected: 1 },
+        usedTokens: 100,
+        maxTokens: 2048,
+      },
+    });
+    const events = [
+      createEvent(EventKinds.RunStarted, { input: "Continue debugging" }, { sequence: 1 }),
+      createEvent(EventKinds.ContinuitySnapshot, snapshot, { sequence: 2, phase: "prompt", layer: "snapshot" }),
+    ];
+    if (mode === "live") for (const event of events) applyEvent(state, event);
+    else {
+      applyEvent(
+        state,
+        createEvent(EventKinds.SessionHistoryStarted, { sessionId: TestSessionId, totalEntries: 0, messageCount: 0 }),
+      );
+      applyEvent(state, createEvent(EventKinds.SessionRunHistoryChunk, { sessionId: TestSessionId, events }));
+      applyEvent(state, createEvent(EventKinds.SessionHistoryCompleted, { sessionId: TestSessionId }));
+    }
+    expect(readTestRun(state).continuity).toEqual(snapshot);
+    expect(readTestRun(state).continuity.eventCandidates[0]).not.toHaveProperty("dedupeKeys");
+  },
+);
 
 test("malformed historical continuity snapshots are rejected at the projection boundary", () => {
   const state = createTestState();
@@ -287,7 +561,7 @@ test("model stream events keep visible answer text while closing the model step"
   expect(run.streamingRaw).toBe("第一段，第二段。");
   expect(run.visibleText).toBe("第一段，第二段。");
   expect(run.visibleKind).toBe("final_answer");
-  expect(run.displayText).toBe("");
+  expect(run.displayText).toBe("第一段，第二段。");
   expect(run.modelProvider?.id).toBe("provider_pi");
   expect(run.steps.find((step) => step.kind === "model")).toMatchObject({
     status: "done",

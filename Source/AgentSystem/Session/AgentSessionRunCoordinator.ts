@@ -1,10 +1,15 @@
+import type { AgentSessionInputSource } from "./AgentSessionQueuedInput.js";
 import type { AgentEventSink, AgentDomainEvent } from "../Events/AgentEvent.js";
 import { AgentEventKinds, emitAgentEvent, withEventContext } from "../Events/AgentEvent.js";
 import { AgentCancellationError } from "../Core/AgentCancellation.js";
 import { createOpaqueId, createRequestId } from "../Core/AgentIds.js";
 import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import { type AgentConversationProjector } from "../Conversation/AgentConversationProjector.js";
-import { AgentConversationEntryKinds, type AgentConversationEntry } from "../Conversation/AgentConversation.js";
+import {
+  AgentConversationEntryKinds,
+  isAgentHumanUserMessage,
+  type AgentConversationEntry,
+} from "../Conversation/AgentConversation.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import type { AgentLoopRunner } from "../Loop/AgentLoopRunner.js";
 import { type AgentMemoryService } from "../Memory/AgentMemoryService.js";
@@ -13,6 +18,7 @@ import type { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionReg
 import type { AgentPiDiagnosticSink } from "../Pi/AgentPiDiagnostics.js";
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 import type { AgentSession } from "./AgentSession.js";
+import { deriveAgentSessionTitle } from "./AgentSessionTitleProjector.js";
 import {
   cloneAgentSessionState,
   collectFreshConversationEntries,
@@ -52,25 +58,29 @@ import {
   type AgentModelSelectionSource,
   type AgentSessionOwnership,
 } from "../ModelEndpoints/AgentModelMetadata.js";
-import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
+import type { AgentTurnAttachmentUploadStore } from "../Prompt/AgentTurnRequestComposer.js";
+import type { AgentImageNormalizationService } from "../Images/AgentImageNormalizationService.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import { createAgentPiLogicalCacheScope } from "../Pi/AgentPiPromptCache.js";
 import type { AgentToolResourceLeaseOwner } from "../ToolRuntime/AgentToolResourceScheduler.js";
 import type { AgentExplicitActivationSet } from "../Activation/AgentActivationTypes.js";
 
 export interface AgentSessionRunCoordinatorOptions {
+  onTurnStart?: import("./AgentSessionManagerOptions.js").AgentSessionManagerOptions["onTurnStart"];
+  onQueuedInputAccepted?: import("./AgentSessionInputDelivery.js").AgentSessionInputDeliveryOptions["onQueuedInputAccepted"];
   store: AgentSessionStore;
   conversationProjector: AgentConversationProjector;
   conversationPolicy: AgentConversationPolicy;
-  memory: AgentMemoryService;
+  memory: Pick<AgentMemoryService, "recordCompletedTurn">;
   logger?: AgentLogger;
   runResources?: readonly AgentSessionRunResource[];
   piSessions?: AgentPiActiveSessionRegistry;
   piDiagnostics?: AgentPiDiagnosticSink;
-  uploadStore?: Pick<AgentUploadStore, "resolve">;
+  uploadStore?: AgentTurnAttachmentUploadStore;
+  imageNormalization?: Pick<AgentImageNormalizationService, "normalize">;
   piSessionMutations?: Pick<AgentPiSessionMutationPort, "reset">;
   runControl: AgentSessionRunControlPolicy;
-  loopFactory: (modelProviderId?: string) => AgentLoopRunner;
+  loopFactory: (modelProviderId?: string, session?: AgentSession) => AgentLoopRunner;
   /** Projects a live session snapshot for UI/channel observers. */
   snapshotEvent?: (session: AgentSession) => AgentDomainEvent;
 }
@@ -85,6 +95,7 @@ interface AgentSessionRunRequest {
   preparation?: AgentTurnPreparationSnapshot;
   systemPromptLayer?: import("../Orchestration/AgentRunDispatchPort.js").AgentSystemPromptLayer;
   allowedToolNames?: readonly string[];
+  executionScope?: "session" | "turn";
   pinnedSkills?: readonly AgentPinnedSkillReference[];
   activations?: AgentExplicitActivationSet;
   thinkingLevel?: import("@earendil-works/pi-ai").ModelThinkingLevel;
@@ -93,8 +104,6 @@ interface AgentSessionRunRequest {
   metadata?: AgentConversationEntryMetadata;
   modelSelectionSource?: AgentModelSelectionSource;
   interaction?: AgentInteractionContext;
-  /** Allows a durable internal wake to reclaim its own crashed run receipt. */
-  reclaimRunningCommand?: boolean;
   /** Replays a failed turn without appending a duplicate user entry. */
   reuseUserEntryFromRequestId?: string;
   /** Requests Pi to continue its existing transcript rather than prompt text. */
@@ -108,6 +117,7 @@ export type { AgentSessionAvailability } from "./AgentSessionActiveRunController
 export { AgentSessionRunCoordinatorShuttingDownError } from "./AgentSessionActiveRunController.js";
 
 export class AgentSessionRunCoordinator {
+  private readonly inputSources = new Set<AgentSessionInputSource>();
   private readonly activeRuns: AgentSessionActiveRunController;
 
   constructor(private readonly options: AgentSessionRunCoordinatorOptions) {
@@ -119,6 +129,11 @@ export class AgentSessionRunCoordinator {
   }
 
   async runTurn(session: AgentSession, request: AgentSessionRunRequest): Promise<void> {
+    await this.startTurn(session, request);
+  }
+
+  /** Commits admission synchronously; model execution continues in the returned promise. */
+  startTurn(session: AgentSession, request: AgentSessionRunRequest): Promise<void> {
     this.activeRuns.assertAcceptingRuns();
     const requestId = request.requestId?.trim() || createRequestId();
     const timestamp = new Date().toISOString();
@@ -159,6 +174,19 @@ export class AgentSessionRunCoordinator {
       createdAt: timestamp,
     });
     const runningSession = cloneAgentSessionState(session);
+    if (request.executionScope !== "turn")
+      runningSession.metadata = {
+        ...runningSession.metadata,
+        executionPolicy: {
+          approvalMode: request.approvalMode,
+          allowedToolNames: request.allowedToolNames,
+          systemPromptLayer: request.systemPromptLayer,
+          pinnedSkills: request.pinnedSkills,
+          thinkingLevel: request.thinkingLevel,
+          inheritProjectContext: request.inheritProjectContext,
+          ...(request.interaction ? { interaction: { ...request.interaction, event: undefined } } : {}),
+        },
+      };
     if (request.metadata?.channel) {
       runningSession.metadata = {
         ...runningSession.metadata,
@@ -181,9 +209,10 @@ export class AgentSessionRunCoordinator {
         context: { requestId },
         data: {
           input: request.input,
+          title: deriveAgentSessionTitle(runningSession),
           approvalMode: request.approvalMode,
           ...(request.attachments?.length ? { attachments: request.attachments } : {}),
-          ...(request.metadata?.backgroundTask ? { internal: true, displayInput: "后台任务完成通知" } : {}),
+          ...(userEntry.metadata ? { metadata: userEntry.metadata } : {}),
           ...(request.recovery ? { recovery: request.recovery } : {}),
         },
       },
@@ -204,27 +233,22 @@ export class AgentSessionRunCoordinator {
       runStartedEvent,
       command,
     );
-    const reclaimRunningCommand =
-      admission.kind === "replayed" &&
-      request.reclaimRunningCommand === true &&
-      admission.command.state === "running" &&
-      this.options.store.hasRequest(session.id, requestId);
-    if (admission.kind === "replayed" && !reclaimRunningCommand) {
-      await this.replayDurableRunEvents(session.id, requestId, request.onEvent);
-      return;
+    if (admission.kind === "replayed") {
+      return this.replayDurableRunEvents(session.id, requestId, request.onEvent);
     }
 
-    // The command receipt and user entry were committed before the process
-    // crashed. Reuse that entry instead of appending a duplicate turn while
-    // reclaiming the internal completion wake.
-    if (reclaimRunningCommand) runningSession.conversation = [...session.conversation];
-
     replaceAgentSessionState(session, runningSession);
-    // A reclaimed process must not expose a stale receipt from an abandoned
-    // physical runtime while the replacement runtime is being resolved.
-    session.metadata = { ...session.metadata, activeRun: undefined };
-    this.options.store.persistMetadata(session);
-    const run = this.activeRuns.register(session.id, requestId, request.onEvent);
+    const {
+      reuseUserEntryFromRequestId: _reuse,
+      continueFromTranscript: _continue,
+      continuationSourceRequestId: _source,
+      recovery: _recovery,
+      ...messageRequest
+    } = request;
+    const run = this.activeRuns.register(session.id, requestId, request.onEvent, {
+      ...messageRequest,
+      sessionId: session.id,
+    });
     const terminalEvents: AgentDomainEvent[] = [];
     const onRunEvent: AgentEventSink = async (event) => {
       if (!this.activeRuns.isCurrent(session.id, run)) return;
@@ -237,183 +261,233 @@ export class AgentSessionRunCoordinator {
     let completedResult: Awaited<ReturnType<AgentLoopRunner["run"]>> | undefined;
     let learningFinalized = false;
 
-    try {
-      await emitAgentEvent(request.onEvent, runStartedEvent);
-      const turnTerminalEvents: AgentDomainEvent[] = [];
-      loop = this.options.loopFactory(request.modelProviderId);
-      const effectiveModel = loop.modelProvider
-        ? {
-            sessionId: session.id,
-            requestId,
-            providerId: loop.modelProvider.id,
-            model: loop.modelProvider.model,
-            endpoint: loop.modelProvider.endpoint,
-            baseUrl: loop.modelProvider.baseUrl,
-            source: request.modelSelectionSource ?? (request.modelProviderId ? "request" : "default"),
-            effectiveAt: timestamp,
-            logicalCacheScope,
-          }
-        : undefined;
-      if (effectiveModel && session.activeRequest?.requestId === requestId) {
-        session.activeRequest = { ...session.activeRequest, effectiveModel };
-        session.metadata = {
-          ...session.metadata,
-          activeRun: {
-            modelProvider: loop.modelProvider!,
-            receipt: effectiveModel,
-          },
-        };
-        this.options.store.persistMetadata(session);
-        const snapshot = this.options.snapshotEvent?.(session);
-        if (snapshot) await this.publishSessionSnapshot(request.onEvent, snapshot, session.id, requestId, channelScope);
-      }
-      const result = await this.runLoopTurn({
-        session,
-        run,
-        loop,
-        logicalCacheScope,
-        effectiveModel,
-        request,
-        requestId,
-        input: request.input,
-        step: 1,
-        preparation: request.preparation,
-        terminalEvents: turnTerminalEvents,
-        onEvent: onRunEvent,
-      });
-      completedResult = result;
-      const allFreshEntries: AgentConversationEntry[] = [];
-      const pendingEntries: AgentConversationEntry[] = [];
-      const pendingStepTraces = [] as typeof result.stepTraces;
-      const allExecutedTools = [] as typeof result.executedTools;
-
-      if (!this.activeRuns.isCurrent(session.id, run)) {
-        loop.discardCompletedTurn?.(completedResult);
-        return;
-      }
-      const completedAt = new Date().toISOString();
-      const assistantMetadata: AgentConversationEntryMetadata | undefined = buildAssistantEntryMetadata(
-        request,
-        result,
-        effectiveModel,
-      );
-      const assistantEntry = this.options.conversationProjector.projectAssistantDecision(
-        requestId,
-        result.decisionXml,
-        completedAt,
-        assistantMetadata,
-      );
-      const freshEntries = collectFreshConversationEntries(session.conversation, [assistantEntry]);
-      allFreshEntries.push(...freshEntries);
-      const turnStepTraces = stampSessionStepTraces(result.stepTraces, timestamp, completedAt);
-      pendingEntries.push(...freshEntries);
-      pendingStepTraces.push(...turnStepTraces);
-      allExecutedTools.push(...result.executedTools);
-      terminalEvents.push(...turnTerminalEvents);
-
-      run.terminalStatus = "completed";
-      const completedSession = cloneAgentSessionState(session);
-      completedSession.conversation = mergeSessionConversationEntries([
-        ...completedSession.conversation,
-        ...allFreshEntries,
-      ]);
-      if (result.modelProvider) {
-        const completedReceipt = effectiveModel
+    return (async () => {
+      try {
+        await emitAgentEvent(request.onEvent, runStartedEvent);
+        if (
+          isAgentHumanUserMessage(userEntry) &&
+          !request.continueFromTranscript &&
+          !request.reuseUserEntryFromRequestId
+        )
+          await this.options.onTurnStart?.({ sessionId: session.id, requestId, onEvent: onRunEvent });
+        const turnTerminalEvents: AgentDomainEvent[] = [];
+        loop = this.options.loopFactory(request.modelProviderId, session);
+        const effectiveModel = loop.modelProvider
           ? {
-              ...effectiveModel,
-              ...(result.physicalPiSessionId ? { physicalPiSessionId: result.physicalPiSessionId } : {}),
+              sessionId: session.id,
+              requestId,
+              providerId: loop.modelProvider.id,
+              model: loop.modelProvider.model,
+              endpoint: loop.modelProvider.endpoint,
+              baseUrl: loop.modelProvider.baseUrl,
+              source: request.modelSelectionSource ?? (request.modelProviderId ? "request" : "default"),
+              effectiveAt: timestamp,
+              logicalCacheScope,
             }
           : undefined;
-        completedSession.metadata = {
-          ...completedSession.metadata,
-          activeRun: undefined,
-          lastRun: {
-            modelProvider: result.modelProvider,
-            usage: result.usage,
-            ...(completedReceipt ? { receipt: completedReceipt } : {}),
-          },
-        };
-      }
-      completedSession.updatedAt = completedAt;
-      this.activeRuns.releaseSession(completedSession);
-      try {
-        this.options.store.persistTurnCommit(
-          session.id,
+        if (effectiveModel && session.activeRequest?.requestId === requestId) {
+          session.activeRequest = { ...session.activeRequest, effectiveModel };
+          session.metadata = {
+            ...session.metadata,
+            activeRun: {
+              modelProvider: loop.modelProvider!,
+              receipt: effectiveModel,
+            },
+          };
+          this.options.store.persistMetadata(session);
+          const snapshot = this.options.snapshotEvent?.(session);
+          if (snapshot)
+            await this.publishSessionSnapshot(request.onEvent, snapshot, session.id, requestId, channelScope);
+        }
+        const result = await this.runLoopTurn({
+          session,
+          run,
+          loop,
+          logicalCacheScope,
+          effectiveModel,
+          request,
           requestId,
-          pendingEntries,
-          pendingStepTraces,
-          {
-            sessionId: session.id,
-            requestId,
-            input: request.input,
-            status: "completed",
-            startedAt: timestamp,
-            updatedAt: completedAt,
-            endedAt: completedAt,
-            modelProvider: result.modelProvider,
-          },
-          terminalEvents,
-          completedSession,
-        );
-      } catch (error) {
-        terminalCommitFailed = true;
-        throw error;
-      }
-      replaceAgentSessionState(session, completedSession);
-      terminalSessionCommitted = true;
-      try {
-        loop.finalizeCompletedTurn?.(completedResult);
-      } catch (error) {
-        // Scenario learning is a post-commit side effect. A custom loop must
-        // not be able to reopen an already durable assistant response as a
-        // foreground run failure.
-        this.options.logger?.warn("routing.scenario.finalize_failed", {
-          sessionId: session.id,
-          requestId,
-          error: serializeError(error),
+          input: request.input,
+          step: 1,
+          preparation: request.preparation,
+          terminalEvents: turnTerminalEvents,
+          onEvent: onRunEvent,
         });
-      }
-      learningFinalized = true;
-      this.activeRuns.detachTerminalRun(session.id, run);
-      await this.publishTerminalEvents(request.onEvent, terminalEvents);
-      this.recordCompletedTurn({
-        sessionId: session.id,
-        requestId,
-        startedAt: timestamp,
-        completedAt: assistantEntry.timestamp,
-        userEntry,
-        assistantEntry,
-        terminal: result.terminal,
-        executedTools: allExecutedTools,
-        modelProvider: result.modelProvider,
-        stateCard: completedResult.stateCard,
-      });
-    } catch (error) {
-      if (!learningFinalized) {
+        completedResult = result;
+        const allFreshEntries: AgentConversationEntry[] = [];
+        const pendingEntries: AgentConversationEntry[] = [];
+        const pendingStepTraces = [] as typeof result.stepTraces;
+        const allExecutedTools = [] as typeof result.executedTools;
+
+        if (!this.activeRuns.isCurrent(session.id, run)) {
+          loop.discardCompletedTurn?.(completedResult);
+          return;
+        }
+        const completedAt = new Date().toISOString();
+        const assistantMetadata: AgentConversationEntryMetadata | undefined = buildAssistantEntryMetadata(
+          request,
+          result,
+          effectiveModel,
+        );
+        const assistantEntry = this.options.conversationProjector.projectAssistantDecision(
+          requestId,
+          result.decisionXml,
+          completedAt,
+          assistantMetadata,
+        );
+        const freshEntries = collectFreshConversationEntries(session.conversation, [assistantEntry]);
+        allFreshEntries.push(...freshEntries);
+        const turnStepTraces = stampSessionStepTraces(result.stepTraces, timestamp, completedAt);
+        pendingEntries.push(...freshEntries);
+        pendingStepTraces.push(...turnStepTraces);
+        allExecutedTools.push(...result.executedTools);
+        terminalEvents.push(...turnTerminalEvents);
+
+        run.terminalStatus = "completed";
+        const completedSession = cloneAgentSessionState(session);
+        completedSession.conversation = mergeSessionConversationEntries([
+          ...completedSession.conversation,
+          ...allFreshEntries,
+        ]);
+        if (result.modelProvider) {
+          const completedReceipt = effectiveModel
+            ? {
+                ...effectiveModel,
+                ...(result.physicalPiSessionId ? { physicalPiSessionId: result.physicalPiSessionId } : {}),
+              }
+            : undefined;
+          completedSession.metadata = {
+            ...completedSession.metadata,
+            activeRun: undefined,
+            lastRun: {
+              modelProvider: result.modelProvider,
+              usage: result.usage,
+              ...(completedReceipt ? { receipt: completedReceipt } : {}),
+            },
+          };
+        }
+        completedSession.updatedAt = completedAt;
+        this.activeRuns.releaseSession(completedSession);
         try {
-          loop?.discardCompletedTurn?.(completedResult);
-        } catch (cleanupError) {
-          this.options.logger?.warn("routing.request_cleanup_failed", {
+          this.options.store.persistTurnCommit(
+            session.id,
+            requestId,
+            pendingEntries,
+            pendingStepTraces,
+            {
+              sessionId: session.id,
+              requestId,
+              input: request.input,
+              status: "completed",
+              startedAt: timestamp,
+              updatedAt: completedAt,
+              endedAt: completedAt,
+              modelProvider: result.modelProvider,
+            },
+            terminalEvents,
+            completedSession,
+          );
+        } catch (error) {
+          terminalCommitFailed = true;
+          throw error;
+        }
+        replaceAgentSessionState(session, completedSession);
+        terminalSessionCommitted = true;
+        try {
+          loop.finalizeCompletedTurn?.(completedResult);
+        } catch (error) {
+          // Scenario learning is a post-commit side effect. A custom loop must
+          // not be able to reopen an already durable assistant response as a
+          // foreground run failure.
+          this.options.logger?.warn("routing.scenario.finalize_failed", {
             sessionId: session.id,
             requestId,
-            error: serializeError(cleanupError),
+            error: serializeError(error),
           });
         }
-      }
-      if (!this.activeRuns.isCurrent(session.id, run)) {
-        return;
-      }
+        learningFinalized = true;
+        this.activeRuns.detachTerminalRun(session.id, run);
+        await this.publishTerminalEvents(request.onEvent, terminalEvents);
+        this.recordCompletedTurn({
+          sessionId: session.id,
+          requestId,
+          startedAt: timestamp,
+          completedAt: assistantEntry.timestamp,
+          userEntry,
+          assistantEntry,
+          terminal: result.terminal,
+          executedTools: allExecutedTools,
+          modelProvider: result.modelProvider,
+          stateCard: completedResult.stateCard,
+          interaction: request.interaction,
+        });
+      } catch (error) {
+        if (!learningFinalized) {
+          try {
+            loop?.discardCompletedTurn?.(completedResult);
+          } catch (cleanupError) {
+            this.options.logger?.warn("routing.request_cleanup_failed", {
+              sessionId: session.id,
+              requestId,
+              error: serializeError(cleanupError),
+            });
+          }
+        }
+        if (!this.activeRuns.isCurrent(session.id, run)) {
+          return;
+        }
 
-      if (error instanceof AgentCancellationError) {
-        run.terminalStatus = "cancelled";
+        if (error instanceof AgentCancellationError) {
+          run.terminalStatus = "cancelled";
+          const endedAt = new Date().toISOString();
+          const cancelledEvent = withEventContext(createAgentSessionRunCancelledEvent(session.id, requestId), {
+            scope: channelScope,
+          });
+          const cancelledSession = cloneAgentSessionState(session);
+          this.activeRuns.releaseSession(cancelledSession);
+          cancelledSession.metadata = { ...cancelledSession.metadata, activeRun: undefined };
+          cancelledSession.updatedAt = endedAt;
+          try {
+            this.options.store.persistTurnCommit(
+              session.id,
+              requestId,
+              [],
+              [],
+              {
+                sessionId: session.id,
+                requestId,
+                input: request.input,
+                status: "cancelled",
+                startedAt: timestamp,
+                updatedAt: endedAt,
+                endedAt,
+                errorMessage: error.message,
+              },
+              [cancelledEvent],
+              cancelledSession,
+            );
+          } catch (commitError) {
+            terminalCommitFailed = true;
+            throw commitError;
+          }
+          replaceAgentSessionState(session, cancelledSession);
+          terminalSessionCommitted = true;
+          this.activeRuns.detachTerminalRun(session.id, run);
+          if (!run.suppressCancellationEvent) {
+            await this.publishTerminalEvents(request.onEvent, [cancelledEvent]);
+          }
+          return;
+        }
+
         const endedAt = new Date().toISOString();
-        const cancelledEvent = withEventContext(createAgentSessionRunCancelledEvent(session.id, requestId), {
+        run.terminalStatus = "failed";
+        const failedEvent = withEventContext(createAgentSessionRunFailedEvent(session.id, requestId, error), {
           scope: channelScope,
         });
-        const cancelledSession = cloneAgentSessionState(session);
-        this.activeRuns.releaseSession(cancelledSession);
-        cancelledSession.metadata = { ...cancelledSession.metadata, activeRun: undefined };
-        cancelledSession.updatedAt = endedAt;
+        const failedSession = cloneAgentSessionState(session);
+        this.activeRuns.releaseSession(failedSession);
+        failedSession.metadata = { ...failedSession.metadata, activeRun: undefined };
+        failedSession.updatedAt = endedAt;
         try {
           this.options.store.persistTurnCommit(
             session.id,
@@ -424,87 +498,56 @@ export class AgentSessionRunCoordinator {
               sessionId: session.id,
               requestId,
               input: request.input,
-              status: "cancelled",
+              status: "failed",
               startedAt: timestamp,
               updatedAt: endedAt,
               endedAt,
-              errorMessage: error.message,
+              errorMessage: readAgentSessionRunErrorMessage(error),
             },
-            [cancelledEvent],
-            cancelledSession,
+            [failedEvent],
+            failedSession,
           );
         } catch (commitError) {
           terminalCommitFailed = true;
           throw commitError;
         }
-        replaceAgentSessionState(session, cancelledSession);
+        replaceAgentSessionState(session, failedSession);
         terminalSessionCommitted = true;
         this.activeRuns.detachTerminalRun(session.id, run);
-        if (!run.suppressCancellationEvent) {
-          await this.publishTerminalEvents(request.onEvent, [cancelledEvent]);
-        }
+        await this.publishTerminalEvents(request.onEvent, [failedEvent]);
         return;
-      }
-
-      const endedAt = new Date().toISOString();
-      run.terminalStatus = "failed";
-      const failedEvent = withEventContext(createAgentSessionRunFailedEvent(session.id, requestId, error), {
-        scope: channelScope,
-      });
-      const failedSession = cloneAgentSessionState(session);
-      this.activeRuns.releaseSession(failedSession);
-      failedSession.metadata = { ...failedSession.metadata, activeRun: undefined };
-      failedSession.updatedAt = endedAt;
-      try {
-        this.options.store.persistTurnCommit(
-          session.id,
-          requestId,
-          [],
-          [],
-          {
+      } finally {
+        try {
+          await this.activeRuns.settleQueuedInputs(session.id, run, terminalSessionCommitted && !terminalCommitFailed);
+        } catch (error) {
+          this.options.logger?.error("session.queued_input.settlement_failed", {
             sessionId: session.id,
             requestId,
-            input: request.input,
-            status: "failed",
-            startedAt: timestamp,
-            updatedAt: endedAt,
-            endedAt,
-            errorMessage: readAgentSessionRunErrorMessage(error),
-          },
-          [failedEvent],
-          failedSession,
-        );
-      } catch (commitError) {
-        terminalCommitFailed = true;
-        throw commitError;
+            error,
+          });
+        }
+        try {
+          await this.activeRuns.finalize({
+            session,
+            requestId,
+            run,
+            terminalSessionCommitted,
+            terminalCommitFailed,
+          });
+        } catch (error) {
+          // Resource cleanup is detached from the authoritative terminal
+          // commit. Keep the persisted run terminal when lifecycle cleanup is
+          // unavailable instead of emitting a second failure outcome.
+          this.options.logger?.error("session.run_finalization_failed", {
+            sessionId: session.id,
+            requestId,
+            terminalSessionCommitted,
+            terminalCommitFailed,
+            error: serializeError(error),
+          });
+        }
       }
-      replaceAgentSessionState(session, failedSession);
-      terminalSessionCommitted = true;
-      this.activeRuns.detachTerminalRun(session.id, run);
-      await this.publishTerminalEvents(request.onEvent, [failedEvent]);
-      return;
-    } finally {
-      try {
-        await this.activeRuns.finalize({
-          session,
-          requestId,
-          run,
-          terminalSessionCommitted,
-          terminalCommitFailed,
-        });
-      } catch (error) {
-        // Resource cleanup is detached from the authoritative terminal
-        // commit. Keep the persisted run terminal when lifecycle cleanup is
-        // unavailable instead of emitting a second failure outcome.
-        this.options.logger?.error("session.run_finalization_failed", {
-          sessionId: session.id,
-          requestId,
-          terminalSessionCommitted,
-          terminalCommitFailed,
-          error: serializeError(error),
-        });
-      }
-    }
+    })();
   }
 
   private runLoopTurn(input: {
@@ -531,10 +574,12 @@ export class AgentSessionRunCoordinator {
       sessionId: input.session.id,
       logicalCacheScope: input.logicalCacheScope,
       requestId: input.requestId,
+      conversationRequestId: input.request.reuseUserEntryFromRequestId ?? input.requestId,
       effectiveModel: input.effectiveModel,
-      turnNumber: input.session.conversation.filter((entry) => entry.kind === "user.message").length,
+      turnNumber: input.session.conversation.filter(isAgentHumanUserMessage).length,
       step: input.step,
       input: input.input,
+      hostInput: input.request.metadata?.hostInput,
       continueFromTranscript:
         input.request.continueFromTranscript === true || input.request.recovery?.mode === "continue",
       continuationSourceRequestId: input.request.continuationSourceRequestId,
@@ -564,6 +609,23 @@ export class AgentSessionRunCoordinator {
           );
           this.options.store.persistMetadata(input.session);
         }
+      },
+      inputBoundary: async (boundary) => {
+        const current = {
+          ...boundary,
+          sessionId: input.session.id,
+          requestId: input.requestId,
+          interaction: input.request.interaction,
+          humanInput: !input.request.metadata?.hostInput,
+          hostInput: input.request.metadata?.hostInput,
+        };
+        for (const source of this.inputSources) await source.observed?.(current);
+        if (!input.run.controller.signal.aborted) {
+          for (const source of this.inputSources) await source.beforeInput(current);
+        }
+        await this.activeRuns.inputBoundary(current, async (message) => {
+          for (const source of this.inputSources) await source.delivered?.(message);
+        });
       },
       onPiBranchBoundary: (entryId) => {
         this.options.store.persistTurnPreparationBoundary(input.session.id, input.requestId, entryId);
@@ -606,6 +668,7 @@ export class AgentSessionRunCoordinator {
   }
 
   private recordCompletedTurn(input: AgentMemoryCompletedTurnInput): void {
+    if (!isAgentHumanUserMessage(input.userEntry)) return;
     try {
       this.options.memory.recordCompletedTurn(input);
     } catch (error) {
@@ -676,6 +739,13 @@ export class AgentSessionRunCoordinator {
     return this.activeRuns.acceptActiveRunCancellation(request);
   }
 
+  registerInputSource(source: AgentSessionInputSource): () => void {
+    this.inputSources.add(source);
+    return () => {
+      this.inputSources.delete(source);
+    };
+  }
+
   async enqueueActiveRunMessage(request: {
     session: AgentSession;
     requestId?: string;
@@ -690,13 +760,20 @@ export class AgentSessionRunCoordinator {
     return this.activeRuns.enqueueActiveRunMessage(request);
   }
 
+  deferMessage(request: import("./AgentSessionMessageCoordinator.js").AgentSessionMessageRequest): Promise<void> {
+    return this.activeRuns.deferMessage(request);
+  }
+
   requestActiveRunFinalAnswer(request: { sessionId: string; instruction: string }): Promise<boolean> {
     return this.activeRuns.requestActiveRunFinalAnswer(request);
   }
 
   steerActiveRun(request: {
     sessionId: string;
+    requestId?: string;
+    queueMode?: AgentSessionMessageQueueMode;
     input: string;
+    metadata?: AgentConversationEntryMetadata;
     interaction?: AgentInteractionContext;
     onEvent?: AgentEventSink;
   }): Promise<boolean> {

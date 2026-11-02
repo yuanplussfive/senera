@@ -1,19 +1,20 @@
 import { projectAgentTextPreview } from "../Text/AgentTextProjection.js";
+import { projectAgentChildRunProgress } from "./AgentChildRunProjection.js";
 import {
   AgentChildRunStatuses,
   isAgentChildRunResultTerminal,
   type AgentChildRunRecord,
-  type AgentChildRunSnapshot,
+  type AgentChildRunProgressProjection,
   type AgentChildRunStatus,
 } from "./AgentChildRunTypes.js";
 
 /**
  * Small, model-facing view of delegated work. The full child record remains
- * durable and is available through AgentList/AgentWait; this projection only
+ * durable and is available through list_agents; this projection only
  * tells the supervisor what it currently owns so it does not repeat work.
  */
 export interface AgentDelegationPromptRun {
-  readonly runId: string;
+  readonly agentId: string;
   readonly agent: string;
   readonly task: string;
   readonly status: AgentChildRunStatus;
@@ -30,14 +31,7 @@ export interface AgentDelegationPromptRun {
     }[];
   };
   readonly joinGroup?: AgentChildRunRecord["joinGroup"];
-  readonly progress?: {
-    readonly lastActivityAt: string;
-    readonly activeTools: readonly string[];
-    readonly toolCalls: AgentChildRunSnapshot["toolCalls"];
-    readonly checkpointAvailable: boolean;
-    readonly artifactCount: number;
-    readonly todo?: NonNullable<NonNullable<AgentChildRunSnapshot["control"]>["todo"]>;
-  };
+  readonly progress?: AgentChildRunProgressProjection;
 }
 
 export interface AgentDelegationPromptContext {
@@ -92,10 +86,9 @@ export function projectAgentDelegationPromptContext(
 }
 
 function projectRun(record: AgentChildRunRecord): AgentDelegationPromptRun {
-  const snapshot = record.snapshot;
-  const todo = snapshot?.control?.todo;
+  const progress = projectAgentChildRunProgress(record);
   return {
-    runId: record.id,
+    agentId: record.childSessionId,
     agent: record.agentName,
     task: projectAgentTextPreview(record.task, 512).text,
     status: record.status,
@@ -108,25 +101,6 @@ function projectRun(record: AgentChildRunRecord): AgentDelegationPromptRun {
       claims: record.executionContract.resourceClaims ?? [],
     },
     ...(record.joinGroup ? { joinGroup: record.joinGroup } : {}),
-    ...(snapshot
-      ? {
-          progress: {
-            lastActivityAt: snapshot.lastActivityAt,
-            activeTools: [...snapshot.activeTools],
-            toolCalls: { ...snapshot.toolCalls },
-            checkpointAvailable: record.checkpoint !== undefined,
-            artifactCount: snapshot.artifactUris.length,
-            ...(todo
-              ? {
-                  todo: {
-                    planObserved: todo.planObserved,
-                    counts: { ...todo.counts },
-                    ...(todo.items ? { items: todo.items.map((item) => ({ ...item })) } : {}),
-                  },
-                }
-              : {}),
-          },
-        }
-      : {}),
+    ...(progress ? { progress } : {}),
   };
 }

@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
-import { AppIcon, Spinner } from "../shared/ui";
+import { AppIcon, SecretInput, Spinner } from "../shared/ui";
 import { InlineError, RetryButton } from "../shared/ui/StateView";
 import { LogoLockup } from "../shared/ui/Logo";
 import type { ServerAuthenticationState } from "./useServerAuthentication";
@@ -120,13 +120,13 @@ function LoginForm({
         </label>
         <label className="mt-4 block">
           <span className="mb-1.5 block text-[12px] font-medium text-ink-600">{frontendMessage("auth.password")}</span>
-          <input
+          <SecretInput
             name="password"
-            type="password"
             autoComplete="current-password"
-            className="h-10 w-full border border-ink-200 bg-paper-50 px-3 text-[13px] outline-none transition focus:border-ink-400 focus:ring-2 focus:ring-accent-focus"
+            size="md"
+            ariaLabel={frontendMessage("auth.password")}
             value={password}
-            onChange={(event) => setPassword(event.target.value)}
+            onChange={setPassword}
             required
           />
         </label>

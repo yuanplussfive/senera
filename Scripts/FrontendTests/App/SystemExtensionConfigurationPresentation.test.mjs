@@ -3,9 +3,16 @@ import { FrontendLocales } from "../../../Frontend/src/i18n/frontendLocaleModel.
 import {
   projectSystemExtensionConfigurationSections,
   projectSystemExtensionRuntimeModelAssignmentSections,
+  readConfiguredModelNameOptions,
 } from "../../../Frontend/src/features/settings/systemExtensionConfigurationPresentation.ts";
 
 describe("system extension configuration presentation", () => {
+  it("filters raw model name suggestions by declared capability and enabled provider", () => {
+    expect(readConfiguredModelNameOptions(modelConfigSnapshot, "Vision")).toEqual([
+      { value: "gpt-vision", label: "gpt-vision", description: "openai", icon: "openai" },
+    ]);
+    expect(readConfiguredModelNameOptions(modelConfigSnapshot, "ImageOutput")).toEqual([]);
+  });
   it("localizes form metadata and projects enabled vision models as options", () => {
     const [section] = projectSystemExtensionConfigurationSections({
       sections: imageConfigurationSections,
@@ -21,10 +28,22 @@ describe("system extension configuration presentation", () => {
           label: "Vision model",
           placeholder: "Automatic",
           options: ["vision-model"],
-          optionLabels: { "vision-model": "gpt-vision · openai" },
+          optionLabels: { "vision-model": "gpt-vision" },
         }),
       ],
     });
+  });
+
+  it("does not offer a configured model that no longer meets the field capability", () => {
+    const sections = structuredClone(imageConfigurationSections);
+    sections[0].fields[0].effectiveValue = "chat-model";
+    const [section] = projectSystemExtensionConfigurationSections({
+      sections,
+      locale: FrontendLocales.EnUs,
+      configSnapshot: modelConfigSnapshot,
+    });
+    expect(section.fields[0].options).toEqual(["vision-model"]);
+    expect(section.fields[0].effectiveValue).toBe("chat-model");
   });
 
   it("localizes package-declared enum option labels", () => {
@@ -80,7 +99,6 @@ describe("system extension configuration presentation", () => {
 function systemExtension(id, enabled) {
   return {
     id,
-    version: "1.0.0",
     displayName: { "zh-CN": "子代理", "en-US": "Subagents" },
     description: { "zh-CN": "委派子任务。", "en-US": "Delegate child tasks." },
     presentation: { icon: "users" },

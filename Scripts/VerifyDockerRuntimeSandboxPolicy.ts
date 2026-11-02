@@ -127,7 +127,7 @@ assert.ok(
   "The single-service container server must embed the Sandbox Worker unless an external endpoint is supplied.",
 );
 assert.ok(
-  dockerServer.includes("automaticLoopbackHttp: true") &&
+  dockerServer.includes("accessProfile: AgentServerAccessProfiles.Container") &&
     dockerServer.includes("SENERA_ALLOW_INSECURE_HTTP is deprecated") &&
     dockerServer.includes("same-origin browser access is automatic"),
   "The container server must derive local HTTP and same-origin access automatically while keeping legacy overrides explicit.",

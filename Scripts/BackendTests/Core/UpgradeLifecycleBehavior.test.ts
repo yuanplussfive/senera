@@ -122,6 +122,68 @@ describe("upgrade lifecycle", () => {
     ).toBe(original);
   });
 
+  test("commits lazy migrations before serving writes and retains them across restart", () => {
+    const workspaceRoot = temporaryWorkspace();
+    let operation = 0;
+    const session = new AgentUpgradeSession({
+      workspaceRoot,
+      appVersion: "2.0.0",
+      operationId: () => `lazy-store-${++operation}`,
+    });
+    session.markHealthy();
+
+    // Two agents use the same schema contract, but own different database files.
+    const databasePaths = ["first-agent.sqlite", "second-agent.sqlite"].map((name) => path.join(workspaceRoot, name));
+    for (const databasePath of databasePaths) {
+      const legacy = new Database(databasePath);
+      legacy.exec(AgentConfigDatabaseContract.migrations[0].sql);
+      legacy.close();
+      const kernel = new AgentSqliteDatabaseKernel({
+        databasePath,
+        contract: AgentConfigDatabaseContract,
+        upgradeSession: session,
+      });
+      expect(session.journal.readManifest(`lazy-store-${operation}`).status).toBe("healthy");
+      kernel.connection
+        .prepare("INSERT INTO config_revisions (revision, config_json, source, created_at) VALUES (?, ?, ?, ?)")
+        .run(1, "{}", "after-readiness", "2026-10-28T00:00:00.000Z");
+      kernel.close();
+    }
+    session.close();
+
+    const restarted = upgradeSession(workspaceRoot, "after-lazy-migrations");
+    expect(restarted.recoverInterruptedUpgrade()).toBeUndefined();
+    expect(operation).toBe(2);
+    for (const databasePath of databasePaths) {
+      const database = new Database(databasePath, { readonly: true, fileMustExist: true });
+      try {
+        expect(database.prepare("SELECT source FROM config_revisions").all()).toEqual([{ source: "after-readiness" }]);
+      } finally {
+        database.close();
+      }
+    }
+    restarted.close();
+  });
+
+  test("commits a file migration performed after readiness", () => {
+    const workspaceRoot = temporaryWorkspace();
+    const dataPath = path.join(workspaceRoot, "late-config.json");
+    fs.writeFileSync(dataPath, "before\n", "utf8");
+    const session = upgradeSession(workspaceRoot, "lazy-file-upgrade");
+    session.markHealthy();
+    session.backupFileMigration({ id: "agent-data", sourcePath: dataPath, sourceVersion: 1, targetVersion: 2 });
+    session.markFileMigrationDryRunPassed("agent-data");
+    fs.writeFileSync(dataPath, "after\n", "utf8");
+    session.markFileMigrationApplied("agent-data");
+    expect(session.journal.readManifest("lazy-file-upgrade").status).toBe("healthy");
+    session.close();
+
+    const restarted = upgradeSession(workspaceRoot, "after-lazy-file-upgrade");
+    expect(restarted.recoverInterruptedUpgrade()).toBeUndefined();
+    expect(fs.readFileSync(dataPath, "utf8")).toBe("after\n");
+    restarted.close();
+  });
+
   test("automatically restores backups and retains failed state when startup fails", () => {
     const workspaceRoot = temporaryWorkspace();
     const configPath = path.join(workspaceRoot, "config.json");

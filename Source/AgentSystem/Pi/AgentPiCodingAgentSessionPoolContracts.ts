@@ -12,7 +12,6 @@ import type { AgentPiProviderProjection } from "./AgentPiTypes.js";
 import type { AgentPiPlanningCompilerFactory } from "./AgentPiPlanningCompiler.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentToolExposureState } from "../ToolRuntime/AgentToolExposureState.js";
-import type { AgentResidentSpeechProjector } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
 import type { AgentToolResultObservationCompressor } from "../ToolRuntime/AgentToolResultObservationCompressor.js";
 import type { AgentPiProjectContext } from "./AgentPiProjectContext.js";
 
@@ -24,12 +23,11 @@ export interface AgentPiCodingAgentSessionPoolOptions {
   provider: AgentPiProviderProjection;
   modelProvider: ResolvedAgentModelProviderConfig;
   planningCompilerFactory: AgentPiPlanningCompilerFactory;
-  residentSpeech?: AgentResidentSpeechProjector;
   compaction: ResolvedAgentPiCompactionConfig;
   maxIdleSessions?: number;
   diagnostics?: AgentPiDiagnosticSink;
   beforeCompaction?: (sessionId: string) => Promise<void>;
-  afterCompaction?: (sessionId: string) => Promise<void> | void;
+  afterCompaction?: (sessionId: string, boundaryKey?: string) => Promise<void> | void;
   observationCompressor: AgentToolResultObservationCompressor;
   observationTokenBudget: number;
 }

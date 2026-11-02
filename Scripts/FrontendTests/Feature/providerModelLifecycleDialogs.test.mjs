@@ -1,5 +1,6 @@
 import React from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, screen } from "@testing-library/react";
+import { renderWithFrontendProviders as render } from "../renderWithFrontendProviders.mjs";
 import { afterEach, expect, test, vi } from "vitest";
 import { ProviderModelLifecycleDialogs } from "../../../Frontend/src/features/settings/sections/ProviderModelLifecycleDialogs.tsx";
 
@@ -40,9 +41,8 @@ test("default-model removal requires an explicit replacement and sends one atomi
 
   const confirm = screen.getByRole("button", { name: "替换默认并移除" });
   expect(confirm).toBeDisabled();
-  fireEvent.change(screen.getByLabelText("新的默认助手模型"), {
-    target: { value: sonnet.Id },
-  });
+  fireEvent.focus(screen.getByRole("combobox", { name: "新的默认助手模型" }));
+  fireEvent.click(screen.getByRole("option", { name: /claude-sonnet/ }));
   fireEvent.click(confirm);
 
   expect(onConfirmModelRemoval).toHaveBeenCalledWith({
@@ -56,9 +56,8 @@ test("provider removal presents every associated model and confirms a visible ca
 
   expect(screen.getByText("gpt-4.1")).toBeInTheDocument();
   expect(screen.getByText("text-embedding-3")).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("新的默认助手模型"), {
-    target: { value: sonnet.Id },
-  });
+  fireEvent.focus(screen.getByRole("combobox", { name: "新的默认助手模型" }));
+  fireEvent.click(screen.getByRole("option", { name: /claude-sonnet/ }));
   fireEvent.click(screen.getByRole("button", { name: "替换默认并删除供应商" }));
 
   expect(onConfirmProviderRemoval).toHaveBeenCalledWith({

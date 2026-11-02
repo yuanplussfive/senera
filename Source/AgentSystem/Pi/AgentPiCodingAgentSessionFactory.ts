@@ -6,6 +6,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
+import { readAgentUnknownRecord } from "../Core/AgentUnknownValue.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 import { AgentTurnTokenBudget } from "../Text/AgentTurnTokenBudget.js";
@@ -273,7 +274,6 @@ export class AgentPiCodingAgentSessionFactory {
         provider: this.options.provider,
         modelProvider: this.options.modelProvider,
         compilerFactory: this.options.planningCompilerFactory,
-        residentSpeech: this.options.residentSpeech,
       },
       input.frame,
     ).get();
@@ -298,7 +298,11 @@ export class AgentPiCodingAgentSessionFactory {
       .materialize(() => projectAgentPiToolContext(frame.snapshot()))
       .map((tool) => ({
         ...tool,
-        execute: (toolCallId, params, signal, onUpdate) => tool.execute(toolCallId, params, signal, onUpdate),
+        execute: (toolCallId, params, signal, onUpdate, context) => {
+          const args = readAgentUnknownRecord(params);
+          if (!args) throw new Error(`Tool ${tool.name} requires an argument object.`);
+          return tool.execute(toolCallId, args, signal, onUpdate, context);
+        },
       }));
   }
 

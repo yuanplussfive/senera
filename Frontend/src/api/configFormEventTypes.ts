@@ -1,3 +1,8 @@
+import type {
+  AgentConfigFormInputBounds,
+  AgentConfigFormFieldPresence,
+} from "../../../Source/AgentSystem/Types/ConfigFormTypes";
+
 export type ConfigFormFieldType = "boolean" | "string" | "number" | "array" | "table" | "record";
 
 export type ConfigFormFieldOptionValue = string | number | boolean;
@@ -11,7 +16,7 @@ export interface ConfigFormVisibilityCondition {
 export type ConfigFormValueSource = "explicit" | "inherited" | "default" | "missing";
 
 export type ConfigFormModelCapability =
-  "Chat" | "Vision" | "ImageOutput" | "Reasoning" | "ToolCalling" | "DeveloperRole" | "StreamingUsage";
+  import("../../../Source/AgentSystem/Types/ConfigFormTypes").AgentConfigFormModelCapability;
 
 export interface ConfigFormModelSelectionData {
   id: string;
@@ -36,12 +41,13 @@ export interface ConfigFormSectionData<TText = string> {
   name: string;
   label: TText;
   description?: TText;
+  documentation?: TText;
   icon?: string;
   keyCount: number;
   fields: ConfigFormFieldData<TText>[];
 }
 
-export interface ConfigFormFieldData<TText = string> {
+export interface ConfigFormFieldData<TText = string> extends AgentConfigFormInputBounds, AgentConfigFormFieldPresence {
   label: TText;
   section: string;
   key: string;
@@ -60,11 +66,8 @@ export interface ConfigFormFieldData<TText = string> {
   optionSource?: {
     catalog: "skills";
   };
-  min?: number;
-  max?: number;
-  minLength?: number;
-  maxLength?: number;
   step?: number;
+  durationUnit?: import("../../../Source/AgentSystem/Types/AgentDurationUnits").AgentDurationUnit;
   secret?: boolean;
   multiline?: boolean;
   required: boolean;
@@ -77,5 +80,7 @@ export interface ConfigFormFieldData<TText = string> {
   keyPlaceholder?: string;
   valuePlaceholder?: string;
   modelSelection?: ConfigFormModelSelectionData;
+  /** Local model presentation, populated from the configured model catalog. */
+  modelOptions?: { value: string; label: string; description?: string; icon?: string }[];
   visibleWhen?: ConfigFormVisibilityCondition;
 }

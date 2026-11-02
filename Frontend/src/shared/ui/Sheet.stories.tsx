@@ -1,3 +1,4 @@
+import { OverlayScrollFixture } from "../../dev/OverlayScrollFixture";
 import type { Story } from "@ladle/react";
 import { Menu } from "lucide-react";
 import { useState } from "react";
@@ -32,6 +33,8 @@ export const LeftSheet: Story = () => {
     </div>
   );
 };
+
+export const ModalScrolling: Story = () => <OverlayScrollFixture surface="sheet" />;
 
 export const RightSheet: Story = () => {
   const [open, setOpen] = useState(false);

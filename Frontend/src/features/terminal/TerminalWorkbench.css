@@ -1,0 +1,65 @@
+.senera-terminal-dock {
+  --dv-background-color: var(--terminal-separator);
+  --dv-group-view-background-color: var(--terminal-canvas);
+  --dv-tabs-and-actions-container-background-color: var(--terminal-chrome);
+  --dv-tabs-and-actions-container-height: 34px;
+  --dv-tab-font-size: 11.5px;
+  --dv-activegroup-visiblepanel-tab-background-color: var(--terminal-canvas);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--terminal-chrome);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--terminal-canvas);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--terminal-chrome);
+  --dv-activegroup-visiblepanel-tab-color: var(--terminal-foreground);
+  --dv-activegroup-hiddenpanel-tab-color: var(--terminal-muted);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--terminal-muted);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--terminal-subtle);
+  --dv-tab-divider-color: transparent;
+  --dv-separator-border: var(--terminal-separator);
+  --dv-paneview-header-border-color: var(--terminal-separator);
+  --dv-drag-over-background-color: var(--terminal-hover);
+  --dv-drag-over-border: 1px solid var(--terminal-border);
+  --dv-active-sash-color: var(--terminal-muted);
+  --dv-tabs-container-scrollbar-color: var(--terminal-border);
+  --dv-tabs-container-scrollbar-hover-color: var(--terminal-muted);
+  --dv-tab-margin: 0;
+  color: var(--terminal-foreground);
+}
+
+.senera-terminal-dock .dv-tabs-and-actions-container > .dv-scrollable,
+.senera-terminal-dock .dv-tabs-and-actions-container > .dv-void-container {
+  display: none;
+}
+
+.senera-terminal-dock .dv-pre-actions-container {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  padding-left: 4px;
+}
+
+.terminal-selector-menu [role="menuitemradio"] {
+  color: var(--terminal-foreground);
+}
+
+.terminal-selector-menu [role="menuitemradio"][data-highlighted] {
+  background: var(--terminal-hover);
+}
+
+.terminal-selector-menu .menu-check {
+  color: var(--terminal-foreground);
+}
+
+.terminal-selector-menu [role="menuitem"] {
+  color: var(--terminal-muted);
+}
+
+.terminal-selector-menu [role="menuitem"][data-highlighted] {
+  background: var(--terminal-hover);
+  color: var(--terminal-error);
+}
+.terminal-viewport .xterm {
+  height: 100%;
+}
+.terminal-viewport .xterm-viewport {
+  background: var(--terminal-canvas) !important;
+}

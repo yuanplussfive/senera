@@ -132,7 +132,6 @@ function tool(scheduling?: ToolSchedulingMode, maxConcurrency?: number, declares
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
     runtime: {
       Lifecycle: "Immediate",
-      ProtocolVersion: 2,
       ResultAssessment: "ProcessExit",
       ...(scheduling ? { Scheduling: scheduling } : {}),
       ...(maxConcurrency === undefined ? {} : { MaxConcurrency: maxConcurrency }),

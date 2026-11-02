@@ -249,7 +249,7 @@ test("thinking summary keeps web search evidence out of the tool chain", async (
   expect(screen.queryByText("React security overview")).not.toBeInTheDocument();
 });
 
-test("expanding the workflow keeps the dock vertical and opens a horizontal canvas", async () => {
+test("focusing the workflow opens a free-pan canvas stacked vertically on compact viewports", async () => {
   const run = createRun({
     requestId: "run-layout-direction",
     steps: [createStep({ id: "layout-step", title: "Inspect layout direction" })],
@@ -274,7 +274,7 @@ test("expanding the workflow keeps the dock vertical and opens a horizontal canv
 
   await waitFor(() =>
     expect(
-      document.querySelector("[data-workflow-canvas-pan='free'][data-workflow-layout-direction='horizontal']"),
+      document.querySelector("[data-workflow-canvas-pan='free'][data-workflow-layout-direction='vertical']"),
     ).toBeInTheDocument(),
   );
   expect(
@@ -1016,4 +1016,17 @@ test("step node presents running steps and grouped child-agent scopes", () => {
   expect(screen.getByText("Research workflow")).toBeVisible();
   expect(document.querySelector(".react-flow__handle-left")).toBeInTheDocument();
   expect(document.querySelector(".react-flow__handle-right")).toBeInTheDocument();
+});
+
+test("thinking timeline renders its empty state and opens a focused workflow view", async () => {
+  const user = userEvent.setup();
+  renderWithFrontendProviders(React.createElement(ThinkingTimeline, { presentation: "panel" }));
+
+  expect(screen.getByText(frontendMessage("workflow.panel.emptyTitle"))).toBeInTheDocument();
+  const focusButton = screen.getByRole("button", { name: frontendMessage("workflow.panel.focus") });
+  expect(focusButton).toHaveClass("text-content-muted");
+  expect(document.querySelector("[data-workflow-execution-content]")).toContainElement(focusButton);
+  expect(document.querySelector("[data-window-drag-region]")).not.toContainElement(focusButton);
+  await user.click(focusButton);
+  expect(screen.getByRole("dialog", { name: frontendMessage("workflow.panel.title") })).toBeInTheDocument();
 });

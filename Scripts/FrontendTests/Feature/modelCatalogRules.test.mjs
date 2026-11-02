@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
 
 const { inferModelProviderEndpointIcon, inferModelProviderIcon } =
-  await import("../../../Frontend/src/features/chat/ModelProviderIcon.tsx");
-const { inferModelCatalogCapabilities, inferModelCatalogGroup, inferModelCatalogProvider } =
+  await import("../../../Frontend/src/shared/models/ModelProviderIcon.tsx");
+const { inferModelCatalogGroup, inferModelCatalogProvider } =
   await import("../../../Frontend/src/features/chat/modelCatalogRules.ts");
 const { readModelCapabilities } = await import("../../../Frontend/src/features/chat/modelConfigData.ts");
 
@@ -30,14 +30,14 @@ test("model catalogue resolves labs providers before parent-provider aliases", (
   expect(inferModelProviderIcon("openai-labs", false)).toBe("labs");
 });
 
-test("model capability inference recognizes chat and multimodal models without embedding/rerank special casing", () => {
-  expect(inferModelCatalogCapabilities("text-embedding-3-large", "openai")).toEqual({});
-  expect(inferModelCatalogCapabilities("qwen3-reranker-0.6b", "qwen")).toMatchObject({ Chat: true });
-  expect(inferModelCatalogCapabilities("bge-reranker-v2-m3", "custom")).not.toHaveProperty("Rerank");
-  expect(inferModelCatalogCapabilities("gemini-2.5-pro", "google")).toMatchObject({
-    Chat: true,
-    Vision: true,
-  });
+test("model names never grant capabilities beyond the supplied declarations", () => {
+  for (const Model of ["text-embedding-3-large", "qwen3-reranker-0.6b", "gemini-2.5-pro", "gpt-image"]) {
+    expect(readModelCapabilities({ Id: Model, Model, ProviderId: "custom", Endpoint: "chat" }, {})).toMatchObject({
+      Vision: false,
+      ImageOutput: false,
+      Reasoning: false,
+    });
+  }
 });
 
 test("explicit model capability flags remain authoritative over catalogue hints", () => {
@@ -53,4 +53,53 @@ test("explicit model capability flags remain authoritative over catalogue hints"
       {},
     ),
   ).toMatchObject({ Chat: true, Vision: false });
+});
+
+test("model image constraints merge by field instead of replacing inherited formats", () => {
+  expect(
+    readModelCapabilities(
+      {
+        Id: "custom/vision",
+        ProviderId: "custom",
+        Endpoint: "chat",
+        Model: "vision",
+        Capabilities: { VisionInput: { MaxBytes: 1_000_000 } },
+      },
+      {
+        Capabilities: {
+          VisionInput: { SupportedMimeTypes: ["image/jpeg", "image/webp"], MaxPixels: 2_000_000 },
+        },
+      },
+    ),
+  ).toMatchObject({
+    VisionInput: {
+      SupportedMimeTypes: ["image/jpeg", "image/webp"],
+      MaxBytes: 1_000_000,
+      MaxPixels: 2_000_000,
+    },
+  });
+});
+
+test("model image constraints preserve explicit animated MIME support through template merging", () => {
+  expect(
+    readModelCapabilities(
+      {
+        Id: "custom/animated-vision",
+        ProviderId: "custom",
+        Endpoint: "chat",
+        Model: "animated-vision",
+        Capabilities: { VisionInput: { SupportedAnimatedMimeTypes: ["image/webp"] } },
+      },
+      {
+        Capabilities: {
+          VisionInput: { SupportedMimeTypes: ["image/jpeg", "image/webp"] },
+        },
+      },
+    ),
+  ).toMatchObject({
+    VisionInput: {
+      SupportedMimeTypes: ["image/jpeg", "image/webp"],
+      SupportedAnimatedMimeTypes: ["image/webp"],
+    },
+  });
 });

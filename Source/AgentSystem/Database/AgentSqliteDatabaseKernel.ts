@@ -14,7 +14,12 @@ import type { AgentUpgradeSession } from "../Upgrade/AgentUpgradeSession.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { nodeErrorCode, removeAgentPathSync } from "../Core/AgentFs.js";
 import { AgentBaseError } from "../Core/AgentBaseError.js";
-import { currentAgentTimeIso, DefaultAgentTimeZone, resolveAgentTimeZone } from "../Time/AgentTime.js";
+import {
+  currentAgentTimeIso,
+  DefaultAgentTimeZone,
+  formatAgentTimeOffsetMillisecond,
+  resolveAgentTimeZone,
+} from "../Time/AgentTime.js";
 import { AgentSqliteTimeMetadataTable } from "./AgentSqliteDatabaseSchema.js";
 import { AgentSqliteVecExtension } from "./AgentSqliteVecExtension.js";
 import {
@@ -61,6 +66,8 @@ export interface AgentSqliteDatabaseOptions {
   readonly extensions?: readonly AgentSqliteDatabaseExtension[];
   /** Used only when the database has no persisted business-time policy yet. */
   readonly timeZone?: string;
+  /** Identity ledgers must not silently restart allocation after database recovery. */
+  readonly recoveryPolicy?: "reinitialize" | "fail";
 }
 
 export interface AgentSqliteDatabaseHealth {
@@ -112,6 +119,7 @@ export class AgentSqliteDatabaseKernel {
         options.upgradeSession,
         options.extensions ?? [AgentSqliteVecExtension],
         lifecycle.requiresIntegrityCheck,
+        options.recoveryPolicy,
       );
       connection = opened.connection;
       this.connection = opened.connection;
@@ -168,6 +176,7 @@ function openDatabase(
   upgradeSession?: AgentUpgradeSession,
   extensions: readonly AgentSqliteDatabaseExtension[] = [],
   requiresIntegrityCheck = true,
+  recoveryPolicy: "reinitialize" | "fail" = "reinitialize",
 ): OpenedAgentSqliteDatabase {
   if (contract.dataClass === AgentSqliteStoreDataClasses.Authoritative) {
     return openAuthoritativeDatabase(
@@ -177,6 +186,7 @@ function openDatabase(
       upgradeSession,
       extensions,
       requiresIntegrityCheck,
+      recoveryPolicy,
     );
   }
   if (contract.dataClass === AgentSqliteStoreDataClasses.Derived) {
@@ -192,6 +202,7 @@ function openAuthoritativeDatabase(
   upgradeSession?: AgentUpgradeSession,
   extensions: readonly AgentSqliteDatabaseExtension[] = [],
   requiresIntegrityCheck = true,
+  recoveryPolicy: "reinitialize" | "fail" = "reinitialize",
 ): OpenedAgentSqliteDatabase {
   let database: Database.Database | undefined;
   let plan: AgentSqliteStoreReconciliation;
@@ -202,6 +213,10 @@ function openAuthoritativeDatabase(
     if (requiresIntegrityCheck) assertDatabaseIntegrity(database, contract.id);
     plan = reconcileStore(database, contract);
   } catch (error) {
+    if (recoveryPolicy === "fail") {
+      database?.close();
+      throw error;
+    }
     if (!isRecoverablePreflightError(error)) {
       database?.close();
       throw error;
@@ -383,7 +398,7 @@ function isDatabaseIntegrityFailure(error: unknown): boolean {
 }
 
 function recoveryBackupPath(databasePath: string, storeId: string): string {
-  const timestamp = new Date().toISOString().replace(/[-:.TZ]/gu, "");
+  const timestamp = formatAgentTimeOffsetMillisecond(new Date().toISOString()).replace(/[-:.TZ]/gu, "");
   return `${databasePath}.${storeId}.${timestamp}.${randomUUID()}.recovery`;
 }
 

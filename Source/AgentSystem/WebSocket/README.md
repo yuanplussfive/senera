@@ -2,6 +2,8 @@
 
 WebSocket 模块负责后端和前端/终端的实时通信入口。它只处理传输协议、请求分发和事件发送，不直接实现 agent loop、配置存储、工具运行或预设解析。
 
+`AgentWebSocketRoutes.ts` 声明具名控制流入口 `/api/events`，与根路径连接使用相同的工作区隔离和认证。内置 QQ 页面使用此入口；开发服务器统一代理 `/api` 的 HTTP 和 WebSocket，避免控制流占用 Vite 的热更新连接。
+
 ## 阅读顺序
 
 1. `AgentWebSocketServer.ts`：HTTP/WS 服务生命周期、端口监听、连接接入和广播入口。
@@ -18,7 +20,9 @@ WebSocket 模块负责后端和前端/终端的实时通信入口。它只处理
 - 新增 WS 请求时先扩展 `AgentWebSocketProtocol.ts`，再在 `AgentWebSocketMessageRouter.ts` 补完整 dispatch。
 - `AgentWebSocketMessageRouter` 直接依赖请求所属的领域 handler；聚合导出只用于稳定外部导入，禁止把业务实现重新写回 `AgentWebSocketRequestHandlers.ts`。
 - 请求 handler 只能调用明确领域服务，不在 WebSocket 层读取数据库、扫描扩展目录或执行工具。
+- 会话的创建、消息、取消、编辑重试、压缩和重命名等修改通过工作区广播发送同一份执行事件，电脑、手机和浏览器均可实时接收；历史查询、导出和请求失败只返回请求连接，不能把查询结果混入其他客户端的恢复流程。事件只持久化一次，不向发起方重复发送。
 - 失败事件必须通过 `AgentWebSocketRequestFailures.ts` 统一投影，避免不同请求返回不一致的错误结构。
+- 发送中断使用 `AgentWebSocketDeliveryError` 标记，由连接层记录并关闭失效连接。请求路由遇到该类型停止向旧连接发送响应，不把传输中断投影为参数或业务失败。广播与请求响应共用发送和背压检查；单个客户端断开不影响其他客户端或运行事件持久化。
 - 设置目录使用 `systemTool.list` 和 `mcpServer.list` 获取脱敏快照。System Extension 配置通过带 revision guard 的主 `config.update` 保存；MCP 输入通过 `mcpInput.update` 按服务原子批量保存，不能在 WebSocket handler 中逐字段写库。
 - `mcp_server.snapshot.data.activation` 与 `system_tool.snapshot.data.activation` 使用同一个实时 `@` 能力目录；MCP 配置状态变化后必须随快照更新，不能要求客户端依赖下一次手动刷新。
 - `mcpInput.update.requestId` 是前端操作关联标识。成功的 `mcp_server.snapshot.data.operation` 和失败的 `request.invalid.data.details.requestId` 必须原样返回；失败投影不得包含 `values`、`deletes` 或 Secret 内容。

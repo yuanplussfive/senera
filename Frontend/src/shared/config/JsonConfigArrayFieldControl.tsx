@@ -1,7 +1,7 @@
-import { Check, CopyPlus, Plus, Trash2 } from "lucide-react";
 import type { ConfigFormFieldData } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
+import { AppIcon, SecretInput } from "../ui";
 import { jsonConfigInputClassName } from "./JsonConfigControlStyles";
 import {
   cloneJsonValue,
@@ -66,7 +66,7 @@ export function JsonConfigArrayFieldControl({
               onClick={() => onChange(active ? value.filter((item) => String(item) !== key) : [...value, option])}
             >
               <span className="grid h-4 w-4 shrink-0 place-items-center rounded-sm border border-current/40">
-                {active ? <Check className="h-3 w-3" /> : null}
+                {active ? <AppIcon icon="checkmark" size={12} /> : null}
               </span>
               <span className="min-w-0 break-words">{optionLabel(field, option)}</span>
             </button>
@@ -110,7 +110,7 @@ export function JsonConfigArrayFieldControl({
                     disabled={disabled}
                     onClick={() => duplicateItem(index)}
                   >
-                    <CopyPlus className="h-3.5 w-3.5" />
+                    <AppIcon icon="copy" size={14} />
                   </JsonConfigIconAction>
                   <JsonConfigIconAction
                     label={frontendMessage("config.form.delete")}
@@ -118,7 +118,7 @@ export function JsonConfigArrayFieldControl({
                     danger
                     onClick={() => onChange(value.filter((_, itemIndex) => itemIndex !== index))}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <AppIcon icon="trash" size={14} />
                   </JsonConfigIconAction>
                 </div>
               </div>
@@ -157,8 +157,8 @@ export function JsonConfigArrayFieldControl({
           className="inline-flex h-8 items-center gap-1.5 rounded-md border border-dashed border-ink-300 bg-paper-50 px-2.5 text-[12px] text-ink-600 transition hover:border-accent-border-strong hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-50"
           onClick={() => onChange([...value, cloneJsonValue(field.defaultItem ?? {})])}
         >
-          <Plus className="h-3.5 w-3.5" />
-          {field.addLabel ?? "添加"}
+          <AppIcon icon="plus" size={14} />
+          {field.addLabel ?? frontendMessage("config.form.add")}
         </button>
       </div>
     );
@@ -168,32 +168,41 @@ export function JsonConfigArrayFieldControl({
     <div className="space-y-2">
       {value.map((item, index) => (
         <div key={`${field.path.join(".")}-${index}`} className="flex min-w-0 items-center gap-2">
-          <input
-            type={field.secret ? "password" : itemType === "number" ? "number" : "text"}
-            value={String(item ?? "")}
-            disabled={disabled}
-            spellCheck={false}
-            onChange={(event) => updateItem(index, coerceArrayItem(event.currentTarget.value, itemType))}
-            className={jsonConfigInputClassName}
-          />
+          {field.secret ? (
+            <SecretInput
+              value={String(item ?? "")}
+              ariaLabel={`${field.label} ${index + 1}`}
+              disabled={disabled}
+              onChange={(next) => updateItem(index, next)}
+            />
+          ) : (
+            <input
+              type={itemType === "number" ? "number" : "text"}
+              value={String(item ?? "")}
+              disabled={disabled}
+              spellCheck={false}
+              onChange={(event) => updateItem(index, coerceArrayItem(event.currentTarget.value, itemType))}
+              className={jsonConfigInputClassName}
+            />
+          )}
           <JsonConfigIconAction
             label={frontendMessage("config.form.delete")}
             disabled={disabled}
             danger
             onClick={() => onChange(value.filter((_, itemIndex) => itemIndex !== index))}
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <AppIcon icon="trash" size={14} />
           </JsonConfigIconAction>
         </div>
       ))}
       <button
         type="button"
         disabled={disabled}
-        className="inline-flex h-8 items-center gap-1.5 border border-dashed border-ink-300 bg-paper-50 px-2.5 text-[12px] text-ink-600 transition hover:border-accent-border-strong hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-50"
+        className="inline-flex h-8 items-center gap-1.5 rounded-md border border-dashed border-ink-300 bg-paper-50 px-2.5 text-[12px] text-ink-600 transition hover:border-accent-border-strong hover:text-accent-content-hover disabled:pointer-events-none disabled:opacity-50"
         onClick={() => onChange([...value, defaultArrayItem(itemType)])}
       >
-        <Plus className="h-3.5 w-3.5" />
-        {field.addLabel ?? "添加"}
+        <AppIcon icon="plus" size={14} />
+        {field.addLabel ?? frontendMessage("config.form.add")}
       </button>
     </div>
   );
@@ -248,7 +257,7 @@ function JsonConfigIconAction({
       type="button"
       disabled={disabled}
       className={cn(
-        "grid h-8 w-8 shrink-0 place-items-center border border-ink-200 bg-paper-50 text-ink-500 transition disabled:pointer-events-none disabled:opacity-50",
+        "grid h-9 w-9 shrink-0 place-items-center rounded-md border border-ink-200 bg-paper-50 text-ink-500 transition disabled:pointer-events-none disabled:opacity-50",
         danger ? "hover:bg-brick-50 hover:text-brick-600" : "hover:bg-ink-900/[0.04] hover:text-ink-800",
       )}
       aria-label={label}

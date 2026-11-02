@@ -5,6 +5,7 @@ import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprova
 import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 import type { AgentSessionRecoveryMode } from "../Session/AgentSessionRunRecovery.js";
 import type { AgentModelUsage } from "../ModelEndpoints/AgentModelUsage.js";
+import type { AgentConversationEntryMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 
 type AgentRequestContext = Required<Pick<AgentEventContext, "requestId">>;
 type AgentVisibleAssistantContext = AgentRequestContext & Partial<Pick<AgentEventContext, "sessionId" | "step">>;
@@ -56,9 +57,12 @@ export type AgentRunDomainEvent =
       context: AgentRequestContext;
       data: {
         input: string;
+        title?: string;
         approvalMode?: AgentExecutionApprovalMode;
         /** Uploaded channel attachments are safe resource metadata, not file contents. */
         attachments?: AgentUploadAttachment[];
+        /** Same origin and native event data as the durable user entry. */
+        metadata?: AgentConversationEntryMetadata;
         /** Internal host wake-up input should not be rendered as a user request. */
         internal?: boolean;
         displayInput?: string;
@@ -157,4 +161,5 @@ export type AgentRequestInvalidCode =
   | "session_fork_target_exists"
   | "session_pi_fork_failed"
   | "session_pi_unavailable"
-  | "session_close_failed";
+  | "session_close_failed"
+  | "feedback_request_missing";

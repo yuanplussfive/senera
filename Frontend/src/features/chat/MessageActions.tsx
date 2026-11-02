@@ -1,4 +1,3 @@
-import { Check, Copy, GitBranch, GitFork, MoreHorizontal, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
@@ -77,7 +76,7 @@ export function MessageActions({
       {intents.includes("copy") ? (
         <ActionBtn label={frontendMessage("chat.action.copy")} onClick={() => void copyText(content)}>
           <MotionIconSwap stateKey={copied ? "copied" : "copy"}>
-            {copied ? <Check className="h-3.5 w-3.5 text-moss-600" /> : <Copy className="h-3.5 w-3.5" />}
+            <AppIcon icon={copied ? "checkmark" : "copy"} size={14} className={copied ? "text-success" : undefined} />
           </MotionIconSwap>
         </ActionBtn>
       ) : null}
@@ -94,7 +93,7 @@ export function MessageActions({
               touchSafe
               className="h-6 w-6 rounded-md"
             >
-              <MoreHorizontal className="h-3.5 w-3.5" />
+              <AppIcon icon="more" size={14} />
             </IconButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent align={placement === "right" ? "end" : "start"} className="min-w-[180px]">
@@ -130,14 +129,14 @@ function MessageActionMenuItem({
 }): JSX.Element {
   if (intent === "viewWorkflow") {
     return (
-      <DropdownMenuItem icon={<GitBranch className="h-3.5 w-3.5" />} onSelect={onViewWorkflow}>
+      <DropdownMenuItem icon={<AppIcon icon="git-branch" size={14} />} onSelect={onViewWorkflow}>
         {frontendMessage("chat.action.viewWorkflow")}
       </DropdownMenuItem>
     );
   }
   if (intent === "fork") {
     return (
-      <DropdownMenuItem icon={<GitFork className="h-3.5 w-3.5" />} onSelect={onFork}>
+      <DropdownMenuItem icon={<AppIcon icon="git-branch" size={14} />} onSelect={onFork}>
         {frontendMessage("chat.action.forkFromHere")}
       </DropdownMenuItem>
     );
@@ -150,7 +149,7 @@ function MessageActionMenuItem({
     );
   }
   return (
-    <DropdownMenuItem icon={<Trash2 className="h-3.5 w-3.5" />} destructive onSelect={onDelete}>
+    <DropdownMenuItem icon={<AppIcon icon="trash" size={14} />} destructive onSelect={onDelete}>
       {frontendMessage("chat.action.deleteFromHere")}
     </DropdownMenuItem>
   );

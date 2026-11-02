@@ -2,6 +2,7 @@ import type { AgentEventContext } from "../Events/AgentEventBase.js";
 import { type AgentEventKinds } from "../Events/AgentEventCatalog.js";
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { AgentModelUsageValue } from "../ModelEndpoints/AgentModelUsage.js";
+import type { AgentModelContextSnapshot } from "./AgentModelContextSnapshot.js";
 
 type AgentStepContext = Required<Pick<AgentEventContext, "requestId" | "step">> &
   Partial<Pick<AgentEventContext, "sessionId">>;
@@ -12,6 +13,7 @@ export type AgentModelDomainEvent =
       context: AgentStepContext;
       data: {
         model: string;
+        contextSnapshot?: AgentModelContextSnapshot;
         provider?: AgentModelProviderMetadata;
         messageIndex?: number;
       };
@@ -51,5 +53,7 @@ export type AgentModelDomainEvent =
         provider?: AgentModelProviderMetadata;
         usage?: AgentModelUsageValue;
         messageIndex?: number;
+        outcome?: "completed" | "failed" | "cancelled";
+        errorMessage?: string;
       };
     };

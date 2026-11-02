@@ -1,0 +1,18 @@
+{
+  "name": "@senera/resource-links",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Shared workspace/resource link interpretation for Senera frontends.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./download": "./src/download.ts",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "package.json",
+    "LICENSE"
+  ]
+}

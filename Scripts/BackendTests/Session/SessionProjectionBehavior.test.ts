@@ -4,10 +4,8 @@ import {
   mergeSessionConversationEntries,
   stampSessionStepTraces,
 } from "../../../Source/AgentSystem/Session/AgentSessionRunProjection.js";
-import {
-  deriveAgentSessionTitle,
-  rowToAgentSession,
-} from "../../../Source/AgentSystem/Session/AgentSqliteSessionMapper.js";
+import { rowToAgentSession } from "../../../Source/AgentSystem/Session/AgentSqliteSessionMapper.js";
+import { deriveAgentSessionTitle } from "../../../Source/AgentSystem/Session/AgentSessionTitleProjector.js";
 import { agentErrorMessage } from "../../../Source/AgentSystem/I18n/AgentMessageCatalog.js";
 import {
   AgentConversationEntryKinds,
@@ -51,9 +49,11 @@ describe("Session projection behavior", () => {
     expect(deriveAgentSessionTitle(createSession([]))).toBe(agentErrorMessage("session.defaultTitle"));
 
     expect(rowToAgentSession(createSessionRow({ status: "running" })).status).toBe("idle");
-    expect(rowToAgentSession(createSessionRow({ metadata: '{"source":"sqlite"}' })).metadata).toEqual({
+    const restored = rowToAgentSession(createSessionRow({ metadata: '{"source":"sqlite"}' }));
+    expect(restored.title).toBe("Session");
+    expect(restored.metadata).toEqual({
       source: "sqlite",
-      title: "Session",
+      title: undefined,
     });
   });
 });

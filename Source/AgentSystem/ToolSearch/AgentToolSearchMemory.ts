@@ -15,6 +15,30 @@ export type {
   AgentToolSearchSkillReference,
 } from "./AgentToolSearchMemoryTypes.js";
 
+interface ToolOutcomeObservation {
+  readonly status: "success" | "failure";
+  readonly weight: number;
+  readonly support: number;
+  readonly source: string;
+  readonly timestamp: number;
+}
+
+/**
+ * Uniform Beta prior (one virtual success, one virtual failure) scored by one
+ * posterior standard deviation below the mean. A tool needs a consistent
+ * record, not merely a long one, before memory outranks lexical evidence.
+ */
+const ReliabilityPrior = 1;
+const ReliabilityLowerBoundZ = 1;
+
+function toolReliability(successes: number, failures: number): { mean: number; lowerBound: number } {
+  const alpha = ReliabilityPrior + successes;
+  const beta = ReliabilityPrior + failures;
+  const mean = alpha / (alpha + beta);
+  const variance = (mean * (1 - mean)) / (alpha + beta + 1);
+  return { mean, lowerBound: mean - ReliabilityLowerBoundZ * Math.sqrt(variance) };
+}
+
 /** Request-local scenario weighting. MemOS relevance is preserved; no secondary keyword gate or hydration cache. */
 export class AgentToolSearchMemory {
   constructor(
@@ -27,42 +51,79 @@ export class AgentToolSearchMemory {
   record(episode: AgentToolSearchEpisode, source?: { readonly sessionId?: string; readonly requestId?: string }): void {
     this.source.record(episode, source);
   }
+  /**
+   * Ranks tools by a Beta posterior lower bound instead of accumulated recall
+   * mass. Repeated recalls of one query collapse into a single observation,
+   * failed calls count against the tool, and a uniform prior keeps one lucky
+   * recall from outranking a longer, mixed record.
+   */
   rank(
     matches: readonly AgentToolSearchScenarioMatch[],
     projectId: string,
     now = Date.now(),
   ): AgentToolSearchMemoryEvidence[] {
-    const evidence = new Map<string, { mass: number; signals: AgentToolSearchScenarioSignal[] }>();
+    const observations = new Map<string, Map<string, ToolOutcomeObservation>>();
     for (const match of matches) {
-      if (match.episode.projectId !== projectId || match.episode.outcome !== "success") continue;
-      const scores = new Map<string, number>();
-      for (const call of match.episode.calls)
-        if (call.status === "success") scores.set(call.toolName, Math.max(scores.get(call.toolName) ?? 0, call.score));
-      for (const [toolName, callScore] of scores) {
-        const mass = match.score * match.episode.finalScore * callScore * this.timeDecay(now - match.episode.timestamp);
-        if (mass <= 0) continue;
-        const current = evidence.get(toolName) ?? { mass: 0, signals: [] };
-        current.mass += mass;
-        current.signals.push({
-          term: match.episode.query,
+      const episode = match.episode;
+      if (episode.projectId !== projectId || episode.outcome === "unknown") continue;
+      const weight = match.score * this.timeDecay(now - episode.timestamp);
+      if (weight <= 0) continue;
+      for (const call of episode.calls) {
+        // An empty result is neither a success nor a failure of the tool.
+        if (call.status === "empty") continue;
+        // Task success is what makes a successful call reusable evidence.
+        if (call.status === "success" && episode.outcome !== "success") continue;
+        const byQuery = observations.get(call.toolName) ?? new Map<string, ToolOutcomeObservation>();
+        const previous = byQuery.get(episode.query);
+        if (previous && previous.timestamp > episode.timestamp) continue;
+        byQuery.set(episode.query, {
+          status: call.status,
+          weight,
+          support: call.score,
           source: match.id,
-          support: callScore,
-          confidence: 1 - Math.exp(-mass),
-          score: mass,
-          lastSeenAt: match.episode.timestamp,
+          timestamp: episode.timestamp,
         });
-        evidence.set(toolName, current);
+        observations.set(call.toolName, byQuery);
       }
     }
-    return [...evidence]
-      .map(([toolName, value]) => ({
+
+    const evidence: AgentToolSearchMemoryEvidence[] = [];
+    for (const [toolName, byQuery] of observations) {
+      let successes = 0;
+      let failures = 0;
+      for (const observation of byQuery.values()) {
+        if (observation.status === "success") successes += observation.weight;
+        else failures += observation.weight;
+      }
+      // Failures only widen the denominator of tools that also succeeded.
+      if (successes <= 0) continue;
+      const reliability = toolReliability(successes, failures);
+      evidence.push({
         toolName,
-        evidence: value.mass,
-        confidence: 1 - Math.exp(-value.mass),
-        rankScore: (1 - Math.exp(-value.mass)) * Math.log1p(value.mass),
-        signals: value.signals.sort((left, right) => right.score - left.score),
-      }))
-      .sort((left, right) => right.rankScore - left.rankScore || left.toolName.localeCompare(right.toolName));
+        evidence: successes + failures,
+        confidence: reliability.mean,
+        rankScore: reliability.lowerBound,
+        signals: [...byQuery.entries()]
+          .map(([query, observation]): AgentToolSearchScenarioSignal => {
+            const signal = toolReliability(
+              observation.status === "success" ? observation.weight : 0,
+              observation.status === "failure" ? observation.weight : 0,
+            );
+            return {
+              term: query,
+              source: observation.source,
+              support: observation.support,
+              confidence: signal.mean,
+              score: observation.weight,
+              lastSeenAt: observation.timestamp,
+            };
+          })
+          .sort((left, right) => right.score - left.score || left.term.localeCompare(right.term)),
+      });
+    }
+    return evidence.sort(
+      (left, right) => right.rankScore - left.rankScore || left.toolName.localeCompare(right.toolName),
+    );
   }
   rankSkillScenarios(options: {
     readonly matches: readonly AgentToolSearchScenarioMatch[];

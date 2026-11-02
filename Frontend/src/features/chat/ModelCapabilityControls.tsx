@@ -1,20 +1,16 @@
-import type { ElementType, ReactNode } from "react";
-import * as TooltipPrimitive from "@radix-ui/react-tooltip";
-import ChatBubbleLeftRightIcon from "@heroicons/react/24/outline/ChatBubbleLeftRightIcon";
-import CommandLineIcon from "@heroicons/react/24/outline/CommandLineIcon";
-import EyeIcon from "@heroicons/react/24/outline/EyeIcon";
-import LightBulbIcon from "@heroicons/react/24/outline/LightBulbIcon";
-import PhotoIcon from "@heroicons/react/24/outline/PhotoIcon";
-import SignalIcon from "@heroicons/react/24/outline/SignalIcon";
-import WrenchScrewdriverIcon from "@heroicons/react/24/outline/WrenchScrewdriverIcon";
+import type { ReactNode } from "react";
 import { cn } from "../../lib/util";
-import { SwitchTrack, Tooltip } from "../../shared/ui";
+import { AppIcon, type AppIconName, MenuSelect, SwitchTrack, Tooltip } from "../../shared/ui";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { ModelsDevModelMetadata } from "../../api/eventTypes";
 import { ModelsDevMetadataDetails } from "./ModelConfigPrimitives";
 import { ModelsDevCapabilityItemByKey } from "./ModelsDevCapabilityIcons";
 import { ModelsDevExtraCapabilityKeys, readModelsDevCapabilityKeys } from "./modelsDevCapabilities";
-import type { ModelCapabilitiesDraft, ModelToolPlanningMode } from "./modelConfigTypes";
+import type {
+  ModelBooleanCapabilityKey,
+  ModelToolPlanningMode,
+  ResolvedModelCapabilitiesDraft,
+} from "./modelConfigTypes";
 
 export function ToolPlanningModeControl({
   value,
@@ -30,43 +26,25 @@ export function ToolPlanningModeControl({
     {
       value: "native",
       label: frontendMessage("config.model.toolPlanning.native"),
-      icon: <WrenchScrewdriverIcon className="h-3.5 w-3.5" />,
     },
     {
       value: "baml",
       label: frontendMessage("config.model.toolPlanning.baml"),
-      icon: <LightBulbIcon className="h-3.5 w-3.5" />,
     },
   ] as const;
 
   return (
-    <div
-      className="flex items-center gap-1 border-b border-ink-200/80"
-      role="radiogroup"
-      aria-label={label}
-      data-model-tool-planning-mode
-    >
-      {options.map((option) => {
-        const selected = option.value === value;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            disabled={disabled}
-            className={cn(
-              "inline-flex h-9 min-w-0 items-center justify-center gap-2 border-b-2 px-3 text-[12.5px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus disabled:pointer-events-none disabled:opacity-50",
-              selected ? "border-accent-solid text-ink-900" : "border-transparent text-ink-500 hover:text-ink-900",
-            )}
-            onClick={() => onChange(option.value)}
-          >
-            {option.icon}
-            <span className="truncate">{option.label}</span>
-          </button>
-        );
-      })}
-    </div>
+    <MenuSelect
+      value={value}
+      options={options}
+      ariaLabel={label}
+      placeholder={label}
+      disabled={disabled}
+      onChange={(next) => {
+        const option = options.find((item) => item.value === next);
+        if (option) onChange(option.value);
+      }}
+    />
   );
 }
 
@@ -84,7 +62,7 @@ export function CapabilityIconStrip({
   metadata,
   labels = false,
 }: {
-  capabilities: Required<ModelCapabilitiesDraft>;
+  capabilities: ResolvedModelCapabilitiesDraft;
   metadata?: ModelsDevModelMetadata;
   labels?: boolean;
 }): JSX.Element {
@@ -121,7 +99,7 @@ export function CapabilityIconStrip({
             {item.label}
           </span>
         ) : (
-          <item.Icon key={item.key} className="h-3 w-3" aria-hidden={true} />
+          <AppIcon icon={item.icon} key={item.key} className="h-3 w-3" aria-hidden={true} />
         ),
       )}
       {remainingItems.length > 0 ? (
@@ -153,38 +131,16 @@ export function CapabilityIconStrip({
 
 function RemainingCapabilityTooltip({ items }: { items: readonly { key: string; label: string }[] }): JSX.Element {
   return (
-    <TooltipPrimitive.Root delayDuration={120}>
-      <TooltipPrimitive.Trigger asChild>
-        <span
-          tabIndex={0}
-          data-capability-overflow
-          className="inline-flex h-[18px] min-w-[18px] cursor-help items-center justify-center rounded-[5px] bg-ink-900/[0.045] px-1.5 text-[10.5px] leading-none text-content-muted outline-none transition hover:bg-ink-900/[0.075] hover:text-content-secondary focus-visible:ring-2 focus-visible:ring-accent-focus"
-          aria-label={items.map((item) => item.label).join("、")}
-        >
-          +{items.length}
-        </span>
-      </TooltipPrimitive.Trigger>
-      <TooltipPrimitive.Portal>
-        <TooltipPrimitive.Content
-          side="top"
-          align="start"
-          sideOffset={8}
-          className="z-50 max-w-64 rounded-lg border border-ink-700/70 bg-ink-900 p-2 shadow-[0_8px_24px_-12px_rgba(24,25,28,0.45)]"
-        >
-          <div className="flex flex-wrap gap-1">
-            {items.map((item) => (
-              <span
-                key={item.key}
-                className="inline-flex h-5 items-center rounded-full border border-paper-50/15 bg-paper-50/10 px-2 text-[10.5px] leading-none text-paper-50"
-              >
-                {item.label}
-              </span>
-            ))}
-          </div>
-          <TooltipPrimitive.Arrow className="fill-ink-900" width={8} height={4} />
-        </TooltipPrimitive.Content>
-      </TooltipPrimitive.Portal>
-    </TooltipPrimitive.Root>
+    <Tooltip content={items.map((item) => item.label).join(" · ")} side="top" align="start" delayDuration={120}>
+      <span
+        tabIndex={0}
+        data-capability-overflow
+        className="inline-flex h-[18px] min-w-[18px] cursor-help items-center justify-center rounded-[5px] bg-ink-900/[0.045] px-1.5 text-[10.5px] leading-none text-content-muted outline-none transition hover:bg-ink-900/[0.075] hover:text-content-secondary focus-visible:ring-2 focus-visible:ring-accent-focus"
+        aria-label={items.map((item) => item.label).join("、")}
+      >
+        +{items.length}
+      </span>
+    </Tooltip>
   );
 }
 
@@ -209,7 +165,7 @@ export function CapabilityToggle({
       type="button"
       disabled={disabled}
       className={cn(
-        "flex min-w-0 items-center justify-between gap-3 rounded-sm px-2.5 py-2 text-left transition hover:bg-ink-900/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
+        "flex min-w-0 items-center justify-between gap-3 rounded-md py-2.5 text-left transition hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
         active ? "text-ink-900" : "text-ink-600",
         disabled && "pointer-events-none opacity-50",
       )}
@@ -220,7 +176,7 @@ export function CapabilityToggle({
       data-model-capability-toggle
     >
       <span className="flex min-w-0 items-center gap-2">
-        <span className={cn("grid h-5 w-5 shrink-0 place-items-center", iconClassName)}>{icon}</span>
+        <span className={cn("grid h-4 w-4 shrink-0 place-items-center", iconClassName)}>{icon}</span>
         <span className="truncate text-[12.5px] font-medium">{label}</span>
       </span>
       <SwitchTrack checked={active} />
@@ -232,56 +188,48 @@ export const ModelCapabilityIconItems = [
   {
     key: "Chat",
     label: frontendMessage("config.model.capability.chat"),
-    Icon: ChatBubbleLeftRightIcon,
-    icon: <ChatBubbleLeftRightIcon className="h-3.5 w-3.5" />,
+    icon: "message",
     className: "text-ink-500",
   },
   {
     key: "Vision",
     label: frontendMessage("config.model.capability.vision"),
-    Icon: EyeIcon,
-    icon: <EyeIcon className="h-3.5 w-3.5" />,
+    icon: "vision",
     className: "text-ink-500",
   },
   {
     key: "ImageOutput",
     label: frontendMessage("config.model.capability.imageOutput"),
-    Icon: PhotoIcon,
-    icon: <PhotoIcon className="h-3.5 w-3.5" />,
+    icon: "image-output",
     className: "text-ink-500",
   },
   {
     key: "Reasoning",
     label: frontendMessage("config.model.capability.reasoning"),
-    Icon: LightBulbIcon,
-    icon: <LightBulbIcon className="h-3.5 w-3.5" />,
+    icon: "thinking",
     className: "text-ink-500",
   },
   {
     key: "ToolCalling",
     label: frontendMessage("config.model.capability.toolCalling"),
-    Icon: WrenchScrewdriverIcon,
-    icon: <WrenchScrewdriverIcon className="h-3.5 w-3.5" />,
+    icon: "tools",
     className: "text-ink-500",
   },
   {
     key: "DeveloperRole",
     label: frontendMessage("config.model.capability.developerRole"),
-    Icon: CommandLineIcon,
-    icon: <CommandLineIcon className="h-3.5 w-3.5" />,
+    icon: "terminal",
     className: "text-ink-500",
   },
   {
     key: "StreamingUsage",
     label: frontendMessage("config.model.capability.streamingUsage"),
-    Icon: SignalIcon,
-    icon: <SignalIcon className="h-3.5 w-3.5" />,
+    icon: "token-usage",
     className: "text-ink-500",
   },
 ] as const satisfies readonly {
-  key: keyof ModelCapabilitiesDraft;
+  key: ModelBooleanCapabilityKey;
   label: string;
-  Icon: ElementType<{ className?: string; "aria-hidden"?: boolean }>;
-  icon: JSX.Element;
+  icon: AppIconName;
   className: string;
 }[];

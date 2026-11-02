@@ -1,4 +1,4 @@
-import type { AgentDomainEvent, AgentEventSink } from "../Events/AgentEvent.js";
+import { emitAgentEvent, type AgentDomainEvent, type AgentEventSink } from "../Events/AgentEvent.js";
 
 export class AgentOrchestrationEventRelay {
   private sink?: AgentEventSink;
@@ -8,6 +8,6 @@ export class AgentOrchestrationEventRelay {
   }
 
   emit(event: AgentDomainEvent): Promise<void> {
-    return Promise.resolve(this.sink?.(event));
+    return emitAgentEvent(this.sink, event);
   }
 }

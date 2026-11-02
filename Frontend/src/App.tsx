@@ -1,9 +1,20 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { toast } from "sonner";
 import { ErrorBoundary, SeneraToaster, StateView, TooltipProvider } from "./shared/ui";
 import { useAgentSocket, type AgentSocketReconnectPolicy, type SocketStatus } from "./api/useAgentSocket";
-import { buildResourceUploadUrl } from "./api/uploadClient";
+import { buildResourceUploadUrl } from "@senera/resource-links";
 import { useStore } from "./store/sessionStore";
+import { readConversationDefaultModelId } from "./store/session/sessionAgentSelection";
 import { AppShell, readAppShellRenderPlan, type WorkflowDockTool } from "./layout/AppShell";
 import { EventKinds, type EventEnvelope, type WsRequest } from "./api/eventTypes";
 import { useChatCommands, type LastSentMessage } from "./app/useChatCommands";
@@ -17,12 +28,14 @@ import { useSandboxRuntimeStatus } from "./app/useSandboxRuntimeStatus";
 import { useSocketErrorToasts } from "./app/useSocketErrorToasts";
 import { useSocketPostIngestEffects } from "./app/useSocketPostIngestEffects";
 import { useWorkflowNavigation } from "./app/useWorkflowNavigation";
+import { ChildRunNavigationContext } from "./features/workflow/ChildRunNavigation";
+import { useRunHistoryDetailRecovery } from "./app/useRunHistoryDetailRecovery";
 import { useResponsiveMode } from "./shared/responsive";
 import { resolveRuntimeHttpBaseUrl, resolveRuntimeWebSocketUrl } from "./config/runtimeConfig";
 import { useSettingsRuntime } from "./app/useSettingsRuntime";
 import { useWebSettingsController } from "./app/useWebSettingsController";
 import { useExecutionResourceCommands } from "./app/useExecutionResourceCommands";
-import { TerminalPanelStatus, TerminalRuntimeBoundary } from "./features/terminal/TerminalPanelStatus";
+import type { TerminalPanelRenderProps } from "./layout/BottomTerminalPanel";
 import { loadWebSettingsOverlayComponent } from "./app/applicationModuleLoaders";
 import { ApplicationSurfaceLoading, SettingsSurfaceLoading } from "./app/SurfaceLoading";
 import { scheduleIdleTask } from "./shared/scheduling/scheduleIdleTask";
@@ -30,9 +43,10 @@ import { frontendMessage } from "./i18n/frontendMessageCatalog";
 import { isSessionHydratedForStartup, readSessionHydrationState } from "./store/session/sessionHydration";
 import { AppMotionProvider } from "./shared/motion/MotionProvider";
 import { AppAppearanceProvider } from "./shared/theme/useAppearance";
-import { WorkspaceResourceProvider } from "./shared/workspace/WorkspaceResourceProvider";
+import { WorkspaceBrowserSurface, WorkspaceRuntimeProvider } from "./shared/workspace/WorkspaceResourceProvider";
 import { useRuntimeUpdate } from "./app/runtimeUpdate";
 import { readDesktopBridge } from "./app/desktopBridge";
+import { openOneBot11Client } from "./app/channelClientNavigation";
 import { activateWorkspaceSessionProjection } from "./store/workspaceSessionProjection";
 import type { WorkspaceSnapshotData } from "./api/workspaceEventTypes";
 import { WorkspaceMenuProvider } from "./shared/workspace/WorkspaceMenu";
@@ -40,7 +54,7 @@ import { ChatPanelLoadingSurface } from "./features/chat/ChatLoadingSurface";
 
 const WS_URL = resolveRuntimeWebSocketUrl(__SENERA_DEFAULT_WS_URL__);
 const HTTP_BASE_URL = resolveRuntimeHttpBaseUrl(WS_URL);
-type BackgroundTerminalPanelComponent = (typeof import("./features/terminal"))["BackgroundTerminalPanel"];
+type TerminalModule = typeof import("./features/terminal");
 type SettingsOverlayComponentType = (typeof import("./features/settings/SettingsOverlay"))["SettingsOverlay"];
 type SessionListComponent = (typeof import("./features/session/SessionList"))["SessionList"];
 type ThinkingTimelineProps = ComponentProps<
@@ -63,11 +77,13 @@ const LazyContinuityPanel = lazy(() =>
     default: module.ContinuityPanel,
   })),
 );
+const LazyAgentBoardPanel = lazy(() =>
+  import("./features/workflow/AgentBoardPanel").then((module) => ({
+    default: module.AgentBoardPanel,
+  })),
+);
 type TerminalPanelLoadState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "ready"; Component: BackgroundTerminalPanelComponent }
-  | { status: "error" };
+  { status: "idle" } | { status: "loading" } | { status: "ready"; module: TerminalModule } | { status: "error" };
 export function App({
   onLogout,
   socketReconnectPolicy,
@@ -82,13 +98,25 @@ export function App({
   const registerSession = useStore((s) => s.registerCreatingSession);
   const appendUserMessage = useStore((s) => s.appendUserMessage);
   const activeId = useStore((s) => s.activeSessionId);
+  const runtimeStatusSessionId = useStore((state) => {
+    const id = state.activeSessionId;
+    return id &&
+      state.catalogSynced.sessions &&
+      state.sessions[id] &&
+      !state.pendingCreatedSessionIds[id] &&
+      !state.pendingDeletedSessionIds[id] &&
+      !state.missingOnServerIds[id]
+      ? id
+      : null;
+  });
   const rightPanelCollapsed = useStore((s) => s.rightPanelCollapsed);
+  const terminalPanelOpen = useStore((s) => s.terminalPanelOpen);
   const toggleSidebar = useStore((s) => s.toggleSidebar);
   const setSidebarCollapsed = useStore((s) => s.setSidebarCollapsed);
   const setRightPanelCollapsed = useStore((s) => s.setRightPanelCollapsed);
   const modelProviders = useStore((s) => s.modelProviders);
   const selectedModelProviderId = useStore((s) => s.selectedModelProviderId);
-  const defaultModelProviderId = useStore((s) => s.defaultModelProviderId);
+  const defaultModelProviderId = useStore(readConversationDefaultModelId);
   const selectModelProvider = useStore((s) => s.selectModelProvider);
   const applyDefaultModelToActiveSession = useStore((s) => s.applyDefaultModelToActiveSession);
   const selectedThinkingLevel = useStore((s) => s.selectedThinkingLevel);
@@ -166,19 +194,22 @@ export function App({
 
   const handleWorkflowDockToolChange = useCallback((tool: WorkflowDockTool): void => {
     setWorkflowDockTool(tool);
-    if (tool === "terminal") {
+  }, []);
+
+  useEffect(() => {
+    if (terminalPanelOpen) {
       setTerminalPanelLoadState((current) =>
         current.status === "idle" || current.status === "error" ? { status: "loading" } : current,
       );
     }
-  }, []);
+  }, [terminalPanelOpen]);
 
   useEffect(() => {
     if (terminalPanelLoadState.status !== "loading") return;
     let active = true;
     void import("./features/terminal").then(
       (module) => {
-        if (active) setTerminalPanelLoadState({ status: "ready", Component: module.BackgroundTerminalPanel });
+        if (active) setTerminalPanelLoadState({ status: "ready", module });
       },
       () => {
         if (active) setTerminalPanelLoadState({ status: "error" });
@@ -211,6 +242,12 @@ export function App({
       return;
     }
     setWorkflowDrawerOpen(true);
+  }, [handleWorkflowDockToolChange, hasPersistentWorkflowPanel, setRightPanelCollapsed]);
+
+  const handleOpenWorkspaceDock = useCallback((): void => {
+    handleWorkflowDockToolChange("workspace");
+    if (hasPersistentWorkflowPanel) setRightPanelCollapsed(false);
+    else setWorkflowDrawerOpen(true);
   }, [handleWorkflowDockToolChange, hasPersistentWorkflowPanel, setRightPanelCollapsed]);
 
   const { resetServerKnownSessions, serverKnownSessionIdsRef, syncServerKnownSessionFromEvent } =
@@ -249,7 +286,7 @@ export function App({
     };
   });
 
-  const { status, send } = useAgentSocket({
+  const { status, send, sendAccepted, reconnect } = useAgentSocket({
     url: workspaceSocketUrl,
     reconnectPolicy: socketReconnectPolicy,
     onEvents: useCallback(
@@ -307,11 +344,25 @@ export function App({
     onWorkspaceReady: handleWorkspaceReady,
   });
   const settingsReady = Boolean(settingsRuntime.systemConfig.configSnapshot);
+  const localClientUrl = settingsRuntime.systemConfig.oneBot11ClientUrl;
+  const localClientConnected = settingsRuntime.systemConfig.channelStatuses.some(
+    (channel) => channel.kind === "onebot11" && channel.state === "connected",
+  );
+  const handleOpenLocalClient = useCallback((): void => {
+    if (!localClientUrl || !workspaceIdentity) return;
+    void openOneBot11Client(localClientUrl, workspaceIdentity).then(
+      (result) => {
+        if (!result.ok) toast.error(frontendMessage("settings.channels.localClientUnavailable"));
+      },
+      () => toast.error(frontendMessage("settings.channels.localClientUnavailable")),
+    );
+  }, [localClientUrl, workspaceIdentity]);
   settingsEventHandlerRef.current = settingsRuntime.ingestSettingsEvent;
   const executionResourceCommands = useExecutionResourceCommands({
     activeSessionId: activeId,
     send,
     status,
+    ensureInteractiveTerminal: terminalPanelOpen,
   });
   executionResourceEventHandlerRef.current = executionResourceCommands.handleEvent;
 
@@ -334,9 +385,9 @@ export function App({
   });
 
   useEffect(() => {
-    if (status !== "open" || !activeId) return;
-    send({ type: "session.runtime_status", sessionId: activeId });
-  }, [activeId, send, status]);
+    if (status !== "open" || !runtimeStatusSessionId) return;
+    send({ type: "session.runtime_status", sessionId: runtimeStatusSessionId });
+  }, [runtimeStatusSessionId, send, status]);
 
   const {
     closeSession: handleCloseSession,
@@ -349,10 +400,31 @@ export function App({
     serverKnownSessionIdsRef,
     status,
   });
-  const { viewMessageWorkflow: handleViewWorkflow } = useWorkflowNavigation({
+  useEffect(() => {
+    if (terminalPanelOpen && !activeId && startupReleased && status === "open") handleNewSession();
+  }, [activeId, handleNewSession, startupReleased, status, terminalPanelOpen]);
+  const [focusedChildRun, setFocusedChildRun] = useState<{ sessionId: string; childRunId: string } | null>(null);
+  const handleSelectAgent = useCallback(
+    (childRunId: string): void => {
+      if (!activeId) return;
+      setFocusedChildRun({ sessionId: activeId, childRunId });
+      setWorkflowDockTool("agents");
+    },
+    [activeId],
+  );
+  const handleClearAgentFocus = useCallback(() => setFocusedChildRun(null), []);
+  const { viewMessageWorkflow: handleViewWorkflow, viewChildRun } = useWorkflowNavigation({
     activeSessionId: activeId,
     hasPersistentWorkflowPanel,
     setWorkflowDrawerOpen,
+    onSelectAgents: handleSelectAgent,
+  });
+  const childRunNavigation = useMemo(() => ({ open: viewChildRun }), [viewChildRun]);
+  useRunHistoryDetailRecovery({
+    activeSessionId: activeId,
+    visible: (hasPersistentWorkflowPanel && !rightPanelCollapsed) || workflowDrawerOpen,
+    send,
+    status,
   });
   const {
     cancelActiveSession: handleCancel,
@@ -365,6 +437,7 @@ export function App({
     resolveApproval: handleResolveApproval,
     resolveApprovalBatch: handleResolveApprovalBatch,
     resolveInteractionInput: handleResolveInteractionInput,
+    recordMessageFeedback: handleRecordMessageFeedback,
     sendMessage: handleSend,
   } = useChatCommands({
     activeSessionId: activeId,
@@ -372,6 +445,7 @@ export function App({
     lastSendRef,
     registerSession,
     send,
+    sendAccepted,
     serverKnownSessionIdsRef,
     status,
   });
@@ -411,33 +485,53 @@ export function App({
 
   if (!startupReleased) return <ApplicationSurfaceLoading />;
 
-  const TerminalPanel = terminalPanelLoadState.status === "ready" ? terminalPanelLoadState.Component : undefined;
-  const terminalPanel = TerminalPanel ? (
-    <TerminalRuntimeBoundary
-      resetKey={`${activeId ?? "none"}:${terminalRuntimeRevision}`}
-      onRetry={() => setTerminalRuntimeRevision((revision) => revision + 1)}
-    >
-      <TerminalPanel
-        key={terminalRuntimeRevision}
-        resources={executionResourceCommands.resources}
-        outputs={executionResourceCommands.outputs}
-        onStartTerminal={executionResourceCommands.startTerminal}
-        onRefresh={executionResourceCommands.refresh}
-        onWrite={executionResourceCommands.write}
-        onResize={executionResourceCommands.resize}
-        onSignal={executionResourceCommands.signal}
-        onClose={executionResourceCommands.close}
-        onStopAll={executionResourceCommands.stopAll}
-      />
-    </TerminalRuntimeBoundary>
-  ) : terminalPanelLoadState.status === "loading" || terminalPanelLoadState.status === "error" ? (
-    <TerminalPanelStatus
-      status={terminalPanelLoadState.status}
-      onRetry={
-        terminalPanelLoadState.status === "error" ? () => setTerminalPanelLoadState({ status: "loading" }) : undefined
-      }
-    />
-  ) : null;
+  const terminalModule = terminalPanelLoadState.status === "ready" ? terminalPanelLoadState.module : undefined;
+  const terminalPanel = ({ active, actions }: TerminalPanelRenderProps): ReactNode =>
+    terminalModule ? (
+      <terminalModule.TerminalRuntimeBoundary
+        resetKey={`${activeId ?? "none"}:${terminalRuntimeRevision}`}
+        onRetry={() => setTerminalRuntimeRevision((revision) => revision + 1)}
+        panelActions={actions}
+      >
+        <terminalModule.BackgroundTerminalPanel
+          key={terminalRuntimeRevision}
+          active={active}
+          panelActions={actions}
+          resources={executionResourceCommands.resources}
+          outputStore={executionResourceCommands.outputStore}
+          onStartTerminal={executionResourceCommands.startTerminal}
+          onRefresh={executionResourceCommands.refresh}
+          onWrite={executionResourceCommands.write}
+          onResize={executionResourceCommands.resize}
+          onSignal={executionResourceCommands.signal}
+          onClose={executionResourceCommands.close}
+          onStopAll={executionResourceCommands.stopAll}
+        />
+      </terminalModule.TerminalRuntimeBoundary>
+    ) : (
+      <div className="flex h-full min-h-0 flex-col bg-surface-panel">
+        <div className="flex h-[34px] shrink-0 items-center justify-between pl-3 pr-1">
+          <span className="text-[12px] text-content-secondary">{frontendMessage("terminal.panel.title")}</span>
+          {actions}
+        </div>
+        <StateView
+          className="min-h-0 flex-1"
+          status={terminalPanelLoadState.status === "error" ? "error" : "loading"}
+          title={frontendMessage(
+            terminalPanelLoadState.status === "error" ? "terminal.error.title" : "terminal.loading.title",
+          )}
+          description={frontendMessage(
+            terminalPanelLoadState.status === "error" ? "terminal.error.description" : "terminal.loading.description",
+          )}
+          retryLabel={frontendMessage("terminal.error.retry")}
+          onRetry={
+            terminalPanelLoadState.status === "error"
+              ? () => setTerminalPanelLoadState({ status: "loading" })
+              : undefined
+          }
+        />
+      </div>
+    );
 
   // sessionPanel(常驻侧栏)与 sessionDrawer(移动端抽屉)共用同一份会话列表行为。
   const sessionListSharedProps: Omit<
@@ -452,6 +546,7 @@ export function App({
     onUpdateUserProfile: handleUpdateUserProfile,
     onLogout,
     socketStatus: status,
+    onReconnectSocket: reconnect,
     httpBaseUrl: scopedHttpBaseUrl,
     uploadCsrfToken,
     onSettingsIntent: () => {
@@ -468,181 +563,222 @@ export function App({
     <AppMotionProvider level={motionLevel}>
       <AppAppearanceProvider motionLevel={motionLevel}>
         <TooltipProvider delayDuration={300}>
-          <WorkspaceResourceProvider
+          <WorkspaceRuntimeProvider
             key={workspaceIdentity}
             httpBaseUrl={scopedHttpBaseUrl}
             csrfToken={uploadCsrfToken}
+            dockAvailable
+            onOpenInDock={handleOpenWorkspaceDock}
           >
             <WorkspaceMenuProvider workspace={settingsRuntime.workspace} httpBaseUrl={HTTP_BASE_URL}>
-              <AppShell
-                sessionPanel={
-                  <div className="flex h-full min-h-0 flex-col">
-                    <div className="min-h-0 flex-1">
-                      <Suspense fallback={null}>
-                        <LazySessionList presentation="auto" {...sessionListSharedProps} />
-                      </Suspense>
+              <ChildRunNavigationContext.Provider value={childRunNavigation}>
+                <AppShell
+                  sessionPanel={
+                    <div className="flex h-full min-h-0 flex-col">
+                      <div className="min-h-0 flex-1">
+                        <Suspense fallback={null}>
+                          <LazySessionList presentation="auto" {...sessionListSharedProps} />
+                        </Suspense>
+                      </div>
                     </div>
-                  </div>
-                }
-                sessionDrawer={
-                  <div className="flex h-full min-h-0 flex-col">
-                    <div className="min-h-0 flex-1">
-                      <Suspense fallback={null}>
-                        <LazySessionList
-                          presentation="panel"
-                          {...sessionListSharedProps}
-                          onClosePanel={() => setSessionDrawerOpen(false)}
-                          onSessionSelected={() => setSessionDrawerOpen(false)}
+                  }
+                  sessionDrawer={
+                    <div className="flex h-full min-h-0 flex-col">
+                      <div className="min-h-0 flex-1">
+                        <Suspense fallback={null}>
+                          <LazySessionList
+                            presentation="panel"
+                            {...sessionListSharedProps}
+                            onClosePanel={() => setSessionDrawerOpen(false)}
+                            onSessionSelected={() => setSessionDrawerOpen(false)}
+                          />
+                        </Suspense>
+                      </div>
+                    </div>
+                  }
+                  chatPanel={
+                    <ErrorBoundary resetKey={activeId}>
+                      <Suspense fallback={<ChatPanelLoadingSurface />}>
+                        <LazyChatPanel
+                          userProfile={userProfile}
+                          modelConfig={{
+                            modelProviders,
+                            selectedModelProviderId,
+                            defaultModelProviderId,
+                            onSelectModelProvider: selectModelProvider,
+                            selectedThinkingLevel,
+                            onSelectThinkingLevel: selectThinkingLevel,
+                            onApplyDefaultModel: applyDefaultModelToActiveSession,
+                            onAddModel: () => {
+                              void settingsController
+                                .openSettings("model-service")
+                                .catch(() => toast.error(frontendMessage("settings.loadFailed")));
+                            },
+                          }}
+                          runtime={{
+                            workspaceId: workspaceIdentity,
+                            socketStatus: status,
+                            uploadUrl,
+                            uploadCsrfToken,
+                            sandboxStatus,
+                          }}
+                          messageActions={{
+                            onSend: handleSend,
+                            onCancel: handleCancel,
+                            onForkFromMessage: handleForkFromMessage,
+                            onRegenerate: handleRegenerate,
+                            onRetryRun: handleRetryRun,
+                            onContinueRun: handleContinueRun,
+                            onEditUserMessage: handleEditUserMessage,
+                            onDeleteFromMessage: handleDeleteFromMessage,
+                            onViewWorkflow: handleViewWorkflow,
+                            onResolveApproval: handleResolveApproval,
+                            onResolveApprovalBatch: handleResolveApprovalBatch,
+                            onResolveInteractionInput: handleResolveInteractionInput,
+                            onRecordMessageFeedback: handleRecordMessageFeedback,
+                          }}
+                          navigationActions={{
+                            onOpenLocalClient:
+                              localClientConnected && localClientUrl ? handleOpenLocalClient : undefined,
+                            onOpenSessionPanel: appShellRenderPlan.showChatSessionPanelAction
+                              ? handleOpenSessionPanel
+                              : undefined,
+                            onOpenWorkflowPanel:
+                              appShellRenderPlan.showChatWorkflowPanelAction &&
+                              (hasPersistentWorkflowPanel ? rightPanelCollapsed : !workflowDrawerOpen)
+                                ? handleOpenWorkflowPanel
+                                : undefined,
+                            onRetryHistory: requestSessionHistory,
+                            onLoadHistory: requestSessionHistory,
+                            onOpenSettings: (section, returnFocus) => {
+                              void settingsController
+                                .openSettings(section, returnFocus)
+                                .catch(() => toast.error(frontendMessage("settings.loadFailed")));
+                            },
+                          }}
                         />
                       </Suspense>
-                    </div>
-                  </div>
-                }
-                chatPanel={
-                  <ErrorBoundary resetKey={activeId}>
-                    <Suspense fallback={<ChatPanelLoadingSurface />}>
-                      <LazyChatPanel
-                        userProfile={userProfile}
-                        modelConfig={{
-                          modelProviders,
-                          selectedModelProviderId,
-                          defaultModelProviderId,
-                          onSelectModelProvider: selectModelProvider,
-                          selectedThinkingLevel,
-                          onSelectThinkingLevel: selectThinkingLevel,
-                          onApplyDefaultModel: applyDefaultModelToActiveSession,
-                          onAddModel: () => {
-                            void settingsController
-                              .openSettings("model-service")
-                              .catch(() => toast.error(frontendMessage("settings.loadFailed")));
-                          },
-                        }}
-                        runtime={{
-                          workspaceId: workspaceIdentity,
-                          socketStatus: status,
-                          uploadUrl,
-                          uploadCsrfToken,
-                          sandboxStatus,
-                        }}
-                        messageActions={{
-                          onSend: handleSend,
-                          onCancel: handleCancel,
-                          onForkFromMessage: handleForkFromMessage,
-                          onRegenerate: handleRegenerate,
-                          onRetryRun: handleRetryRun,
-                          onContinueRun: handleContinueRun,
-                          onEditUserMessage: handleEditUserMessage,
-                          onDeleteFromMessage: handleDeleteFromMessage,
-                          onViewWorkflow: handleViewWorkflow,
-                          onResolveApproval: handleResolveApproval,
-                          onResolveApprovalBatch: handleResolveApprovalBatch,
-                          onResolveInteractionInput: handleResolveInteractionInput,
-                        }}
-                        navigationActions={{
-                          onOpenSessionPanel: appShellRenderPlan.showChatSessionPanelAction
-                            ? handleOpenSessionPanel
-                            : undefined,
-                          onOpenWorkflowPanel:
-                            appShellRenderPlan.showChatWorkflowPanelAction &&
-                            (hasPersistentWorkflowPanel ? rightPanelCollapsed : !workflowDrawerOpen)
-                              ? handleOpenWorkflowPanel
-                              : undefined,
-                          onRetryHistory: requestSessionHistory,
-                          onOpenSettings: (section, returnFocus) => {
-                            void settingsController
-                              .openSettings(section, returnFocus)
-                              .catch(() => toast.error(frontendMessage("settings.loadFailed")));
-                          },
-                        }}
-                      />
-                    </Suspense>
-                  </ErrorBoundary>
-                }
-                workflowPanel={<DeferredThinkingTimeline presentation="dock" />}
-                workflowDrawer={<DeferredThinkingTimeline presentation="panel" hidePanelTitle />}
-                terminalPanel={terminalPanel}
-                eventPanel={
-                  <ErrorBoundary
-                    fallback={(error) => (
-                      <StateView
-                        status="error"
-                        title={frontendMessage("app.errorBoundary.title")}
-                        description={error.message}
-                        onRetry={() => window.location.reload()}
-                        retryLabel={frontendMessage("app.errorBoundary.reload")}
-                        className="h-full min-h-0 bg-surface-panel"
-                      />
-                    )}
-                  >
+                    </ErrorBoundary>
+                  }
+                  workflowPanel={<DeferredThinkingTimeline presentation="dock" />}
+                  workflowDrawer={<DeferredThinkingTimeline presentation="dock" hidePanelTitle />}
+                  workspacePanel={<WorkspaceBrowserSurface />}
+                  terminalPanel={terminalPanel}
+                  eventPanel={
+                    <ErrorBoundary
+                      fallback={(error) => (
+                        <StateView
+                          status="error"
+                          title={frontendMessage("app.errorBoundary.title")}
+                          description={error.message}
+                          onRetry={() => window.location.reload()}
+                          retryLabel={frontendMessage("app.errorBoundary.reload")}
+                          className="h-full min-h-0 bg-surface-panel"
+                        />
+                      )}
+                    >
+                      <Suspense
+                        fallback={
+                          <StateView
+                            status="loading"
+                            title={frontendMessage("observability.title")}
+                            className="h-full min-h-0 bg-surface-panel"
+                          />
+                        }
+                      >
+                        <LazyEventObservabilityPanel />
+                      </Suspense>
+                    </ErrorBoundary>
+                  }
+                  statePanel={
                     <Suspense
                       fallback={
                         <StateView
                           status="loading"
-                          title={frontendMessage("observability.title")}
+                          title={frontendMessage("continuity.title")}
                           className="h-full min-h-0 bg-surface-panel"
                         />
                       }
                     >
-                      <LazyEventObservabilityPanel />
+                      <LazyContinuityPanel />
                     </Suspense>
-                  </ErrorBoundary>
-                }
-                statePanel={
-                  <Suspense
-                    fallback={
-                      <StateView
-                        status="loading"
-                        title={frontendMessage("continuity.title")}
-                        className="h-full min-h-0 bg-surface-panel"
-                      />
-                    }
-                  >
-                    <LazyContinuityPanel send={send} connected={status === "open"} />
-                  </Suspense>
-                }
-                workflowDockTool={workflowDockTool}
-                onWorkflowDockToolChange={handleWorkflowDockToolChange}
-                sessionDrawerOpen={sessionDrawerOpen}
-                onSessionDrawerOpenChange={setSessionDrawerOpen}
-                workflowDrawerOpen={workflowDrawerOpen}
-                onWorkflowDrawerOpenChange={setWorkflowDrawerOpen}
-                responsiveMode={responsiveMode}
-                onNewSession={handleNewSession}
-                onOpenSessionPanel={handleOpenSessionPanel}
-                onOpenWorkflowPanel={handleOpenWorkflowPanel}
-                onRefreshSession={activeId ? handleRefreshActiveSession : undefined}
-                onRefreshInterface={handleRefreshInterface}
-              />
-              {settingsController.section !== null || settingsController.closeConfirmationOpen ? (
-                SettingsOverlayComponent && settingsReady ? (
-                  <SettingsOverlayComponent
-                    controller={settingsController}
-                    workbench={{
-                      environment: {
-                        appVersion: __SENERA_APP_VERSION__,
-                        frontendVersion: __SENERA_FRONTEND_VERSION__,
-                        mode: import.meta.env.MODE,
-                        surface: runtimeSurface,
-                        runtimeUpdate,
-                      },
-                      values: { defaultSidebarCollapsed, defaultRightPanelCollapsed },
-                      motionLevel,
-                      onValueChange: (id, value) => {
-                        if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
-                        if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
-                      },
-                      onMotionLevelChange: setMotionLevel,
-                      systemConfig: settingsRuntime.systemConfig,
-                      workspace: settingsRuntime.workspace,
-                    }}
-                  />
-                ) : (
-                  <SettingsSurfaceLoading presentation="overlay" />
-                )
-              ) : null}
+                  }
+                  agentsPanel={
+                    <ErrorBoundary
+                      resetKey={activeId}
+                      fallback={(error) => (
+                        <StateView
+                          status="error"
+                          title={frontendMessage("app.errorBoundary.title")}
+                          description={error.message}
+                          onRetry={() => window.location.reload()}
+                          retryLabel={frontendMessage("app.errorBoundary.reload")}
+                          className="h-full min-h-0 bg-surface-panel"
+                        />
+                      )}
+                    >
+                      <Suspense
+                        fallback={
+                          <StateView
+                            status="loading"
+                            title={frontendMessage("workflow.childRun.board.emptyTitle")}
+                            className="h-full min-h-0 bg-surface-panel"
+                          />
+                        }
+                      >
+                        <LazyAgentBoardPanel
+                          focusedChildRunId={
+                            focusedChildRun?.sessionId === activeId ? focusedChildRun.childRunId : undefined
+                          }
+                          onClearFocus={handleClearAgentFocus}
+                        />
+                      </Suspense>
+                    </ErrorBoundary>
+                  }
+                  workflowDockTool={workflowDockTool}
+                  onWorkflowDockToolChange={handleWorkflowDockToolChange}
+                  sessionDrawerOpen={sessionDrawerOpen}
+                  onSessionDrawerOpenChange={setSessionDrawerOpen}
+                  workflowDrawerOpen={workflowDrawerOpen}
+                  onWorkflowDrawerOpenChange={setWorkflowDrawerOpen}
+                  responsiveMode={responsiveMode}
+                  onNewSession={handleNewSession}
+                  onOpenSessionPanel={handleOpenSessionPanel}
+                  onOpenWorkflowPanel={handleOpenWorkflowPanel}
+                  onRefreshSession={activeId ? handleRefreshActiveSession : undefined}
+                  onRefreshInterface={handleRefreshInterface}
+                />
+                {settingsController.section !== null || settingsController.closeConfirmationOpen ? (
+                  SettingsOverlayComponent && settingsReady ? (
+                    <SettingsOverlayComponent
+                      controller={settingsController}
+                      workbench={{
+                        environment: {
+                          appVersion: __SENERA_APP_VERSION__,
+                          frontendVersion: __SENERA_FRONTEND_VERSION__,
+                          mode: import.meta.env.MODE,
+                          surface: runtimeSurface,
+                          runtimeUpdate,
+                        },
+                        values: { defaultSidebarCollapsed, defaultRightPanelCollapsed },
+                        motionLevel,
+                        onValueChange: (id, value) => {
+                          if (id === "defaultSidebarCollapsed") setDefaultSidebarCollapsed(value);
+                          if (id === "defaultRightPanelCollapsed") setDefaultRightPanelCollapsed(value);
+                        },
+                        onMotionLevelChange: setMotionLevel,
+                        systemConfig: settingsRuntime.systemConfig,
+                        workspace: settingsRuntime.workspace,
+                      }}
+                    />
+                  ) : (
+                    <SettingsSurfaceLoading presentation="overlay" />
+                  )
+                ) : null}
+              </ChildRunNavigationContext.Provider>
               <SeneraToaster />
             </WorkspaceMenuProvider>
-          </WorkspaceResourceProvider>
+          </WorkspaceRuntimeProvider>
         </TooltipProvider>
       </AppAppearanceProvider>
     </AppMotionProvider>

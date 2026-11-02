@@ -8,6 +8,7 @@ import { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
 import { AgentProviderModelDiscovery } from "../Config/AgentProviderModelDiscovery.js";
 import { AgentSandboxRuntimeService } from "../Sandbox/AgentSandboxRuntimeService.js";
 import { AgentWebSocketEventEnvelopeSender } from "./AgentWebSocketEventSender.js";
+import { AgentWebSocketDeliveryError } from "./AgentWebSocketDeliveryError.js";
 import { AgentWebSocketHttpRouter } from "./AgentWebSocketHttpRouter.js";
 import { AgentWebSocketMessageRouter } from "./AgentWebSocketMessageRouter.js";
 import { AgentStaticFrontendHttpApi } from "./AgentStaticFrontendHttpApi.js";
@@ -16,7 +17,6 @@ import type {
   AgentWebSocketRequestContext,
   AgentWebSocketServerOptions,
 } from "./AgentWebSocketTypes.js";
-import { AgentAuthenticationHttpApi } from "../Auth/AgentAuthenticationHttpApi.js";
 import {
   type AgentServerAccessGuard,
   type AgentAccessFailure,
@@ -34,7 +34,14 @@ import { AgentResourceResolver } from "../Resources/AgentResourceResolver.js";
 import { AgentModelsDevCatalog } from "../ModelEndpoints/AgentModelsDevCatalog.js";
 import { AgentArtifactMemoryHttpApi } from "../Memory/AgentArtifactMemoryHttpApi.js";
 import { AgentProfileAvatarHttpApi } from "../Session/AgentProfileAvatarHttpApi.js";
+import { AgentDirectoryHttpApi } from "../Profile/AgentDirectoryHttpApi.js";
+import { readAgentMarkdownPromptPreset } from "../Prompt/AgentMarkdownPromptPreset.js";
+import { resolveModelProviderConfig } from "../AgentDefaults.js";
 import { AgentProfileAvatarStore } from "../Session/AgentProfileAvatarStore.js";
+import { AgentWorkspaceCheckpointHttpApi } from "../WorkspaceResources/AgentWorkspaceCheckpointHttpApi.js";
+import { AgentOneBot11ClientHttpApi } from "../Channels/Client/AgentOneBot11ClientHttpApi.js";
+import { AgentChannelClientConnections } from "../Channels/Client/AgentChannelClientConnections.js";
+import { AgentSessionInsightsHttpApi } from "../Session/AgentSessionInsightsHttpApi.js";
 
 export type { AgentWebSocketServerOptions } from "./AgentWebSocketTypes.js";
 
@@ -42,7 +49,7 @@ export type { AgentWebSocketServerOptions } from "./AgentWebSocketTypes.js";
 export class AgentWebSocketServer {
   readonly transport: AgentWebSocketTransport;
   get clientCount(): number {
-    return this.clients.size;
+    return this.clients.size + (this.channelClients?.clientCount ?? 0);
   }
   private readonly ownsTransport: boolean;
   private readonly workspaceId: string;
@@ -55,10 +62,12 @@ export class AgentWebSocketServer {
   private readonly providerCredentialApi: AgentProviderCredentialHttpApi;
   private readonly extensionSecretApi: AgentExtensionSecretHttpApi;
   private readonly workspaceResourceApi: AgentWorkspaceResourceHttpApi;
+  private readonly workspaceCheckpointApi: AgentWorkspaceCheckpointHttpApi;
   private readonly profileAvatarApi: AgentProfileAvatarHttpApi;
   private readonly messageRouter: AgentWebSocketMessageRouter;
   private readonly accessGuard: AgentServerAccessGuard;
   private readonly channelControl?: AgentChannelServiceControl;
+  private readonly channelClients?: AgentChannelClientConnections;
   private readonly modelsDevCatalog: AgentModelsDevCatalog;
   private heartbeatTimer?: NodeJS.Timeout;
   private unregister?: () => void;
@@ -78,7 +87,7 @@ export class AgentWebSocketServer {
         catalog: options.workspaceCatalog,
         openWorkspace: options.openWorkspace,
         staticFrontendRoot: options.staticFrontendRoot,
-        automaticLoopbackHttp: options.automaticLoopbackHttp,
+        accessProfile: options.accessProfile,
         accessGuard: options.accessGuard,
         logger: options.logger,
       });
@@ -98,6 +107,11 @@ export class AgentWebSocketServer {
     const sandboxRuntimeService = options.sandboxRuntimeService ?? new AgentSandboxRuntimeService();
     this.serverConfig = resolveServerConfig(options.config);
     this.accessGuard = this.transport.accessGuard;
+    if (options.channelClient) {
+      this.channelClients = new AgentChannelClientConnections(this.accessGuard, () =>
+        this.onClientCountChanged?.(this.clientCount),
+      );
+    }
     this.eventSender = new AgentWebSocketEventEnvelopeSender({
       logger: this.logger,
       eventWriter: options.eventWriter,
@@ -141,6 +155,13 @@ export class AgentWebSocketServer {
       maxTextBytes: this.serverConfig.RequestMaxBytes,
       isOriginAllowed: (origin, corsRequest) => this.accessGuard.allowsOrigin(origin, corsRequest),
     });
+    this.workspaceCheckpointApi = new AgentWorkspaceCheckpointHttpApi({
+      workspaceRoot: options.workspaceRoot ?? process.cwd(),
+      configSnapshot,
+      artifactManifestIndex: options.artifactManifestIndex,
+      maxRequestBytes: this.serverConfig.RequestMaxBytes,
+      isOriginAllowed: (origin, corsRequest) => this.accessGuard.allowsOrigin(origin, corsRequest),
+    });
     const profileAvatarStore =
       options.profileAvatarStore ?? new AgentProfileAvatarStore(options.workspaceRoot ?? process.cwd());
     this.profileAvatarApi = new AgentProfileAvatarHttpApi({
@@ -155,16 +176,42 @@ export class AgentWebSocketServer {
       isOriginAllowed: (origin, corsRequest) => this.accessGuard.allowsOrigin(origin, corsRequest),
     });
     this.httpRouter = new AgentWebSocketHttpRouter({
+      agentDirectoryApi: options.agentDirectory
+        ? new AgentDirectoryHttpApi({
+            directory: options.agentDirectory,
+            commands: options.agentDirectoryCommands,
+            maximumBytes: this.serverConfig.RequestMaxBytes,
+            isOriginAllowed: (origin, request) => this.accessGuard.allowsOrigin(origin, request),
+            validateAgent: async (input) => {
+              if (input.modelProviderId) resolveModelProviderConfig(configSnapshot(), input.modelProviderId);
+              if (input.presetPath) {
+                const result = readAgentMarkdownPromptPreset(
+                  options.workspaceRoot ?? process.cwd(),
+                  this.serverConfig.RequestMaxBytes,
+                  { activePath: input.presetPath, enabled: true },
+                );
+                if (result.error) throw new Error(result.error);
+              }
+              if (input.avatarPath && !(await profileAvatarStore.isReadable("assistant", input.avatarPath)))
+                throw new Error("Select an uploaded assistant avatar.");
+            },
+          })
+        : undefined,
       uploadApi: this.uploadApi,
+      sessionInsightsApi: new AgentSessionInsightsHttpApi({
+        read: (input) => options.sessionManager.readInsights(input),
+        isOriginAllowed: (origin, request) => this.accessGuard.allowsOrigin(origin, request),
+      }),
+      channelClientApi: options.channelClient ? new AgentOneBot11ClientHttpApi(options.channelClient) : undefined,
       providerCredentialApi: this.providerCredentialApi,
       extensionSecretApi: this.extensionSecretApi,
       workspaceResourceApi: this.workspaceResourceApi,
+      workspaceCheckpointApi: this.workspaceCheckpointApi,
       profileAvatarApi: this.profileAvatarApi,
       artifactMemoryApi,
       staticFrontendApi: options.staticFrontendRoot
         ? new AgentStaticFrontendHttpApi({ rootDir: options.staticFrontendRoot })
         : undefined,
-      authenticationApi: new AgentAuthenticationHttpApi(this.accessGuard),
       healthApi: new AgentHealthHttpApi(),
       runtimeUpdateApi: options.runtimeUpdate ? new AgentRuntimeUpdateHttpApi(options.runtimeUpdate) : undefined,
       channelWebhookApi: options.channelWebhookApi,
@@ -215,6 +262,7 @@ export class AgentWebSocketServer {
       this.unregister?.();
       this.unregister = undefined;
       if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+      this.channelClients?.close();
       const clientsClosed = Promise.all(
         [...this.clients].map(
           (socket) =>
@@ -258,7 +306,7 @@ export class AgentWebSocketServer {
       return;
     }
     this.clients.add(socket);
-    this.onClientCountChanged?.(this.clients.size);
+    this.onClientCountChanged?.(this.clientCount);
     this.accessGuard.registerConnection(socket, access);
     socket.on("message", (data) => {
       const authorization = this.accessGuard.authorizeMessage(socket);
@@ -275,7 +323,7 @@ export class AgentWebSocketServer {
     socket.on("pong", () => this.accessGuard.recordPong(socket));
     socket.on("close", () => {
       this.clients.delete(socket);
-      this.onClientCountChanged?.(this.clients.size);
+      this.onClientCountChanged?.(this.clientCount);
       this.accessGuard.unregisterConnection(socket);
     });
     socket.on("error", () => {
@@ -293,21 +341,37 @@ export class AgentWebSocketServer {
         context: {},
         data: { statuses: [...statuses] },
       })
-      .catch((error) => this.logger.warn("消息渠道初始状态发送失败", { error: errorMessage(error) }));
+      .catch((error: unknown) => {
+        if (!(error instanceof AgentWebSocketDeliveryError))
+          this.logger.warn("消息渠道初始状态发送失败", { error: errorMessage(error) });
+      });
   }
 
   private heartbeat(): void {
+    this.channelClients?.heartbeat();
     for (const socket of this.clients) {
-      if (this.accessGuard.shouldTerminateConnection(socket)) {
-        socket.close(
-          AgentWebSocketCloseCodes.AuthenticationRequired,
-          AgentWebSocketCloseReasons.AuthenticationRequired,
-        );
+      const failure = this.accessGuard.connectionFailure(socket);
+      if (failure) {
+        socket.close(failure.code, failure.reason);
         continue;
       }
       if (socket.readyState === socket.OPEN) {
         socket.ping();
       }
+    }
+  }
+
+  connectChannelClient(socket: WebSocket, access: AgentAuthenticatedAccess, request: http.IncomingMessage): void {
+    if (this.stopPromise || !this.channelClients || !this.channelControl?.connectOneBot11Client) {
+      socket.close(1001, "Channel client is unavailable");
+      return;
+    }
+    this.channelClients.add(socket, access);
+    try {
+      this.channelControl.connectOneBot11Client(socket, request);
+    } catch (error) {
+      this.logger.warn("渠道客户端连接失败", { error: errorMessage(error) });
+      socket.close(1011, "Channel connection failed");
     }
   }
 

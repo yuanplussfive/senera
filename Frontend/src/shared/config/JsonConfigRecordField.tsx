@@ -1,9 +1,14 @@
-import { Plus, Trash2 } from "lucide-react";
 import type { ConfigFormFieldData, ConfigFormFieldOptionValue } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
-import { MenuSelect } from "../ui";
+import { AppIcon, MenuSelect, SecretInput } from "../ui";
 import { jsonConfigFormMessages } from "./jsonConfigFormMessages";
 import { sameOptionValue } from "./JsonConfigValue";
+import {
+  isJsonConfigObject,
+  readRelativeItemPath,
+  readValueAtPath,
+  writeJsonConfigFieldValue,
+} from "./JsonConfigValue";
 
 export interface JsonConfigRecordFieldProps {
   field: ConfigFormFieldData;
@@ -11,6 +16,12 @@ export interface JsonConfigRecordFieldProps {
   disabled: boolean;
   inputClassName: string;
   onChange: (value: Record<string, unknown>) => void;
+  renderInput?: (
+    field: ConfigFormFieldData,
+    value: unknown,
+    disabled: boolean,
+    onChange: (value: unknown) => void,
+  ) => JSX.Element;
 }
 
 export function JsonConfigRecordField({
@@ -19,9 +30,11 @@ export function JsonConfigRecordField({
   disabled,
   inputClassName,
   onChange,
+  renderInput,
 }: JsonConfigRecordFieldProps): JSX.Element {
   const entries = Object.entries(value);
   const updateEntryKey = (index: number, nextKey: string): void => {
+    if (entries.some(([key], itemIndex) => itemIndex !== index && key === nextKey)) return;
     const nextEntries = entries.map((entry, entryIndex) =>
       entryIndex === index ? ([nextKey, entry[1]] as [string, unknown]) : entry,
     );
@@ -43,7 +56,15 @@ export function JsonConfigRecordField({
   return (
     <div className="space-y-2">
       {entries.map(([key, entryValue], index) => (
-        <div key={`${key}-${index}`} className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
+        <div
+          key={index}
+          className={cn(
+            "grid min-w-0 gap-2",
+            field.itemFields?.length
+              ? "grid-cols-[minmax(0,1fr)_auto]"
+              : "grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]",
+          )}
+        >
           <input
             value={key}
             placeholder={field.keyPlaceholder}
@@ -52,22 +73,64 @@ export function JsonConfigRecordField({
             onChange={(event) => updateEntryKey(index, event.currentTarget.value)}
             className={inputClassName}
           />
-          <RecordValueControl
-            field={field}
-            value={entryValue}
-            disabled={disabled}
-            inputClassName={inputClassName}
-            onChange={(nextValue) => updateRawEntryValue(index, nextValue)}
-            onTextChange={(nextValue) => updateEntryValue(index, nextValue)}
-          />
+          {!field.itemFields?.length ? (
+            <RecordValueControl
+              field={field}
+              value={entryValue}
+              disabled={disabled}
+              inputClassName={inputClassName}
+              onChange={(nextValue) => updateRawEntryValue(index, nextValue)}
+              onTextChange={(nextValue) => updateEntryValue(index, nextValue)}
+            />
+          ) : null}
           <IconAction
             label={jsonConfigFormMessages.delete()}
             disabled={disabled}
             danger
             onClick={() => onChange(Object.fromEntries(entries.filter((_, itemIndex) => itemIndex !== index)))}
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <AppIcon icon="trash" size={14} />
           </IconAction>
+          {field.itemFields?.length && renderInput ? (
+            <div className="col-span-full grid min-w-0 gap-3 border-l border-line pl-3 md:grid-cols-2">
+              {field.itemFields.map((itemField) => {
+                const relativePath = readRelativeItemPath(field.path, itemField.path);
+                const record = isJsonConfigObject(entryValue) ? entryValue : {};
+                const effectiveRecord =
+                  isJsonConfigObject(field.effectiveValue) && isJsonConfigObject(field.effectiveValue[key])
+                    ? field.effectiveValue[key]
+                    : {};
+                const itemValue =
+                  readValueAtPath(record, relativePath) ??
+                  readValueAtPath(effectiveRecord, relativePath) ??
+                  itemField.defaultValue;
+                return (
+                  <div key={relativePath.join(".")} className="min-w-0 space-y-1.5">
+                    <div className="text-[12px] text-content-secondary">{itemField.label}</div>
+                    {renderInput(
+                      { ...itemField, path: [...field.path, key, ...relativePath] },
+                      itemValue,
+                      disabled,
+                      (nextValue) =>
+                        updateRawEntryValue(
+                          index,
+                          writeJsonConfigFieldValue(
+                            record,
+                            relativePath,
+                            itemField.type === "string" && !itemField.required && nextValue === ""
+                              ? undefined
+                              : nextValue,
+                          ),
+                        ),
+                    )}
+                    {itemField.description ? (
+                      <p className="text-[11px] leading-4 text-content-muted">{itemField.description}</p>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
       ))}
       <button
@@ -78,11 +141,13 @@ export function JsonConfigRecordField({
           const nextKey = nextRecordKey(value);
           onChange({
             ...value,
-            [nextKey]: defaultRecordItem(field.itemType ?? "string"),
+            [nextKey]: field.itemFields?.length
+              ? structuredClone(field.defaultItem ?? {})
+              : defaultRecordItem(field.itemType ?? "string"),
           });
         }}
       >
-        <Plus className="h-3.5 w-3.5" />
+        <AppIcon icon="plus" size={14} />
         {jsonConfigFormMessages.addRecord()}
       </button>
     </div>
@@ -104,6 +169,16 @@ function RecordValueControl({
   onChange: (value: unknown) => void;
   onTextChange: (value: string) => void;
 }): JSX.Element {
+  if (field.secret)
+    return (
+      <SecretInput
+        value={String(value ?? "")}
+        placeholder={field.valuePlaceholder}
+        ariaLabel={field.label}
+        disabled={disabled}
+        onChange={onTextChange}
+      />
+    );
   const options = field.options ?? [];
   if (options.length > 0) {
     const selectedIndex = options.findIndex((option) => sameOptionValue(value, option));
@@ -125,7 +200,7 @@ function RecordValueControl({
 
   return (
     <input
-      type={field.secret ? "password" : field.itemType === "number" ? "number" : "text"}
+      type={field.itemType === "number" ? "number" : "text"}
       value={String(value ?? "")}
       placeholder={field.valuePlaceholder}
       disabled={disabled}
@@ -154,7 +229,7 @@ function IconAction({
       type="button"
       disabled={disabled}
       className={cn(
-        "grid h-8 w-8 shrink-0 place-items-center border border-ink-200 bg-paper-50 text-ink-500 transition disabled:pointer-events-none disabled:opacity-50",
+        "grid h-9 w-9 shrink-0 place-items-center rounded-md border border-ink-200 bg-paper-50 text-ink-500 transition disabled:pointer-events-none disabled:opacity-50",
         danger ? "hover:bg-brick-50 hover:text-brick-600" : "hover:bg-ink-900/[0.04] hover:text-ink-800",
       )}
       aria-label={label}

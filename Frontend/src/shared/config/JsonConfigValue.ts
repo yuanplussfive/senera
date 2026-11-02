@@ -43,7 +43,7 @@ export function normalizeJsonConfigFieldValue(field: ConfigFormFieldData, value:
 export function readValueAtPath(source: unknown, pathParts: readonly string[]): unknown {
   let current = source;
   for (const part of pathParts) {
-    current = isJsonConfigObject(current) ? current[part] : undefined;
+    current = isJsonConfigObject(current) && Object.hasOwn(current, part) ? current[part] : undefined;
   }
   return current;
 }
@@ -186,11 +186,12 @@ function setValueAtPath(document: JsonConfigObject, pathParts: readonly string[]
 
   let current: JsonConfigObject = document;
   for (const part of pathParts.slice(0, -1)) {
-    const next = current[part];
-    if (!isJsonConfigObject(next)) current[part] = {};
+    const next = Object.hasOwn(current, part) ? current[part] : undefined;
+    if (!isJsonConfigObject(next))
+      Object.defineProperty(current, part, { value: {}, enumerable: true, writable: true, configurable: true });
     current = current[part] as JsonConfigObject;
   }
-  current[lastKey] = value;
+  Object.defineProperty(current, lastKey, { value, enumerable: true, writable: true, configurable: true });
 }
 
 function deleteValueAtPath(document: JsonConfigObject, pathParts: readonly string[]): void {
@@ -200,6 +201,7 @@ function deleteValueAtPath(document: JsonConfigObject, pathParts: readonly strin
   const parents: Array<{ parent: JsonConfigObject; key: string }> = [];
   let current = document;
   for (const part of pathParts.slice(0, -1)) {
+    if (!Object.hasOwn(current, part)) return;
     const next = current[part];
     if (!isJsonConfigObject(next)) return;
     parents.push({ parent: current, key: part });

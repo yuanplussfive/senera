@@ -6,6 +6,7 @@ import {
   AgentSubagentRoleCatalog,
   resolveAgentSubagentBuiltinRoleDirectory,
 } from "../../../Source/AgentSystem/Orchestration/AgentSubagentRoleCatalog.js";
+import { materializeToolContractArguments } from "../../../Source/AgentSystem/ToolRuntime/AgentToolSignatureArgumentValidator.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 
 describe("subagent role catalog", () => {
@@ -70,6 +71,13 @@ describe("subagent role catalog", () => {
       },
     });
     expect(JSON.stringify(first)).not.toContain("modelProviderId");
+    expect(projection.projectRuntimeValidationSchema?.({} as never, sourceSchema)).toBe(first);
+    expect(
+      materializeToolContractArguments({
+        schema: projection.projectRuntimeValidationSchema?.({} as never, sourceSchema) ?? sourceSchema,
+        args: { task: "Review the change." },
+      }),
+    ).toEqual({ ok: true, value: { task: "Review the change.", agent: "reviewer" } });
     expect(projection.projectDescription?.({} as never, "Spawn work")).toContain(
       "reviewer (default) [read_only]: Review a change for correctness.",
     );
@@ -114,10 +122,21 @@ describe("subagent role catalog", () => {
         },
       },
       required: ["task"],
+      additionalProperties: false,
     };
 
     const projected = projection.projectInvocationSchema?.({} as never, sourceSchema);
     expect(projected?.properties).not.toHaveProperty("resources");
+    const runtimeSchema = projection.projectRuntimeValidationSchema?.({} as never, sourceSchema) ?? sourceSchema;
+    expect(
+      materializeToolContractArguments({
+        schema: runtimeSchema,
+        args: {
+          task: "Review the change.",
+          resources: [{ capability: "workspace.path", value: "." }],
+        },
+      }),
+    ).toMatchObject({ ok: false });
   });
 
   test("rejects role catalogs without exactly one declarative default", () => {
@@ -226,7 +245,6 @@ function writeRolePackage(root: string, domain: string, id: string, rolesPath: s
     id,
     domain,
     settingsSurface: "system-tools",
-    version: "1.0.0",
     displayName: localized(`${id} extension`),
     description: localized(`${id} extension description.`),
     contributions: [{ kind: "agentRoles", path: rolesPath }],

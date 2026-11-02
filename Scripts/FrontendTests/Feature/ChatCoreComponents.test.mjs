@@ -1,5 +1,5 @@
 import React from "react";
-import { act, cleanup, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { countTokens } from "gpt-tokenizer";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
@@ -18,6 +18,7 @@ const { MessageActions, readMessageActionIntents } =
   await import("../../../Frontend/src/features/chat/MessageActions.tsx");
 const { AssistantTurnRow } = await import("../../../Frontend/src/features/chat/AssistantTurnRow.tsx");
 const { preloadMarkdownRenderer } = await import("../../../Frontend/src/shared/code/LazyMarkdownRenderer.tsx");
+const performanceMonitor = await import("../../../Frontend/src/app/PerformanceMonitor.tsx");
 const { MessageMetrics } = await import("../../../Frontend/src/features/chat/MessageMetrics.tsx");
 const { TooltipProvider } = await import("../../../Frontend/src/shared/ui/Tooltip.tsx");
 const { MessageList, readMessageListItemKey } = await import("../../../Frontend/src/features/chat/MessageList.tsx");
@@ -28,6 +29,7 @@ const { frontendMessage, FrontendLocales } = await import("../../../Frontend/src
 const { frontendChatMessage } = await import("../../../Frontend/src/i18n/frontendChatMessageCatalog.ts");
 const { setFrontendLocale } = await import("../../../Frontend/src/i18n/frontendLocaleStore.ts");
 const { clearPersistedStore, useStore } = await import("../../../Frontend/src/store/sessionStore.ts");
+const { readTestToastCalls, clearTestToastCalls } = await import("../mocks/sonner.mjs");
 const {
   createChatPanelProps,
   createComposerProps,
@@ -47,6 +49,125 @@ afterEach(() => {
   vi.clearAllMocks();
   vi.restoreAllMocks();
   clearPersistedStore();
+  clearTestToastCalls();
+});
+
+test("the capability picker pins a real selection and refuses to silently discard a changed capability", async () => {
+  const user = userEvent.setup();
+  const entry = {
+    kind: "skill",
+    id: "browser-automation",
+    revision: "r1",
+    title: "浏览器操作",
+    description: "浏览页面并下载文件。",
+    enabled: true,
+    selectable: true,
+  };
+  const onSend = vi.fn(() => false);
+  const props = createComposerProps({ activationCatalog: { revision: "catalog-1", entries: [entry] }, onSend });
+  const view = renderWithFrontendProviders(withUploadPreviewProvider(React.createElement(ChatComposer, props)));
+  const input = screen.getByRole("combobox", { name: "输入消息" });
+  await user.type(input, "@browser");
+  expect(input.getAttribute("aria-controls")).toBe(screen.getByRole("listbox").id);
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(input).toHaveValue("@browser-automation "));
+  await user.type(input, "检查下载");
+  await user.keyboard("{Enter}");
+  expect(onSend).toHaveBeenCalledWith("@browser-automation 检查下载", undefined, undefined, {
+    catalogRevision: "catalog-1",
+    explicit: [{ kind: "skill", id: "browser-automation", revision: "r1" }],
+  });
+  onSend.mockClear();
+  view.rerender(
+    React.createElement(
+      TooltipProvider,
+      { delayDuration: 0 },
+      withUploadPreviewProvider(
+        React.createElement(ChatComposer, {
+          ...props,
+          activationCatalog: { revision: "catalog-2", entries: [{ ...entry, revision: "r2" }] },
+        }),
+      ),
+    ),
+  );
+  await user.click(screen.getByRole("button", { name: "send" }));
+  expect(onSend).not.toHaveBeenCalled();
+  expect(input).toHaveValue("@browser-automation 检查下载");
+  expect(readTestToastCalls().at(-1)).toMatchObject({
+    variant: "error",
+    title: expect.stringContaining("@browser-automation"),
+  });
+});
+
+test.each([false, true])(
+  "replacing a capability at its caret replaces the entire token (retain another occurrence: %s)",
+  async (retainOriginal) => {
+    const user = userEvent.setup();
+    const entries = ["browser-automation", "browser-download"].map((id) => ({
+      kind: "skill",
+      id,
+      title: id,
+      revision: "r1",
+      description: "浏览器能力",
+      enabled: true,
+      selectable: true,
+    }));
+    const onSend = vi.fn(() => false);
+    renderWithFrontendProviders(
+      withUploadPreviewProvider(
+        React.createElement(
+          ChatComposer,
+          createComposerProps({
+            activationCatalog: { revision: "catalog-1", entries },
+            onSend,
+          }),
+        ),
+      ),
+    );
+    const input = screen.getByRole("combobox", { name: "输入消息" });
+    await user.type(input, "@browser-auto");
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(input).toHaveValue("@browser-automation "));
+    const suffix = `检查下载${retainOriginal ? " @browser-automation" : ""}`;
+    await user.type(input, suffix);
+    input.setSelectionRange(4, 4);
+    fireEvent.select(input);
+    await user.click(screen.getByRole("option", { name: "browser-download @browser-download" }));
+    await waitFor(() => expect(input).toHaveValue(`@browser-download ${suffix}`));
+    await user.click(screen.getByRole("button", { name: "send" }));
+    expect(onSend).toHaveBeenCalledWith(`@browser-download ${suffix}`, undefined, undefined, {
+      catalogRevision: "catalog-1",
+      explicit: [
+        ...(retainOriginal ? [{ kind: "skill", id: "browser-automation", revision: "r1" }] : []),
+        { kind: "skill", id: "browser-download", revision: "r1" },
+      ],
+    });
+  },
+);
+
+test("unselected @ text stays ordinary text and an empty picker can be dismissed", async () => {
+  const user = userEvent.setup();
+  const onSend = vi.fn(() => true);
+  renderWithFrontendProviders(
+    withUploadPreviewProvider(
+      React.createElement(
+        ChatComposer,
+        createComposerProps({
+          activationCatalog: { revision: "empty", entries: [] },
+          onSend,
+        }),
+      ),
+    ),
+  );
+  const input = screen.getByRole("combobox", { name: "输入消息" });
+  await user.type(input, "@someone");
+  expect(screen.getByRole("listbox")).toBeInTheDocument();
+  await user.keyboard("{Escape}");
+  expect(input).toHaveAttribute("aria-expanded", "false");
+  expect(input).not.toHaveClass("text-transparent");
+  await user.type(input, " 你好");
+  await user.keyboard("{Enter}");
+  expect(onSend).toHaveBeenCalledWith("@someone 你好", undefined, undefined);
 });
 
 test("chat composer updates its memoized hint when the frontend locale changes", async () => {
@@ -209,33 +330,29 @@ test("chat composer exposes the selected execution approval mode", async () => {
   expect(onSelectMode).toHaveBeenCalledWith("full_access");
 });
 
-test("chat composer shows the current context usage in the compact progress indicator", () => {
+test("chat composer shows the current context usage pill only near the window limit", () => {
   const { rerender } = renderWithFrontendProviders(
     withUploadPreviewProvider(React.createElement(ChatComposer, createComposerProps())),
   );
 
-  expect(screen.queryByRole("progressbar", { name: "背景信息窗口" })).not.toBeInTheDocument();
+  expect(document.querySelector("[data-context-usage-indicator]")).toBeNull();
 
-  rerender(
-    withUploadPreviewProvider(
-      React.createElement(
-        ChatComposer,
-        createComposerProps({
-          runtimeUsage: {
-            contextUsage: {
-              tokens: 10_073,
-              contextWindow: 100_000,
-              percent: 10.073245614035088,
-            },
-          },
-        }),
+  const renderUsage = (contextUsage) =>
+    rerender(
+      withUploadPreviewProvider(
+        React.createElement(ChatComposer, createComposerProps({ runtimeUsage: { contextUsage } })),
       ),
-    ),
-  );
+    );
 
-  const populatedIndicator = screen.getByRole("progressbar", { name: "背景信息窗口" });
-  expect(populatedIndicator).not.toHaveTextContent("10.07%");
-  expect(populatedIndicator).toHaveAttribute("aria-valuetext", "10%");
+  renderUsage({ tokens: 10_073, contextWindow: 100_000, percent: 10.073245614035088 });
+  expect(document.querySelector("[data-context-usage-indicator]")).toBeNull();
+
+  renderUsage({ tokens: 92_160, contextWindow: 128_000, percent: 72 });
+  const populatedIndicator = document.querySelector("[data-context-usage-indicator]");
+  expect(populatedIndicator).not.toBeNull();
+  expect(populatedIndicator).not.toHaveTextContent("72.0%");
+  expect(populatedIndicator).toHaveTextContent("72%");
+  expect(populatedIndicator).toHaveAttribute("aria-label", "背景信息窗口：72% 已用（剩余 28%）");
   expect(populatedIndicator.parentElement).toContainElement(document.querySelector("[data-composer-model-selector]"));
   expect(document.querySelector("[data-composer-model-selector]")).not.toHaveClass("border-line-subtle");
 });
@@ -257,7 +374,7 @@ test("chat composer sends trimmed text and switches queue mode while a run is ac
     ),
   );
 
-  const composer = screen.getByRole("textbox", { name: "输入消息" });
+  const composer = screen.getByRole("combobox", { name: "输入消息" });
   expect(composer).not.toHaveClass("focus-visible:ring-2");
   expect(document.querySelector("[data-chat-composer]")).toHaveClass("bg-surface-raised");
   expect(document.querySelector("[data-chat-composer]")).not.toHaveClass(
@@ -285,11 +402,11 @@ test("chat composer sends trimmed text and switches queue mode while a run is ac
   expect(screen.getByRole("button", { name: frontendMessage("chat.composer.cancelRunning") })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "inject-current-run" })).not.toBeInTheDocument();
 
-  await user.type(screen.getByRole("textbox", { name: "输入消息" }), "steer now");
+  await user.type(screen.getByRole("combobox", { name: "输入消息" }), "steer now");
   await user.keyboard("{Enter}");
   expect(onSend).toHaveBeenLastCalledWith("steer now", undefined, "steer");
 
-  await user.type(screen.getByRole("textbox", { name: "输入消息" }), "follow later");
+  await user.type(screen.getByRole("combobox", { name: "输入消息" }), "follow later");
   await user.keyboard("{Alt>}{Enter}{/Alt}");
   expect(onSend).toHaveBeenLastCalledWith("follow later", undefined, "follow_up");
 
@@ -321,7 +438,7 @@ test("chat composer preserves a failed draft and leaves Escape to active interac
     ),
   );
 
-  const composer = screen.getByRole("textbox", { name: "输入消息" });
+  const composer = screen.getByRole("combobox", { name: "输入消息" });
   await user.type(composer, "preserve this draft");
   await user.keyboard("{Enter}");
   expect(composer).toHaveValue("preserve this draft");
@@ -373,7 +490,7 @@ test("settling composer queues follow-up messages without exposing run interrupt
     ),
   );
 
-  await user.type(screen.getByRole("textbox", { name: "输入消息" }), "继续检查");
+  await user.type(screen.getByRole("combobox", { name: "输入消息" }), "继续检查");
   await user.click(screen.getByRole("button", { name: "queue-follow-up" }));
 
   expect(onSend).toHaveBeenCalledWith("继续检查", undefined, "follow_up");
@@ -395,6 +512,8 @@ test("chat model selector keeps the current conversation choice and exposes the 
                 id: "openai:gpt-4o",
                 icon: "openai",
                 capabilities: { Chat: true },
+                toolPlanningMode: "baml",
+                stream: true,
                 model: "gpt-4o",
                 isDefault: false,
               },
@@ -402,6 +521,8 @@ test("chat model selector keeps the current conversation choice and exposes the 
                 id: "anthropic:sonnet",
                 icon: "anthropic",
                 capabilities: { Chat: true },
+                toolPlanningMode: "baml",
+                stream: true,
                 model: "claude-sonnet",
                 isDefault: true,
               },
@@ -417,20 +538,24 @@ test("chat model selector keeps the current conversation choice and exposes the 
     ),
   );
 
-  expect(screen.getByRole("button", { name: "选择模型" })).not.toHaveClass("focus:ring-2");
+  expect(screen.getByRole("combobox", { name: "选择模型" })).not.toHaveClass("focus:ring-2");
   expect(document.querySelector("[data-composer-trailing-controls]")).toContainElement(
     document.querySelector("[data-composer-model-selector]"),
   );
 
-  await user.click(screen.getByRole("button", { name: "选择模型" }));
-  expect(screen.getByText("当前对话模型")).toBeInTheDocument();
-  expect(screen.getByText("默认模型：claude-sonnet")).toBeInTheDocument();
-  expect(screen.getByRole("group")).toHaveClass("overflow-y-auto");
-  await user.click(screen.getByRole("menuitem", { name: "恢复为默认" }));
+  await user.click(screen.getByRole("combobox", { name: "选择模型" }));
+  expect(screen.getByRole("listbox", { name: "选择模型" })).toBeVisible();
+  expect(screen.getByRole("option", { name: /claude-sonnet.*默认/ })).toBeInTheDocument();
+  const search = screen.getByRole("combobox", { name: "选择模型" });
+  await user.clear(search);
+  await user.type(search, "sonnet");
+  expect(screen.getAllByRole("option")).toHaveLength(1);
+  expect(screen.getByRole("option", { name: /claude-sonnet/ })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "恢复为默认" }));
   expect(onApplyDefaultModel).toHaveBeenCalledTimes(1);
 
-  await user.click(screen.getByRole("button", { name: "选择模型" }));
-  await user.click(screen.getByRole("menuitem", { name: "添加模型" }));
+  await user.click(screen.getByRole("combobox", { name: "选择模型" }));
+  await user.click(screen.getByRole("button", { name: "添加模型" }));
   expect(onAddModel).toHaveBeenCalledTimes(1);
 });
 
@@ -447,6 +572,8 @@ test("chat model selector keeps reasoning levels in the model menu", async () =>
               {
                 id: "openai:reasoning",
                 capabilities: { Chat: true, Reasoning: true },
+                toolPlanningMode: "baml",
+                stream: true,
                 model: "reasoning-model",
                 isDefault: true,
                 thinkingLevels: ["off", "low", "high"],
@@ -465,12 +592,11 @@ test("chat model selector keeps reasoning levels in the model menu", async () =>
   );
 
   expect(document.querySelector("[data-composer-thinking-selector]")).toBeNull();
-  await user.click(screen.getByRole("button", { name: "选择模型" }));
+  await user.click(screen.getByRole("combobox", { name: "选择模型" }));
   expect(screen.getByText("推理等级")).toBeInTheDocument();
-  expect(screen.getByRole("menuitem", { name: "low" })).toBeInTheDocument();
-  expect(screen.getByRole("menuitem", { name: "深度" })).toBeInTheDocument();
-  expect(screen.getByRole("menu")).toHaveClass("grid-cols-[minmax(220px,1fr)_minmax(140px,auto)]");
-  await user.click(screen.getByRole("menuitem", { name: "深度" }));
+  await user.click(screen.getByRole("button", { name: "推理等级: low" }));
+  expect(screen.getByRole("menuitemradio", { name: "low" })).toBeChecked();
+  await user.click(screen.getByRole("menuitemradio", { name: "深度" }));
   expect(onSelectThinkingLevel).toHaveBeenCalledWith("high");
 });
 
@@ -493,9 +619,9 @@ test("chat model selector stays available for adding the first model", async () 
     ),
   );
 
-  await user.click(screen.getByRole("button", { name: "选择模型" }));
+  await user.click(screen.getByRole("combobox", { name: "选择模型" }));
   expect(screen.getByText("还没有添加模型")).toBeVisible();
-  await user.click(screen.getByRole("menuitem", { name: "添加模型" }));
+  await user.click(screen.getByRole("button", { name: "添加模型" }));
   expect(onAddModel).toHaveBeenCalledTimes(1);
 });
 
@@ -536,14 +662,14 @@ test("chat panel fills the composer from an empty-state suggestion without sendi
 
   expect(screen.getByText("空会话")).toBeInTheDocument();
   expect(onSend).not.toHaveBeenCalled();
-  expect(screen.getByRole("textbox", { name: "输入消息" })).toHaveValue("整理日志");
+  expect(screen.getByRole("combobox", { name: "输入消息" })).toHaveValue("整理日志");
 });
 
-test("a cancelled run with execution events folds its settled process", async () => {
+test.each(["cancelled", "completed"])("a %s run without final text keeps its settled process", async (status) => {
   const user = userEvent.setup();
   const cancelledRun = createRun({
     requestId: "request-cancelled-empty-chat",
-    status: "cancelled",
+    status,
     steps: [
       {
         ...stageTool("cancelled-empty-tool", "WorkspaceRead", "2026-01-01T00:00:00.000Z"),
@@ -587,13 +713,25 @@ test("a cancelled run with execution events folds its settled process", async ()
     return element;
   });
   expect(processToggle).toHaveAttribute("aria-expanded", "false");
-  expect(document.querySelector("[data-settled-turn-status='cancelled']")).toHaveTextContent("已取消");
+  if (status === "cancelled") {
+    expect(document.querySelector("[data-settled-turn-status='cancelled']")).toHaveTextContent("已取消");
+  }
+  const processDisclosure = document.getElementById(processToggle.getAttribute("aria-controls"));
+  expect(processDisclosure).toHaveAttribute("data-motion-disclosure-state", "closed");
+  expect(processDisclosure).toHaveAttribute("aria-hidden", "true");
+  expect(processDisclosure).toHaveAttribute("inert");
   expect(document.querySelector("[data-settled-turn-process]")).not.toBeInTheDocument();
 
   await user.click(processToggle);
   await waitFor(() => expect(processToggle).toHaveAttribute("aria-expanded", "true"));
   expect(document.querySelector("[data-settled-turn-process]")).toBeInTheDocument();
-  await waitFor(() => expect(document.querySelector("[data-execution-stage-fold]")).toBeInTheDocument());
+  await waitFor(() => expect(document.querySelector("[data-execution-stage-fold]")).toBeInTheDocument(), {
+    timeout: 10_000,
+  });
+  const mountedProcess = document.querySelector("[data-settled-turn-process]");
+  await user.click(processToggle);
+  expect(processDisclosure).toHaveAttribute("aria-hidden", "true");
+  expect(document.querySelector("[data-settled-turn-process]")).toBe(mountedProcess);
 });
 
 test("chat panel shows the conversation skeleton before history loading is marked", () => {
@@ -623,7 +761,48 @@ test("chat panel shows the conversation skeleton before history loading is marke
   expect(screen.getByRole("status", { name: "正在恢复 6 条历史消息" })).toBeVisible();
   expect(document.querySelector("[data-history-skeleton]")).not.toBeNull();
   expect(screen.queryByRole("button", { name: "整理日志" })).not.toBeInTheDocument();
-  expect(screen.getByRole("textbox", { name: "输入消息" })).toBeDisabled();
+  expect(screen.getByRole("combobox", { name: "输入消息" })).toBeDisabled();
+});
+
+test("editing a draft leaves the rendered conversation untouched while new messages still arrive", async () => {
+  const monitor = vi.spyOn(performanceMonitor, "PerformanceMonitor");
+  const message = createMessage({ id: "draft-isolation", role: "user", content: "当前对话" });
+  const record = {
+    sessionId: "draft-isolation",
+    title: "输入隔离",
+    status: "ready",
+    createdAt: message.createdAt,
+    updatedAt: message.createdAt,
+    entryCount: 1,
+    messageCount: 1,
+    messages: [message],
+    runs: [],
+  };
+  resetChatStore({
+    activeSessionId: record.sessionId,
+    sessionOrder: [record.sessionId],
+    sessions: { [record.sessionId]: record },
+    historyLoadedIds: { [record.sessionId]: true },
+    catalogSynced: { sessions: true },
+  });
+  renderWithFrontendProviders(React.createElement(ChatPanel, createChatPanelProps()));
+  await screen.findByRole("navigation", { name: "回复事件位置" });
+  const conversationRenders = () => monitor.mock.calls.filter(([props]) => props.id === "MessageList").length;
+  const beforeTyping = conversationRenders();
+  const composer = screen.getByRole("combobox", { name: "输入消息" });
+  fireEvent.change(composer, { target: { value: "继续补充这条草稿" } });
+  expect(composer).toHaveValue("继续补充这条草稿");
+  expect(conversationRenders()).toBe(beforeTyping);
+
+  act(() => {
+    useStore.setState((state) => {
+      state.sessions[record.sessionId].messages.push(
+        createMessage({ id: "incoming-after-draft", content: "新的回复" }),
+      );
+    });
+  });
+  await screen.findByText("新的回复");
+  expect(conversationRenders()).toBeGreaterThan(beforeTyping);
 });
 
 test("chat panel does not own the application catalog loading barrier", () => {
@@ -639,7 +818,7 @@ test("chat panel does not own the application catalog loading barrier", () => {
   expect(document.querySelector("[data-session-catalog-loading]")).not.toBeNull();
   expect(document.querySelector("[data-chat-loading-surface]")).toBeNull();
   expect(screen.queryByText("今天想做点什么？")).not.toBeInTheDocument();
-  expect(screen.getByRole("textbox", { name: "输入消息" })).toBeDisabled();
+  expect(screen.getByRole("combobox", { name: "输入消息" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "send" })).toBeDisabled();
 });
 
@@ -896,7 +1075,15 @@ test("model thinking stays grouped within each response and keeps response order
     "Generating the preview now",
   );
   await user.click(readDisclosure().querySelector("[data-model-thinking-toggle-row]"));
-  await waitFor(() => expect(readDisclosure().querySelector("[data-model-thinking-transcript]")).toBeNull());
+  const collapsedTranscript = readDisclosure().querySelector("[data-model-thinking-transcript]");
+  await waitFor(() =>
+    expect(collapsedTranscript.closest("[data-motion-disclosure-state]")).toHaveAttribute(
+      "data-motion-disclosure-state",
+      "closed",
+    ),
+  );
+  expect(collapsedTranscript.closest("[data-motion-disclosure-state]")).toHaveAttribute("inert");
+  expect(collapsedTranscript.closest("[data-motion-disclosure-state]")).toHaveAttribute("aria-hidden", "true");
 
   view.rerender(
     React.createElement(
@@ -1038,6 +1225,10 @@ test("cancelled Pi turns keep each response's thinking blocks in its ordered tra
     }),
   );
 
+  const processToggle = document.querySelector("[data-settled-turn-toggle]");
+  expect(processToggle).toHaveAttribute("aria-expanded", "false");
+  await user.click(processToggle);
+  await waitFor(() => expect(document.querySelectorAll("[data-model-thinking-disclosure]")).toHaveLength(2));
   const disclosures = [...document.querySelectorAll("[data-model-thinking-disclosure]")];
   expect(disclosures).toHaveLength(2);
   const firstDisclosure = disclosures[0];
@@ -1070,7 +1261,7 @@ test("cancelled Pi turns keep each response's thinking blocks in its ordered tra
   expect(transcript).not.toHaveTextContent("Preparing bitmap animation");
 });
 
-test("message list renders messages and streaming run as stable assistant turns", () => {
+test("message list renders messages and streaming run as stable assistant turns", async () => {
   const onViewWorkflow = vi.fn();
   const userMessage = createMessage({
     id: "message-user",
@@ -1108,7 +1299,9 @@ test("message list renders messages and streaming run as stable assistant turns"
   expect(readMessageListItemKey(undefined, 4)).toBe("__placeholder__:4");
   expect(readMessageListItemKey(userMessage)).toBe("message-user");
   expect(readMessageListItemKey(streamingTurn)).toBe("assistant-turn:request-streaming:0");
-  expect(screen.getByRole("navigation", { name: "回复事件位置" })).toBeInTheDocument();
+  expect(document.querySelector("[data-message-list-end-spacer]")).toHaveClass("h-5");
+  expect(document.querySelector("[data-message-list-end-spacer]")).not.toHaveClass("h-24");
+  expect(await screen.findByRole("navigation", { name: "回复事件位置" })).toBeInTheDocument();
 });
 
 test("message list groups tool prefaces and final replies from one request into one assistant turn", () => {
@@ -1181,14 +1374,21 @@ test("assistant turn renders a tool preface before its matching execution activi
 
   expect(processToggle).toHaveAttribute("aria-expanded", "false");
   expect(screen.getByText("页面读取完成。")).toBeInTheDocument();
+  const processDisclosure = document.getElementById(processToggle.getAttribute("aria-controls"));
+  expect(processDisclosure).toHaveAttribute("data-motion-disclosure-state", "closed");
+  expect(processDisclosure).toHaveAttribute("aria-hidden", "true");
+  expect(processDisclosure).toHaveAttribute("inert");
   expect(screen.queryByText("我先读取页面。")).not.toBeInTheDocument();
-  expect(document.querySelector("[data-settled-turn-process]")).not.toBeInTheDocument();
 
   await userEvent.click(processToggle);
   await waitFor(() => expect(processToggle).toHaveAttribute("aria-expanded", "true"));
   expect(screen.getByText("我先读取页面。")).toBeInTheDocument();
   expect(document.querySelector("[data-settled-turn-process]")).toBeInTheDocument();
   await waitFor(() => expect(document.querySelector("[data-execution-stage-fold]")).toBeInTheDocument());
+  expect(
+    screen.getByText("我先读取页面。").compareDocumentPosition(document.querySelector("[data-execution-stage-fold]")) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).not.toBe(0);
 });
 
 test("assistant turn stages attach each execution batch to its own preface", () => {

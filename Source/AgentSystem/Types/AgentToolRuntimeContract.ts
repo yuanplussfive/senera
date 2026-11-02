@@ -1,41 +1,24 @@
-import {
-  AgentHostToolProtocolVersion,
-  ToolSchedulingModes,
-  type ToolHandlerManifest,
-  type ToolRuntimeManifest,
-} from "./AgentToolContractTypes.js";
+import { ToolSchedulingModes, type ToolHandlerManifest, type ToolRuntimeManifest } from "./AgentToolContractTypes.js";
 
 type ToolHandlerKind = ToolHandlerManifest["Kind"];
 type ToolLifecycle = ToolRuntimeManifest["Lifecycle"];
 type ToolRuntimeCapability = keyof NonNullable<ToolRuntimeManifest["Capabilities"]>;
 
-interface RequiredProtocolContract {
-  kind: "required";
-  version: NonNullable<ToolRuntimeManifest["ProtocolVersion"]>;
-}
-
-interface ForbiddenProtocolContract {
-  kind: "forbidden";
-}
-
 interface ToolHandlerRuntimeContract {
   lifecycles: readonly ToolLifecycle[];
-  protocol: RequiredProtocolContract | ForbiddenProtocolContract;
 }
 
 export const ToolRuntimeContractByHandler = {
   HostCapability: {
     lifecycles: ["Immediate", "OneShot", "Persistent", "RemoteJob"],
-    protocol: { kind: "required", version: AgentHostToolProtocolVersion },
   },
   McpTool: {
     lifecycles: ["Immediate", "OneShot", "Persistent", "RemoteJob"],
-    protocol: { kind: "forbidden" },
   },
 } as const satisfies Record<ToolHandlerKind, ToolHandlerRuntimeContract>;
 
 export interface AgentToolRuntimeContractIssue {
-  field: "handler" | "lifecycle" | "protocolVersion";
+  field: "handler" | "lifecycle" | "deadline";
   message: string;
 }
 
@@ -81,7 +64,8 @@ const ToolRuntimeCapabilityRules = [
 export function inspectAgentToolRuntimeContract(input: {
   handlerKind: string;
   lifecycle: string;
-  protocolVersion?: number;
+  deadlinePolicy?: ToolRuntimeManifest["DeadlinePolicy"];
+  deadlineMs?: number;
 }): AgentToolRuntimeContractIssue[] {
   const contract = readHandlerContract(input.handlerKind);
   if (!contract) {
@@ -96,7 +80,13 @@ export function inspectAgentToolRuntimeContract(input: {
           message: `${input.handlerKind} does not support lifecycle ${input.lifecycle || "<unspecified>"}.`,
         },
       ];
-  return [...lifecycleIssues, ...inspectProtocolContract(input, contract.protocol)];
+  const deadlineIssues =
+    input.deadlinePolicy === "ToolAware" && input.deadlineMs === undefined
+      ? [{ field: "deadline" as const, message: "ToolAware requires Runtime.DeadlineMs." }]
+      : input.deadlinePolicy !== "ToolAware" && input.deadlineMs !== undefined
+        ? [{ field: "deadline" as const, message: "Runtime.DeadlineMs requires DeadlinePolicy=ToolAware." }]
+        : [];
+  return [...lifecycleIssues, ...deadlineIssues];
 }
 
 export function inspectAgentToolRuntimeCapabilityContract(
@@ -139,30 +129,4 @@ function readHandlerContract(handlerKind: string): ToolHandlerRuntimeContract | 
   return Object.hasOwn(ToolRuntimeContractByHandler, handlerKind)
     ? ToolRuntimeContractByHandler[handlerKind as ToolHandlerKind]
     : undefined;
-}
-
-function inspectProtocolContract(
-  input: { handlerKind: string; protocolVersion?: number },
-  contract: ToolHandlerRuntimeContract["protocol"],
-): AgentToolRuntimeContractIssue[] {
-  switch (contract.kind) {
-    case "required":
-      return input.protocolVersion === contract.version
-        ? []
-        : [
-            {
-              field: "protocolVersion",
-              message: `${input.handlerKind} requires private tool protocol version ${contract.version}.`,
-            },
-          ];
-    case "forbidden":
-      return input.protocolVersion === undefined
-        ? []
-        : [
-            {
-              field: "protocolVersion",
-              message: `${input.handlerKind} uses its native protocol and must not declare a private tool protocol version.`,
-            },
-          ];
-  }
 }

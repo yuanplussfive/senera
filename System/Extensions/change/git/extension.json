@@ -4,19 +4,49 @@
   "id": "git",
   "domain": "change",
   "settingsSurface": "system-tools",
-  "version": "1.0.0",
-  "displayName": { "zh-CN": "Git 版本控制", "en-US": "Git Version Control" },
+  "usageExamples": [
+    {
+      "title": { "zh-CN": "核对本轮改动", "en-US": "Review changes" },
+      "prompt": {
+        "zh-CN": "帮我看看这次改了哪些文件，有没有漏掉的改动。",
+        "en-US": "Review the files changed in this task and check for missing changes."
+      },
+      "outcome": {
+        "zh-CN": "查看仓库状态和差异，说明改动范围；提交等操作仍按你的指令执行。",
+        "en-US": "Inspect repository status and diffs, explain the changes, and commit only when requested."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### Git 工作区里的改动，一次看清\n\n适合检查修改范围、核对差异和准备提交。读取的是当前工作区的真实仓库，未提交的改动也会保留在视野里。\n\n- **检查状态**：查看新增、修改和删除的文件，区分已暂存与未暂存内容。\n- **审阅差异**：读取具体改动，解释影响并检查是否混入无关修改。\n- **执行版本操作**：根据你的请求调用 Git；写入操作仍遵循审批与工作区权限。\n\n给出要检查的范围就能开始，例如“只审阅设置页的改动”。需要提交时，再明确提交范围与目的。",
+    "en-US": "### Review the repository before committing\n\nInspect the real repository in the current workspace, including uncommitted changes.\n\n- Check new, changed, deleted, staged and unstaged files.\n- Review diffs and identify unrelated changes.\n- Run requested Git operations under workspace permissions and approval.\n\nSpecify the scope, such as “review only the settings changes.” Request a commit separately with its intended scope."
+  },
+  "displayName": {
+    "zh-CN": "Git 版本控制",
+    "en-US": "Git Version Control"
+  },
   "description": {
-    "zh-CN": "通过无 Shell 的受控本地命令检查和修改工作区 Git 仓库。",
-    "en-US": "Inspects and changes workspace Git repositories through controlled shell-free local commands."
+    "zh-CN": "查看和管理当前工作区的 Git 仓库。",
+    "en-US": "Inspect and manage the current workspace's Git repository."
   },
   "priority": 94,
   "presentation": {
     "category": "version-control",
     "icon": "git-branch",
     "brandIcon": "git",
-    "group": { "id": "version-control", "title": { "zh-CN": "版本控制", "en-US": "Version control" } },
-    "activity": { "action": { "zh-CN": "使用 Git", "en-US": "Use Git" } }
+    "group": {
+      "id": "version-control",
+      "title": {
+        "zh-CN": "版本控制",
+        "en-US": "Version control"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "使用 Git",
+        "en-US": "Use Git"
+      }
+    }
   },
   "contributions": [
     {

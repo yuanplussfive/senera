@@ -1,14 +1,20 @@
 import type {
   AgentSelfCommand,
   AgentSelfCommandOutput,
+  AgentSelfModelProjection,
   AgentSelfServicePort,
   AgentSelfSkillCheckReport,
+  AgentSelfSkillDiffEntry,
   AgentSelfSkillMutationResult,
+  AgentSelfSkillResourceListing,
+  AgentSelfSkillResourceRead,
   AgentSelfSkillSearchMatch,
   AgentSelfSkillSummary,
 } from "./AgentSelfServiceTypes.js";
+import type { AgentSkillResourceDescriptor } from "../Skills/AgentSkillScanner.js";
 import type { AgentSelfCommandExecutionOptions } from "./AgentSelfApprovalTypes.js";
 import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
+import { formatAgentTimeDisplay } from "../Time/AgentTime.js";
 
 const SkillMutationApprovalReason = "Skill 会改变后续模型行为，需要确认工作区指令资产的变更。";
 
@@ -40,6 +46,7 @@ export async function executeAgentSelfSkills(
         ok: skills.every((skill) => skill.valid),
         text: describeSkills(skills),
         data: { skills },
+        model: { data: { skills: skills.map(projectSkillModelSummary) } },
       };
     }
     case "search": {
@@ -55,6 +62,7 @@ export async function executeAgentSelfSkills(
         ok: true,
         text: describeSkillSearch(matches),
         data: { query: invocation.query, results: matches },
+        model: { data: { skills: matches.map((match) => projectSkillModelSummary(match.skill)) } },
       };
     }
     case "inspect": {
@@ -65,6 +73,7 @@ export async function executeAgentSelfSkills(
           text: result.error,
           error: projectSkillReadError(result.status),
           data: result,
+          model: projectSkillModelUnresolved(result),
         };
       }
       return {
@@ -72,6 +81,13 @@ export async function executeAgentSelfSkills(
         text: result.content,
         ...(result.skill.valid ? {} : { error: "skill_invalid" }),
         data: result,
+        model: {
+          data: {
+            skill: projectSkillModelSummary(result.skill),
+            ...(result.resources ? { resources: result.resources.map(projectSkillModelResource) } : {}),
+          },
+          ...(result.skill.revision ? { revision: result.skill.revision } : {}),
+        },
       };
     }
     case "resources": {
@@ -82,12 +98,14 @@ export async function executeAgentSelfSkills(
           text: result.error,
           error: projectSkillReadError(result.status),
           data: result,
+          model: projectSkillModelUnresolved(result),
         };
       }
       return {
         ok: true,
         text: describeSkillResources(result.resources),
         data: result,
+        model: { ...(result.skill.revision ? { revision: result.skill.revision } : {}) },
       };
     }
     case "read": {
@@ -98,6 +116,7 @@ export async function executeAgentSelfSkills(
           text: `Skill revision 已变化（期望 ${result.expectedRevision}，实际 ${result.actualRevision}），请重新读取资源清单。`,
           error: "skill_revision_conflict",
           data: result,
+          model: {},
         };
       }
       if (result.status !== "found") {
@@ -106,6 +125,7 @@ export async function executeAgentSelfSkills(
           text: result.error,
           error: result.status === "missing" ? "skill_not_found" : "skill_ambiguous",
           data: result,
+          model: projectSkillModelUnresolved(result),
         };
       }
       return {
@@ -113,6 +133,10 @@ export async function executeAgentSelfSkills(
         text:
           result.resource.encoding === "utf8" ? result.resource.content : stringifyAgentCanonicalJson(result.resource),
         data: result,
+        // The document is the text; only the revision a follow-up mutation has
+        // to quote survives, and the resource descriptor would repeat the
+        // request.
+        model: { revision: result.revision },
       };
     }
     case "diff": {
@@ -123,32 +147,46 @@ export async function executeAgentSelfSkills(
           text: result.error,
           error: result.status === "missing" ? "skill_revision_not_found" : projectSkillReadError(result.status),
           data: result,
+          model: projectSkillModelUnresolved(result),
         };
       }
       return {
         ok: true,
         text: describeSkillDiff(result.entries),
         data: result,
+        model: { data: { entries: result.entries.map(projectSkillModelDiffEntry) } },
       };
     }
     case "check": {
-      const report = port.skills.check(invocation.name);
+      const checked = port.skills.check(invocation.name);
+      const report = { ...checked, checkedAt: formatAgentTimeDisplay(checked.checkedAt) };
       return {
         ok: report.valid,
         text: describeSkillCheck(report),
         data: report,
+        model: {
+          data: {
+            skills: report.skills.map((skill) => ({ name: skill.name, valid: skill.valid, issues: skill.issues })),
+          },
+        },
         ...(report.valid ? {} : { error: "skill_check_failed" }),
       };
     }
     case "history": {
-      const history = port.skills.history(invocation.name);
+      const history = port.skills.history(invocation.name).map((entry) => ({
+        ...entry,
+        createdAt: formatAgentTimeDisplay(entry.createdAt),
+      }));
       return {
         ok: true,
         text:
           history.length === 0
             ? `Skill ${invocation.name} 没有可恢复的历史修订。`
-            : history.map((entry) => `${entry.revision} · ${entry.action} · ${entry.createdAt}`).join("\n"),
+            : history
+                .map((entry) => `${entry.revision} · ${entry.action} · ${formatAgentTimeDisplay(entry.createdAt)}`)
+                .join("\n"),
         data: { name: invocation.name, history },
+        model: {},
       };
     }
     case "create":
@@ -223,23 +261,54 @@ async function executeSkillMutation(
 function projectSkillMutation(result: AgentSelfSkillMutationResult, name: string): AgentSelfCommandOutput {
   switch (result.status) {
     case "created":
-      return { ok: true, text: `已创建 Skill ${name}（revision ${result.revision}）。`, data: result };
+      return {
+        ok: true,
+        text: `已创建 Skill ${name}（revision ${result.revision}）。`,
+        data: result,
+        model: { revision: result.revision },
+      };
     case "updated":
-      return { ok: true, text: `已更新 Skill ${name}（revision ${result.revision}）。`, data: result };
+      return {
+        ok: true,
+        text: `已更新 Skill ${name}（revision ${result.revision}）。`,
+        data: result,
+        model: { revision: result.revision },
+      };
     case "restored":
-      return { ok: true, text: `已恢复 Skill ${name}（revision ${result.revision}）。`, data: result };
+      return {
+        ok: true,
+        text: `已恢复 Skill ${name}（revision ${result.revision}）。`,
+        data: result,
+        // Only the origin of a restore is a fact the text does not state.
+        model: {
+          revision: result.revision,
+          ...(result.restoredFrom ? { data: { restoredFrom: result.restoredFrom } } : {}),
+        },
+      };
     case "archived":
-      return { ok: true, text: `已归档 Skill ${name}（revision ${result.revision}）。`, data: result };
+      return {
+        ok: true,
+        text: `已归档 Skill ${name}（revision ${result.revision}）。`,
+        data: result,
+        model: { revision: result.revision },
+      };
     case "exists":
-      return { ok: false, text: `Skill 已存在: ${name}`, error: "skill_exists", data: result };
+      return {
+        ok: false,
+        text: `Skill 已存在: ${name}`,
+        error: "skill_exists",
+        data: result,
+        model: { ...(result.revision ? { revision: result.revision } : {}) },
+      };
     case "missing":
-      return { ok: false, text: `Skill 不存在: ${name}`, error: "skill_not_found", data: result };
+      return { ok: false, text: `Skill 不存在: ${name}`, error: "skill_not_found", data: result, model: {} };
     case "conflict":
       return {
         ok: false,
         text: `Skill ${name} 的 revision 已变化（期望 ${result.expectedRevision}，实际 ${result.actualRevision ?? "unknown"}）。请重新读取后再写入。`,
         error: "skill_revision_conflict",
         data: result,
+        model: {},
       };
     case "invalid":
       return {
@@ -247,6 +316,7 @@ function projectSkillMutation(result: AgentSelfSkillMutationResult, name: string
         text: `Skill ${name} 无法写入:\n${result.issues.join("\n")}`,
         error: "skill_invalid",
         data: result,
+        model: {},
       };
     case "failed":
       return {
@@ -254,9 +324,10 @@ function projectSkillMutation(result: AgentSelfSkillMutationResult, name: string
         text: `Skill ${name} 变更失败: ${result.error}`,
         error: "skill_mutation_failed",
         data: result,
+        model: {},
       };
     case "unavailable":
-      return { ok: false, text: result.reason, error: "skills_unavailable", data: result };
+      return { ok: false, text: result.reason, error: "skills_unavailable", data: result, model: {} };
   }
 }
 
@@ -283,7 +354,7 @@ function describeSkillSearch(matches: readonly AgentSelfSkillSearchMatch[]): str
 }
 
 function describeSkillCheck(report: AgentSelfSkillCheckReport): string {
-  const header = `Skill 校验 ${report.valid ? "通过" : "失败"} · ${report.skills.length} 个 · ${report.checkedAt}`;
+  const header = `Skill 校验 ${report.valid ? "通过" : "失败"} · ${report.skills.length} 个 · ${formatAgentTimeDisplay(report.checkedAt)}`;
   return report.issues.length > 0 ? [header, ...report.issues.map((issue) => `- ${issue}`)].join("\n") : header;
 }
 
@@ -311,4 +382,64 @@ function describeSkillDiff(entries: readonly { readonly path: string; readonly k
 
 function projectSkillReadError(status: "missing" | "ambiguous" | "invalid"): string {
   return { missing: "skill_not_found", ambiguous: "skill_ambiguous", invalid: "skill_invalid" }[status];
+}
+
+/**
+ * Model-facing slices of the Skill results, built from the typed values the
+ * command already holds, so a renamed field fails to compile instead of
+ * silently dropping out of the model's result.
+ *
+ * The rule is one sentence: the text is the answer, so structured data survives
+ * only where it carries a fact the text does not.
+ */
+type AgentSelfSkillUnresolvedResult =
+  | Exclude<AgentSelfSkillResourceListing, { readonly status: "found" }>
+  | Exclude<AgentSelfSkillResourceRead, { readonly status: "found" }>;
+
+/** The listing text names each Skill's source, revision and validity; the
+ * description and the tool hints are the part it cannot carry. */
+function projectSkillModelSummary(skill: AgentSelfSkillSummary) {
+  return {
+    name: skill.name,
+    description: skill.description,
+    recommendedTools: [...skill.recommendedTools],
+  };
+}
+
+/** Copied field by field so a resource read can never carry its own content. */
+function projectSkillModelResource(resource: AgentSkillResourceDescriptor) {
+  return {
+    relativePath: resource.relativePath,
+    kind: resource.kind,
+    bytes: resource.bytes,
+    digest: resource.digest,
+  };
+}
+
+/** The diff text names the changed paths; the descriptors carry the sizes. */
+function projectSkillModelDiffEntry(entry: AgentSelfSkillDiffEntry) {
+  return {
+    path: entry.path,
+    kind: entry.kind,
+    ...(entry.before ? { before: projectSkillModelResource(entry.before) } : {}),
+    ...(entry.after ? { after: projectSkillModelResource(entry.after) } : {}),
+  };
+}
+
+/**
+ * An unresolved read states its reason in the text and names the failure in
+ * `error`, and the model already knows the name it asked for. An ambiguous name
+ * is the one exception: the text does not say which sources collide, and
+ * without them the candidates are indistinguishable.
+ */
+function projectSkillModelUnresolved(result: AgentSelfSkillUnresolvedResult): AgentSelfModelProjection {
+  if (result.status !== "ambiguous") return {};
+  return {
+    data: {
+      candidates: result.candidates.map((skill) => ({
+        ...projectSkillModelSummary(skill),
+        source: skill.source.displayName,
+      })),
+    },
+  };
 }

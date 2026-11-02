@@ -47,6 +47,7 @@ export interface SettingsConfigCommands {
 export interface SettingsSystemConfigHandle extends ConfigMutationController {
   configSnapshot: ConfigSnapshotData | null;
   workspaceId: string | null;
+  oneBot11ClientUrl?: string;
   readProviderApiKey: (providerId: string) => Promise<string>;
   readExtensionSecret: (extensionId: string, path: readonly string[]) => Promise<string>;
   systemTools: readonly SystemToolSettingsItem[];

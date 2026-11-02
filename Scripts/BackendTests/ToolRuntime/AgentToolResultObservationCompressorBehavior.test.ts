@@ -24,7 +24,7 @@ describe("AgentToolResultObservationCompressor", () => {
     expect(observation.compression_method).toBe("verbatim");
     expect(observation.detail.result).toEqual(input.result);
     expect(observation.detail.arguments).toBeUndefined();
-    expect(observation.detail.process).toEqual(input.process);
+    expect(observation.detail.process).toEqual({ exitCode: 0 });
     expect(observation.detail.outcome).toBeUndefined();
     expect(observation.status).toBe("success");
     expect(observation.execution_status).toBe("completed");
@@ -33,7 +33,7 @@ describe("AgentToolResultObservationCompressor", () => {
     expect(summarize).not.toHaveBeenCalled();
   });
 
-  test("mechanically removes repeated complete text while retaining artifact and evidence coordinates", async () => {
+  test("mechanically removes repeated text and keeps one source coordinate without repeating evidence", async () => {
     const summarize = vi.fn(async () => "should not run");
     const artifact = artifactFixture();
     const compressor = createCompressor({ summarize });
@@ -47,13 +47,14 @@ describe("AgentToolResultObservationCompressor", () => {
     expect(observation.compression_method).toBe("mechanical");
     expect(observation.artifact_uri).toBe(artifact.artifactUri);
     expect(observation.observation_view?.artifact_uri).toBeUndefined();
-    expect(observation.evidence_uris).toEqual(["senera://evidence/evi_0123456789abcdef01234567"]);
-    expect(JSON.stringify(observation)).toContain("senera://evidence/evi_0123456789abcdef01234567");
+    expect(observation.evidence_uris).toBeUndefined();
+    expect(observation.detail.evidence).toEqual([]);
+    expect(artifact.evidence[0]?.evidenceUri).toBe("senera://evidence/evi_0123456789abcdef01234567");
     expect(tokenCount(observation)).toBeLessThanOrEqual(2_048);
     expect(summarize).not.toHaveBeenCalled();
   });
 
-  test("reuses the persisted Artifact summary instead of summarizing the raw result again", async () => {
+  test("outlines oversized Artifact results without using task-specific saved summaries", async () => {
     const summarize = vi.fn(async () => "should not run");
     const artifact = {
       ...artifactFixture(),
@@ -101,19 +102,15 @@ describe("AgentToolResultObservationCompressor", () => {
     );
 
     expect(observation.compression_method).toBe("mechanical");
-    expect(observation.detail.headline).toBe("Deployment completed");
-    expect(observation.detail.summary).toBe("Revision rev-42 is active.");
-    expect(observation.detail.delta).toEqual([
-      {
-        kind: "workspace",
-        status: "changed",
-        key: "src/app.ts",
-        summary: "updated",
-      },
-    ]);
-    expect(observation.detail.result).toBeUndefined();
+    expect(observation.detail.headline).toBeUndefined();
+    expect(observation.detail.summary).toBeUndefined();
+    expect(observation.detail.result).toMatchObject({
+      part: "result",
+      representation: "structure",
+      outline: { fields: { output: { path: "/output", type: "string", tokens: expect.any(Number) } } },
+    });
     expect(summarize).not.toHaveBeenCalled();
-    expect(tokenCount(observation)).toBeLessThanOrEqual(300);
+    expect(tokenCount(observation)).toBeLessThanOrEqual(2_048);
   });
 
   test("omits an empty process envelope instead of carrying null and empty fields", async () => {
@@ -128,17 +125,32 @@ describe("AgentToolResultObservationCompressor", () => {
     expect(observation.detail.result).toEqual({ found: true });
   });
 
-  test("uses Pi summary compression when structural token projection would cut through result text", async () => {
-    const artifact = artifactFixture();
-    const persistLlmSummary = vi.fn(async () => undefined);
+  test("omitted process output cannot be reported as a complete observation", async () => {
+    const summarize = vi.fn(async () => "should not run");
+    const observation = await createCompressor({ summarize }).compress(
+      observationInput({
+        artifact: artifactFixture(),
+        result: { count: 3 },
+        process: { exitCode: 0, signal: null, stdout: "unique diagnostic output ".repeat(3_000), stderr: "" },
+      }),
+    );
+    expect(observation.observation_view?.complete).toBe(false);
+    expect(observation.observation_view?.omissions).toEqual([{ path: "/detail/process", reason: "deferred_content" }]);
+    expect(observation.detail.process).toMatchObject({
+      part: "process",
+      complete: false,
+      outline: { fields: { exitCode: 0, stdout: { path: "/stdout", type: "string" } } },
+    });
+    expect(summarize).not.toHaveBeenCalled();
+  });
+
+  test("uses Pi summary compression for a large result without a durable source", async () => {
     const summarize = vi.fn(async (request) => {
       expect(request.currentUserMessage).toBe("Find the deployment outcome.");
-      expect(request.artifactUri).toBe(artifact.artifactUri);
-      expect(request.evidenceUris).toContain("senera://evidence/evi_0123456789abcdef01234567");
       expect(JSON.stringify(request.feedback)).toContain("record-39");
       return "Deployment completed; revision rev-42 is active.";
     });
-    const compressor = createCompressor({ summarize, persistLlmSummary });
+    const compressor = createCompressor({ summarize });
     const records = Array.from(
       { length: 120 },
       (_, index) =>
@@ -146,7 +158,6 @@ describe("AgentToolResultObservationCompressor", () => {
         Array.from({ length: 14 }, (_, word) => `unique-${index}-${word}`).join(" "),
     );
     const input = observationInput({
-      artifact,
       currentUserMessage: "Find the deployment outcome.",
       result: {
         first: records.join("\n"),
@@ -159,15 +170,8 @@ describe("AgentToolResultObservationCompressor", () => {
 
     expect(observation.compression_method).toBe("llm");
     expect(observation.detail.summary).toBe("Deployment completed; revision rev-42 is active.");
-    expect(observation.artifact_uri).toBe(artifact.artifactUri);
-    expect(observation.evidence_uris).toEqual(["senera://evidence/evi_0123456789abcdef01234567"]);
-    expect(tokenCount(observation)).toBeLessThanOrEqual(300);
+    expect(tokenCount(observation)).toBeLessThanOrEqual(2_048);
     expect(summarize).toHaveBeenCalledOnce();
-    expect(persistLlmSummary).toHaveBeenCalledWith({
-      artifactUri: artifact.artifactUri,
-      artifactPath: artifact.artifactPath,
-      summary: "Deployment completed; revision rev-42 is active.",
-    });
   }, 30_000);
 
   test("returns a pressure observation when the dynamic budget cannot fit the envelope", async () => {
@@ -184,13 +188,11 @@ describe("AgentToolResultObservationCompressor", () => {
 function createCompressor(
   options: {
     readonly summarize?: AgentToolResultObservationCompressorOptions["summarize"];
-    readonly persistLlmSummary?: AgentToolResultObservationCompressorOptions["persistLlmSummary"];
   } = {},
 ): AgentToolResultObservationCompressor {
   return new AgentToolResultObservationCompressor({
     model,
     summarize: options.summarize ?? (async () => "summary"),
-    ...(options.persistLlmSummary ? { persistLlmSummary: options.persistLlmSummary } : {}),
   });
 }
 
@@ -226,6 +228,7 @@ function artifactFixture(): ExecutedToolCallArtifact {
     summary: "Deployment run output.",
     evidence: [
       {
+        origin: "result",
         key: "deployment",
         evidenceUri: "senera://evidence/evi_0123456789abcdef01234567",
         kind: "deployment",

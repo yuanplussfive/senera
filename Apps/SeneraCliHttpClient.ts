@@ -1,8 +1,13 @@
 import { isAgentRuntimeAlive, readAgentRuntimeManifest } from "../Source/AgentSystem/Runtime/AgentRuntimeManifest.js";
-import { isIP } from "node:net";
+import {
+  readAgentSelfCliConnection,
+  selfServiceUrl,
+  type AgentSelfCliConnection,
+} from "../Source/AgentSystem/SelfService/AgentSelfCliConnection.js";
+export { selfServiceUrl } from "../Source/AgentSystem/SelfService/AgentSelfCliConnection.js";
 import { scopeAgentWorkspaceUrl } from "../Source/AgentSystem/WorkspaceResources/AgentWorkspaceTransportScope.js";
 import type {
-  AgentSelfCommand,
+  AgentSelfInvocation,
   AgentSelfCommandOutput,
 } from "../Source/AgentSystem/SelfService/AgentSelfServiceTypes.js";
 
@@ -11,8 +16,7 @@ export const AgentSelfHttpDefaultTimeoutMs = 15_000;
 /** Structured self-service command sent over HTTP: the strict schema for
  * known commands, or the raw plugin command envelope for plugin-registered
  * commands resolved by the live host. */
-export type SeneraCliHttpCommand =
-  AgentSelfCommand | { readonly command: string; readonly action?: string; readonly args: readonly string[] };
+export type SeneraCliHttpCommand = AgentSelfInvocation;
 
 export class SeneraSelfServiceOfflineError extends Error {
   constructor(workspaceRoot: string, reason: string) {
@@ -20,7 +24,7 @@ export class SeneraSelfServiceOfflineError extends Error {
       [
         `Senera 服务未运行（${reason}）。`,
         `工作区: ${workspaceRoot}`,
-        "请先启动 Senera（桌面端 / 容器 / 服务模式），再执行该命令；模型侧可直接使用 SeneraCommand 工具。",
+        "请先启动 Senera（桌面端 / 容器 / 服务模式），再执行该命令。",
       ].join("\n"),
     );
     this.name = "SeneraSelfServiceOfflineError";
@@ -29,6 +33,7 @@ export class SeneraSelfServiceOfflineError extends Error {
 
 export interface SeneraSelfHttpClientOptions {
   readonly fetch?: typeof fetch;
+  readonly connection?: AgentSelfCliConnection;
   readonly timeoutMs?: number;
 }
 
@@ -40,7 +45,7 @@ interface LocalRuntimeRequestTarget {
 /**
  * Executes one `senera` self-service command against the running service.
  * The command runs inside the live host through the same port and executor
- * the model-facing `SeneraCommand` tool uses, so config changes are
+ * the session-scoped CLI uses, so config changes are
  * revision-guarded, validated, and broadcast to the frontend.
  */
 export async function executeSeneraSelfCommandViaHttp(
@@ -48,20 +53,18 @@ export async function executeSeneraSelfCommandViaHttp(
   command: SeneraCliHttpCommand,
   options: SeneraSelfHttpClientOptions = {},
 ): Promise<AgentSelfCommandOutput> {
-  const manifest = readAgentRuntimeManifest(workspaceRoot);
-  if (!manifest) {
-    throw new SeneraSelfServiceOfflineError(workspaceRoot, "未发现运行清单 .senera/runtime.json");
-  }
-  if (!isAgentRuntimeAlive(manifest)) {
-    throw new SeneraSelfServiceOfflineError(workspaceRoot, "记录的服务进程已退出");
-  }
-  const target = createLocalRuntimeRequestTarget(manifest.host, manifest.port, manifest.token);
+  const scoped = options.connection ?? readAgentSelfCliConnection(process.env);
+  // A scoped connection never reads the administrator manifest, including after expiry.
+  const target = scoped
+    ? { url: scoped.url, authorization: `Bearer ${scoped.token}` }
+    : discoverRuntimeTarget(workspaceRoot);
+  const timeoutMs = options.timeoutMs ?? (scoped ? undefined : AgentSelfHttpDefaultTimeoutMs);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? AgentSelfHttpDefaultTimeoutMs);
+  const timer = timeoutMs === undefined ? undefined : setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await (options.fetch ?? fetch)(
       // codeql[js/file-access-to-http]
-      manifest.workspaceId ? scopeAgentWorkspaceUrl(target.url, manifest.workspaceId) : target.url,
+      target.url,
       {
         method: "POST",
         headers: {
@@ -73,13 +76,18 @@ export async function executeSeneraSelfCommandViaHttp(
         signal: controller.signal,
       },
     );
-    const payload = (await response.json().catch(() => undefined)) as Partial<AgentSelfCommandOutput> | undefined;
-    if (!response.ok || !payload || typeof payload.ok !== "boolean" || typeof payload.text !== "string") {
-      throw new Error(
-        `Senera 服务返回异常（HTTP ${response.status}）: ${response.statusText}${
-          payload?.error ? ` ${payload.error}` : ""
-        }`,
-      );
+    const payload: unknown = await response.json();
+    if (!payload || typeof payload !== "object" || !("ok" in payload) || typeof payload.ok !== "boolean") {
+      throw new Error(`Senera service returned an invalid response (HTTP ${response.status}).`);
+    }
+    if (!response.ok) {
+      const error = "error" in payload ? payload.error : undefined;
+      const message =
+        error && typeof error === "object" && "message" in error ? String(error.message) : response.statusText;
+      throw new Error(`Senera service rejected the command (HTTP ${response.status}): ${message}`);
+    }
+    if (!("text" in payload) || typeof payload.text !== "string") {
+      throw new Error("Senera command response is missing its text result.");
     }
     return payload as AgentSelfCommandOutput;
   } finally {
@@ -87,33 +95,14 @@ export async function executeSeneraSelfCommandViaHttp(
   }
 }
 
-export function selfServiceUrl(host: string, port: number): string {
-  const normalized = normalizeLoopbackHost(host);
-  const safePort = normalizeSelfServicePort(port);
-  return `http://${normalized}:${safePort}/senera/self`;
-}
-
-function createLocalRuntimeRequestTarget(host: string, port: number, token: string): LocalRuntimeRequestTarget {
-  if (token.trim().length === 0) throw new Error("Senera runtime manifest contains an empty service token.");
+function discoverRuntimeTarget(workspaceRoot: string): LocalRuntimeRequestTarget {
+  const manifest = readAgentRuntimeManifest(workspaceRoot);
+  if (!manifest) throw new SeneraSelfServiceOfflineError(workspaceRoot, "未发现运行清单 .senera/runtime.json");
+  if (!isAgentRuntimeAlive(manifest)) throw new SeneraSelfServiceOfflineError(workspaceRoot, "记录的服务进程已退出");
+  if (!manifest.token.trim()) throw new Error("Senera runtime manifest contains an empty service token.");
+  const url = selfServiceUrl(manifest.host, manifest.port);
   return {
-    url: selfServiceUrl(host, port),
-    authorization: `Bearer ${token}`,
+    url: manifest.workspaceId ? scopeAgentWorkspaceUrl(url, manifest.workspaceId) : url,
+    authorization: `Bearer ${manifest.token}`,
   };
-}
-
-function normalizeLoopbackHost(host: string): string {
-  const trimmed = host.trim();
-  if (trimmed === "localhost" || trimmed === "0.0.0.0") return "127.0.0.1";
-  if (trimmed === "::" || trimmed === "[::]") return "[::1]";
-  const unbracketed = trimmed.startsWith("[") && trimmed.endsWith("]") ? trimmed.slice(1, -1) : trimmed;
-  if (isIP(unbracketed) === 4 && unbracketed.startsWith("127.")) return unbracketed;
-  if (isIP(unbracketed) === 6 && unbracketed.toLowerCase() === "::1") return "[::1]";
-  throw new Error("Senera runtime manifest must point to a loopback host.");
-}
-
-function normalizeSelfServicePort(port: number): number {
-  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-    throw new Error("Senera runtime manifest contains an invalid service port.");
-  }
-  return port;
 }

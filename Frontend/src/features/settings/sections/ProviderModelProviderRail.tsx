@@ -4,7 +4,7 @@ import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { cn } from "../../../lib/util";
 import { FluidHoverHighlight, motionTimings, useFluidHover, useMotionLevel } from "../../../shared/motion";
 import { AppIcon, IconButton, ScrollArea } from "../../../shared/ui";
-import { inferModelProviderEndpointIcon, ProviderMark } from "../../chat/ModelProviderIcon";
+import { inferModelProviderEndpointIcon, ProviderMark } from "../../../shared/models/ModelProviderIcon";
 import type { ModelProviderDraft } from "../../chat/modelConfigTypes";
 import type { ModelServiceState } from "./modelServiceState";
 

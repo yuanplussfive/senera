@@ -23,7 +23,7 @@ export function registerAgentSystemToolHandlers(
 }
 
 export function systemToolCapability(definition: AgentSystemToolDefinition): string {
-  return `system.tool.${definition.extension.name}.${definition.name}`;
+  return definition.capability;
 }
 
 function createSystemToolHandler(definition: AgentSystemToolDefinition): AgentHostToolHandler {
@@ -33,55 +33,12 @@ function createSystemToolHandler(definition: AgentSystemToolDefinition): AgentHo
       ...context,
       ...(isRecord(resources) ? { resources } : {}),
     };
-    const input = definition.input.safeParse(invocationArguments);
-    if (!input.success) {
-      const projected = await definition.projectInvalidInput?.(invocationArguments, input.error, executionContext);
-      if (projected) return toolProcessFailureResult(projected);
-      const diagnostics = input.error.issues.map((issue) => ({
-        code: issue.code,
-        message: issue.message,
-        path: issue.path.map(String),
-        pointer: issue.path.length > 0 ? `/${issue.path.map(escapePointerToken).join("/")}` : "",
-      }));
-      return toolProcessFailureResult({
-        code: AgentExecutionErrorCodes.InvalidToolArguments,
-        message: `Invalid arguments for ${definition.name}.`,
-        diagnostics,
-        details: {
-          phase: AgentToolProcessErrorPhases.RuntimeExecution,
-          toolName: definition.name,
-          issues: diagnostics,
-        },
-      });
-    }
-
     try {
       const executed = definition.executeWithArtifacts
-        ? await definition.executeWithArtifacts(input.data, executionContext)
-        : await definition.execute(input.data, executionContext);
+        ? await definition.executeWithArtifacts(invocationArguments, executionContext)
+        : await definition.execute(invocationArguments, executionContext);
       const output = isSystemToolExecutionResult(executed) ? executed.result : executed;
       const process = isSystemToolExecutionResult(executed) ? executed.process : undefined;
-      const parsedOutput = definition.output.safeParse(output);
-      if (!parsedOutput.success) {
-        const diagnostics = parsedOutput.error.issues.map((issue) => ({
-          code: issue.code,
-          path: issue.path.map(String),
-          message: issue.message,
-        }));
-        return withSystemToolProcess(
-          toolProcessFailureResult({
-            code: AgentExecutionErrorCodes.ToolExecutionError,
-            message: `${definition.name} returned an invalid result.`,
-            diagnostics,
-            details: {
-              phase: AgentToolProcessErrorPhases.RuntimeExecution,
-              toolName: definition.name,
-              issues: diagnostics,
-            },
-          }),
-          process,
-        );
-      }
       if (isSystemToolExecutionResult(executed) && executed.failure) {
         return withSystemToolProcess(
           {
@@ -92,7 +49,7 @@ function createSystemToolHandler(definition: AgentSystemToolDefinition): AgentHo
         );
       }
       return withSystemToolProcess(
-        toolProcessSuccessResult(parsedOutput.data, {
+        toolProcessSuccessResult(output, {
           ...(isSystemToolExecutionResult(executed) && executed.artifactPayload
             ? { artifactPayload: executed.artifactPayload }
             : {}),
@@ -106,7 +63,7 @@ function createSystemToolHandler(definition: AgentSystemToolDefinition): AgentHo
         message: errorMessage(error),
         details: {
           phase: AgentToolProcessErrorPhases.RuntimeExecution,
-          toolName: definition.name,
+          toolName: context.tool.name,
           ...(diagnostics.length > 0 ? { diagnostics } : {}),
         },
         ...(diagnostics.length > 0 ? { diagnostics } : {}),
@@ -141,8 +98,4 @@ function errorDiagnostics(error: unknown): AgentSourceDiagnostic[] {
 
 function isSourceDiagnostic(value: unknown): value is AgentSourceDiagnostic {
   return isRecord(value) && typeof value.message === "string";
-}
-
-function escapePointerToken(value: PropertyKey): string {
-  return String(value).replaceAll("~", "~0").replaceAll("/", "~1");
 }

@@ -1,4 +1,5 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { OverlayLayerScope, useOverlayLayer, useOverlayPortalContainer } from "./overlayPortalScope";
 import { type ComponentPropsWithoutRef, type HTMLAttributes, type ReactNode, forwardRef } from "react";
 import { cn } from "../../lib/util";
 import { useResponsiveMode } from "../responsive";
@@ -38,35 +39,40 @@ export const DropdownMenuContent = forwardRef<HTMLDivElement, ContentProps>(
       align = "center",
       sideOffset = 6,
       collisionPadding = 8,
+      style,
       children,
       onPointerDown,
       onClick,
       ...props
     },
     ref,
-  ) => (
-    <DropdownMenuPrimitive.Portal>
-      <DropdownMenuPrimitive.Content
-        ref={ref}
-        side={side}
-        align={align}
-        sideOffset={sideOffset}
-        collisionPadding={collisionPadding}
-        className={cn(menuSurfaceClassName, "dropdown-menu-surface", className)}
-        onPointerDown={(event) => {
-          onPointerDown?.(event);
-          event.stopPropagation();
-        }}
-        onClick={(event) => {
-          onClick?.(event);
-          event.stopPropagation();
-        }}
-        {...props}
-      >
-        {children}
-      </DropdownMenuPrimitive.Content>
-    </DropdownMenuPrimitive.Portal>
-  ),
+  ) => {
+    const layer = useOverlayLayer();
+    return (
+      <DropdownMenuPrimitive.Portal container={useOverlayPortalContainer()}>
+        <DropdownMenuPrimitive.Content
+          ref={ref}
+          side={side}
+          align={align}
+          sideOffset={sideOffset}
+          collisionPadding={collisionPadding}
+          className={cn(menuSurfaceClassName, "dropdown-menu-surface", className)}
+          style={{ ...style, zIndex: layer }}
+          onPointerDown={(event) => {
+            onPointerDown?.(event);
+            event.stopPropagation();
+          }}
+          onClick={(event) => {
+            onClick?.(event);
+            event.stopPropagation();
+          }}
+          {...props}
+        >
+          <OverlayLayerScope.Provider value={layer + 1}>{children}</OverlayLayerScope.Provider>
+        </DropdownMenuPrimitive.Content>
+      </DropdownMenuPrimitive.Portal>
+    );
+  },
 );
 DropdownMenuContent.displayName = "DropdownMenuContent";
 
@@ -105,30 +111,44 @@ interface SubContentProps extends React.ComponentPropsWithoutRef<typeof Dropdown
 
 export const DropdownMenuSubContent = forwardRef<HTMLDivElement, SubContentProps>(
   (
-    { className, sideOffset = 12, alignOffset = -4, collisionPadding = 8, children, onPointerDown, onClick, ...props },
+    {
+      className,
+      sideOffset = 12,
+      alignOffset = -4,
+      collisionPadding = 8,
+      children,
+      style,
+      onPointerDown,
+      onClick,
+      ...props
+    },
     ref,
-  ) => (
-    <DropdownMenuPrimitive.Portal>
-      <DropdownMenuPrimitive.SubContent
-        ref={ref}
-        sideOffset={sideOffset}
-        alignOffset={alignOffset}
-        collisionPadding={collisionPadding}
-        className={cn(menuSurfaceClassName, "dropdown-menu-surface", className)}
-        onPointerDown={(event) => {
-          onPointerDown?.(event);
-          event.stopPropagation();
-        }}
-        onClick={(event) => {
-          onClick?.(event);
-          event.stopPropagation();
-        }}
-        {...props}
-      >
-        {children}
-      </DropdownMenuPrimitive.SubContent>
-    </DropdownMenuPrimitive.Portal>
-  ),
+  ) => {
+    const layer = useOverlayLayer();
+    return (
+      <DropdownMenuPrimitive.Portal container={useOverlayPortalContainer()}>
+        <DropdownMenuPrimitive.SubContent
+          ref={ref}
+          sideOffset={sideOffset}
+          alignOffset={alignOffset}
+          collisionPadding={collisionPadding}
+          className={cn(menuSurfaceClassName, "dropdown-menu-surface", className)}
+          style={{ ...style, zIndex: layer }}
+          onPointerDown={(event) => {
+            onPointerDown?.(event);
+            event.stopPropagation();
+          }}
+          onClick={(event) => {
+            onClick?.(event);
+            event.stopPropagation();
+          }}
+          {...props}
+        >
+          <OverlayLayerScope.Provider value={layer + 1}>{children}</OverlayLayerScope.Provider>
+        </DropdownMenuPrimitive.SubContent>
+      </DropdownMenuPrimitive.Portal>
+    );
+  },
 );
 DropdownMenuSubContent.displayName = "DropdownMenuSubContent";
 
@@ -140,18 +160,23 @@ interface ItemProps extends React.ComponentPropsWithoutRef<typeof DropdownMenuPr
 }
 
 export const DropdownMenuItem = forwardRef<HTMLDivElement, ItemProps>(
-  ({ className, icon, destructive, shortcut, trailing, children, ...props }, ref) => {
+  ({ className, icon, destructive, shortcut, trailing, children, asChild, ...props }, ref) => {
     const { isCoarsePointer } = useResponsiveMode();
 
     return (
       <DropdownMenuPrimitive.Item
         ref={ref}
+        asChild={asChild}
         className={menuItemClassName({ className, destructive, isCoarsePointer })}
         {...props}
       >
-        <MenuItemContent icon={icon} destructive={destructive} shortcut={shortcut} trailing={trailing}>
-          {children}
-        </MenuItemContent>
+        {asChild ? (
+          children
+        ) : (
+          <MenuItemContent icon={icon} destructive={destructive} shortcut={shortcut} trailing={trailing}>
+            {children}
+          </MenuItemContent>
+        )}
       </DropdownMenuPrimitive.Item>
     );
   },
@@ -229,8 +254,8 @@ DropdownMenuCheckboxItem.displayName = "DropdownMenuCheckboxItem";
 
 export const DropdownMenuRadioItem = forwardRef<
   HTMLDivElement,
-  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.RadioItem>
->(({ className, children, value, ...props }, ref) => {
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.RadioItem> & { icon?: ReactNode }
+>(({ className, children, value, icon, ...props }, ref) => {
   const { isCoarsePointer } = useResponsiveMode();
 
   return (
@@ -240,12 +265,16 @@ export const DropdownMenuRadioItem = forwardRef<
       className={menuItemClassName({ className, isCoarsePointer })}
       {...props}
     >
+      {icon ? (
+        <span className="grid h-[18px] w-[18px] shrink-0 place-items-center text-content-muted">{icon}</span>
+      ) : null}
+      {icon ? <span className="min-w-0 flex-1">{children}</span> : null}
       <span className="grid h-[18px] w-[18px] shrink-0 place-items-center">
         <DropdownMenuPrimitive.ItemIndicator asChild>
           <AppIcon icon="check" size={16} className="menu-check text-accent-content" aria-hidden="true" />
         </DropdownMenuPrimitive.ItemIndicator>
       </span>
-      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {!icon ? <span className="min-w-0 flex-1 truncate">{children}</span> : null}
     </DropdownMenuPrimitive.RadioItem>
   );
 });

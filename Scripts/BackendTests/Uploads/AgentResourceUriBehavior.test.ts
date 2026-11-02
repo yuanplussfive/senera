@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
 import {
-  createAgentResourceId,
   createAgentResourceUri,
   normalizeAgentResourceUri,
   parseAgentResourceId,
@@ -36,13 +35,10 @@ describe("Senera resource URIs", () => {
     }
   });
 
-  test("derives a stable safe id for plugin-defined asset labels", () => {
-    const first = createAgentResourceId("plugin/output/image 1");
-    const second = createAgentResourceId("plugin/output/image 1");
-
-    expect(first).toBe(second);
-    expect(first).toMatch(/^res_[a-f0-9]{32}$/u);
-    expect(parseAgentResourceId(createAgentResourceUri(first))).toBe(first);
+  test("uses the same canonical transport for short allocated identities", () => {
+    const uri = createAgentResourceUri("k7m4p9");
+    expect(uri).toBe("senera://resource/k7m4p9");
+    expect(parseAgentResourceId(uri)).toBe("k7m4p9");
   });
 
   test("accepts only canonical resource fields", () => {

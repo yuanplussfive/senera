@@ -15,7 +15,7 @@ export type UserProfile = Omit<UserProfileData, "assistant"> & {
   syncState?: UserProfileSyncState;
 };
 
-export type ConversationProfileUpdate = Pick<UserProfile, "name" | "avatarDataUrl" | "avatarPath" | "assistant">;
+export type ConversationProfileUpdate = Pick<UserProfile, "name" | "avatarDataUrl" | "avatarPath">;
 
 export const DEFAULT_ASSISTANT_PROFILE: ConversationIdentity = {
   name: frontendMessage("profile.defaultAssistantName"),

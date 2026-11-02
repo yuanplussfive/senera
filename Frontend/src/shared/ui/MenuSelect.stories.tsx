@@ -1,7 +1,9 @@
+import { OverlayScrollFixture } from "../../dev/OverlayScrollFixture";
 import type { Story } from "@ladle/react";
 import { Bot, Database } from "lucide-react";
 import { useState } from "react";
 import { MenuSelect } from "./MenuSelect";
+import { AppIcon } from "./AppIcon";
 
 const modelOptions = [
   { value: "gpt-5.4", label: "GPT-5.4" },
@@ -37,6 +39,63 @@ export const ValueSelection: Story = () => {
           />
           <p className="text-[12px] text-content-muted">禁用选项会保留上下文，但不能被选择。</p>
         </div>
+      </div>
+    </main>
+  );
+};
+
+export const ModalScrolling: Story = () => <OverlayScrollFixture />;
+
+export const ItemActions: Story = () => {
+  const [value, setValue] = useState("one");
+  const [stopped, setStopped] = useState<string[]>([]);
+  const options = [
+    { value: "one", label: "终端一" },
+    { value: "two", label: "终端二" },
+    { value: "readonly", label: "只读终端", disabled: true },
+  ];
+  return (
+    <main className="min-h-[420px] bg-surface-canvas p-6 text-content-primary">
+      <div className="mx-auto max-w-[320px] space-y-3">
+        <h1 className="text-[18px] font-semibold">选择与独立操作</h1>
+        <p className="text-[12.5px] text-content-muted">停止按钮与选项并列，执行后保留菜单和当前选择。</p>
+        <MenuSelect
+          value={value}
+          placeholder="选择终端"
+          ariaLabel="终端"
+          options={options}
+          onChange={setValue}
+          renderOptionIcon={(option) => <AppIcon icon={stopped.includes(option.value) ? "terminal" : "link"} />}
+          getOptionAction={(option) => ({
+            label: `停止${option.label}`,
+            icon: <AppIcon icon="square" size={12} />,
+            disabled: option.disabled || stopped.includes(option.value),
+            destructive: true,
+            onSelect: () => setStopped((current) => [...current, option.value]),
+          })}
+        />
+      </div>
+    </main>
+  );
+};
+
+export const ContentSurface: Story = () => {
+  const [model, setModel] = useState("gpt-5.4");
+  return (
+    <main className="min-h-[420px] bg-surface-canvas p-6 text-content-primary">
+      <div className="mx-auto max-w-[320px] space-y-3">
+        <h1 className="text-[18px] font-semibold">菜单浮层样式</h1>
+        <p className="text-[12.5px] text-content-muted">
+          浮层通过 contentStyle 接收所在表面的样式，仍保留共享菜单的选择与键盘交互。
+        </p>
+        <MenuSelect
+          value={model}
+          placeholder="选择模型"
+          options={modelOptions}
+          ariaLabel="浮层样式示例"
+          contentStyle={{ borderRadius: 8, minWidth: "min(20rem,var(--radix-popper-available-width))" }}
+          onChange={setModel}
+        />
       </div>
     </main>
   );

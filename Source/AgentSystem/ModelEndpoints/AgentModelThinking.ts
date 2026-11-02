@@ -6,7 +6,8 @@ import {
   type ThinkingLevelMap,
 } from "@earendil-works/pi-ai";
 import type { AgentModelCapabilitiesConfig } from "../Types/AgentModelConfigTypes.js";
-import type { AgentNativeToolApi } from "./AgentModelEndpointContract.js";
+import type { ResolvedAgentModelProviderConfig } from "../Types/AgentModelConfigTypes.js";
+import { resolveAgentNativeToolRoute, type AgentNativeToolApi } from "./AgentModelEndpointContract.js";
 
 export const AgentModelThinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export type AgentModelThinkingLevel = (typeof AgentModelThinkingLevels)[number];
@@ -42,6 +43,20 @@ export interface AgentModelThinkingInput {
   readonly declaredCapabilities?: AgentModelCapabilitiesConfig;
   readonly thinkingProfiles?: readonly AgentModelThinkingProfileConfig[];
   readonly defaultThinkingLevel?: AgentModelThinkingLevel;
+}
+
+export function resolveAgentConfiguredModelThinking(
+  provider: ResolvedAgentModelProviderConfig,
+): AgentModelThinkingProjection {
+  return resolveAgentModelThinking({
+    api: resolveAgentNativeToolRoute(provider.Endpoint, provider.BaseUrl).api,
+    provider: provider.ProviderId,
+    model: provider.Model,
+    capabilities: provider.Capabilities,
+    declaredCapabilities: provider.DeclaredCapabilities,
+    thinkingProfiles: provider.ThinkingProfiles,
+    defaultThinkingLevel: provider.DefaultThinkingLevel,
+  });
 }
 
 export function clampAgentModelThinkingLevel(

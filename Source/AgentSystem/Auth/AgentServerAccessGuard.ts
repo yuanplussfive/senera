@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { hostname } from "node:os";
 import type http from "node:http";
 import { type WebSocket } from "ws";
 import type { ResolvedAgentServerConfig } from "../Types/AgentConfigTypes.js";
@@ -10,6 +11,26 @@ import {
   type AgentLocalAdminAccount,
 } from "./AgentLocalAdminAccount.js";
 import { AgentTokenBucket } from "./AgentTokenBucket.js";
+import {
+  AgentWebSocketCloseCodes,
+  AgentWebSocketCloseReasons,
+  type AgentWebSocketCloseCode,
+} from "../WebSocket/AgentWebSocketCloseContract.js";
+import {
+  AgentDeviceCookieName,
+  AgentLanDeviceCookieName,
+  AgentMobileOrigin,
+} from "./AgentDeviceAuthenticationContract.js";
+
+import {
+  isLoopbackHost,
+  resolveAgentServerAccessPolicy,
+  type AgentServerAccessPolicy,
+  type AgentServerAccessProfile,
+} from "./AgentServerAccessPolicy.js";
+
+export { isLoopbackHost } from "./AgentServerAccessPolicy.js";
+import { AgentAuthenticationMethods } from "./AgentAuthenticationProtocol.js";
 
 const MinuteMs = 60_000;
 const SecureSessionCookieName = "__Host-senera_session";
@@ -33,6 +54,7 @@ export interface AgentAuthenticatedAccess {
   readonly session?: AgentAdminSession;
   readonly sessionToken?: string;
   readonly clientAddress: string;
+  readonly deviceLanOrigin?: string;
 }
 
 export type AgentAccessResult =
@@ -60,18 +82,21 @@ export class AgentServerAccessGuard {
   private readonly messages: AgentTokenBucket;
   private readonly connections = new Map<WebSocket, ManagedConnection>();
   private readonly connectionsByClient = new Map<string, Set<WebSocket>>();
-  private readonly required: boolean;
+  private readonly policy: AgentServerAccessPolicy;
+  private readonly server: ResolvedAgentServerConfig;
+  private readonly deviceProxyOrigins = new Set<string>();
+  private readonly deviceLanOrigins = new Set<string>();
 
   constructor(
     private readonly options: {
       server: ResolvedAgentServerConfig;
       workspaceRoot: string;
       now?: () => number;
-      /** Deployment-provided safe default for loopback HTTP (for example, a local container port). */
-      automaticLoopbackHttp?: boolean;
+      accessProfile?: AgentServerAccessProfile;
     },
   ) {
-    this.required = resolveAuthenticationRequired(options.server);
+    this.policy = resolveAgentServerAccessPolicy(options.server, options.accessProfile);
+    this.server = this.policy.server;
     this.accountStore = new AgentLocalAdminAccountStore(
       resolveAgentLocalAdminAccountPath(options.workspaceRoot, options.server.AccessControl.AccountFile),
     );
@@ -107,7 +132,87 @@ export class AgentServerAccessGuard {
   }
 
   get isAuthenticationRequired(): boolean {
-    return this.required;
+    return this.policy.authenticationRequired;
+  }
+
+  get deviceConnectionOptions(): { root: string; target: string } {
+    const host = ["0.0.0.0", "::", "[::]"].includes(this.server.Host) ? "127.0.0.1" : this.server.Host;
+    const hostname = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+    return { root: this.options.workspaceRoot, target: `http://${hostname}:${this.server.Port}` };
+  }
+
+  setDeviceProxyOrigins(origins: readonly string[]): void {
+    this.deviceProxyOrigins.clear();
+    for (const origin of origins) this.deviceProxyOrigins.add(origin);
+  }
+
+  setDeviceLanOrigins(origins: readonly string[]): void {
+    this.deviceLanOrigins.clear();
+    for (const origin of origins) this.deviceLanOrigins.add(origin);
+    for (const connection of this.connections.values()) {
+      if (connection.deviceLanOrigin && !this.deviceLanOrigins.has(connection.deviceLanOrigin))
+        connection.socket.close(1008, "LAN connection closed");
+    }
+  }
+
+  private isDeviceLanRequest(request: http.IncomingMessage): boolean {
+    const origin = `http://${readHeader(request, "host") ?? ""}`;
+    if (!this.deviceLanOrigins.has(origin)) return false;
+    const target = new URL(origin);
+    return (
+      normalizeAddress(request.socket.localAddress ?? "") === target.hostname &&
+      request.socket.localPort === Number(target.port || 80)
+    );
+  }
+
+  deviceRequestOrigin(request: http.IncomingMessage): string | undefined {
+    if (!this.isSecureTransport(request)) return undefined;
+    try {
+      const url = new URL(`https://${readHeader(request, "host") ?? ""}`);
+      return isLoopbackHost(url.hostname) ? undefined : url.origin;
+    } catch {
+      return undefined;
+    }
+  }
+
+  requiresAuthentication(request: http.IncomingMessage): boolean {
+    return this.policy.authenticationRequired || !this.isLocalRequest(request);
+  }
+
+  /** A proxy arriving over loopback must never inherit the local console's trust. */
+  isLocalRequest(request: http.IncomingMessage): boolean {
+    if (!isLoopbackHost(this.clientAddress(request))) return false;
+    const origin = readHeader(request, "origin");
+    if (origin && !isLoopbackOrigin(origin)) return false;
+    if (
+      readHeader(request, "forwarded") ||
+      readHeader(request, "x-forwarded-for") ||
+      readHeader(request, "x-forwarded-host") ||
+      readHeader(request, "x-forwarded-proto")
+    )
+      return false;
+    try {
+      return isLoopbackHost(new URL(`http://${readHeader(request, "host") ?? ""}`).hostname);
+    } catch {
+      return false;
+    }
+  }
+
+  initializeLocalOwnerSession(
+    request: http.IncomingMessage,
+  ): { token: string; session: AgentAdminSession; created: boolean } | undefined {
+    if (this.requiresAuthentication(request)) return undefined;
+    const token = this.readSessionToken(request);
+    const session = this.sessions.read(token, true);
+    if (token && session) return { token, session, created: false };
+    return {
+      ...this.sessions.issue(
+        { ...DefaultLocalPrincipal, displayName: hostname() },
+        undefined,
+        AgentAuthenticationMethods.Local,
+      ),
+      created: true,
+    };
   }
 
   get cookieName(): string {
@@ -115,19 +220,19 @@ export class AgentServerAccessGuard {
   }
 
   get sessionMaxAgeSeconds(): number {
-    return this.options.server.AccessControl.Session.AbsoluteTtlHours * 60 * 60;
+    return this.server.AccessControl.Session.AbsoluteTtlHours * 60 * 60;
   }
 
   get heartbeatIntervalMs(): number {
-    return this.options.server.AccessControl.Limits.HeartbeatIntervalSeconds * 1000;
+    return this.server.AccessControl.Limits.HeartbeatIntervalSeconds * 1000;
   }
 
   get idleSocketTimeoutMs(): number {
-    return this.options.server.AccessControl.Limits.IdleSocketTimeoutSeconds * 1000;
+    return this.server.AccessControl.Limits.IdleSocketTimeoutSeconds * 1000;
   }
 
   account(): AgentLocalAdminAccount | undefined {
-    return this.required ? this.accountStore.require() : undefined;
+    return this.policy.authenticationRequired ? this.accountStore.require() : undefined;
   }
 
   allowsOrigin(origin: string | undefined, request?: http.IncomingMessage): boolean {
@@ -138,18 +243,21 @@ export class AgentServerAccessGuard {
       const parsedOrigin = new URL(origin);
       if (parsedOrigin.protocol !== "http:" && parsedOrigin.protocol !== "https:") return false;
       const normalized = parsedOrigin.origin;
-      if (this.options.server.AccessControl.AllowedOrigins.includes(normalized)) return true;
+      if (request && this.isDeviceLanRequest(request) && this.isSameOrigin(request, normalized)) return true;
+      if (normalized === AgentMobileOrigin && request && this.isSecureTransport(request)) return true;
+      if (this.deviceProxyOrigins.has(normalized)) return true;
+      if (this.server.AccessControl.AllowedOrigins.includes(normalized)) return true;
       // Development and container entrypoints may serve the UI from a separate
       // loopback port. Keep the exception scoped to loopback origins rather
       // than allowing arbitrary cross-origin browser requests.
-      if (this.options.automaticLoopbackHttp === true && isLoopbackOrigin(normalized)) {
+      if (this.policy.allowLoopbackHttp === true && isLoopbackOrigin(normalized)) {
         return true;
       }
-      if (this.options.server.AccessControl.AllowedOrigins.length > 0) {
-        return isLoopbackHost(this.options.server.Host) && isLoopbackOrigin(normalized);
+      if (this.server.AccessControl.AllowedOrigins.length > 0) {
+        return isLoopbackHost(this.server.Host) && isLoopbackOrigin(normalized);
       }
       if (request) return this.isSameOrigin(request, normalized);
-      return isLoopbackHost(this.options.server.Host) && isLoopbackOrigin(normalized);
+      return isLoopbackHost(this.server.Host) && isLoopbackOrigin(normalized);
     } catch {
       return false;
     }
@@ -158,6 +266,7 @@ export class AgentServerAccessGuard {
   async login(
     request: http.IncomingMessage,
     credentials: { loginName: string; password: string },
+    deviceName?: string,
   ): Promise<
     | {
         readonly ok: true;
@@ -169,11 +278,11 @@ export class AgentServerAccessGuard {
         readonly failure: AgentAccessFailure;
       }
   > {
-    if (!this.required) {
+    if (!this.policy.authenticationRequired) {
       return { ok: false, failure: { status: 403, code: "authentication_required" } };
     }
     if (
-      (!isLoopbackHost(this.options.server.Host) && !this.isSecureRequest(request)) ||
+      (!isLoopbackHost(this.server.Host) && !this.isSecureRequest(request)) ||
       !this.isAllowedBrowserOrigin(request)
     ) {
       return { ok: false, failure: { status: 403, code: "forbidden_origin" } };
@@ -191,10 +300,65 @@ export class AgentServerAccessGuard {
     if (!account) {
       return { ok: false, failure: { status: 401, code: "authentication_required" } };
     }
-    return { ok: true, ...this.sessions.issue(account) };
+    if (deviceName && !this.allowsDeviceAuthentication(request)) {
+      return { ok: false, failure: { status: 403, code: "forbidden_origin" } };
+    }
+    return {
+      ok: true,
+      ...this.sessions.issue(
+        account,
+        deviceName,
+        deviceName ? AgentAuthenticationMethods.Device : AgentAuthenticationMethods.Account,
+      ),
+    };
   }
 
-  authorizeHttp(request: http.IncomingMessage, options: { requireCsrf: boolean }): AgentAccessResult {
+  allowsDeviceAuthentication(request: http.IncomingMessage): boolean {
+    return (
+      (this.isSecureTransport(request) || this.isDeviceLanRequest(request)) && this.isAllowedBrowserOrigin(request)
+    );
+  }
+
+  authorizeDeviceExchange(request: http.IncomingMessage): AgentAccessFailure | undefined {
+    if (!this.allowsDeviceAuthentication(request)) return { status: 403, code: "forbidden_origin" };
+    const rate = this.httpRequests.consume(this.clientAddress(request));
+    return rate.allowed ? undefined : { status: 429, code: "rate_limited", retryAfterSeconds: rate.retryAfterSeconds };
+  }
+
+  get maximumDevicePairings(): number {
+    return this.server.AccessControl.Session.MaxSessions;
+  }
+
+  hasSession(id: string): boolean {
+    return this.sessions.hasSession(id);
+  }
+
+  issueDeviceSession(
+    deviceName: string,
+    ownerSessionId: string,
+  ): { token: string; session: AgentAdminSession } | undefined {
+    const owner = this.sessions.findById(ownerSessionId);
+    return owner ? this.sessions.issue(owner.principal, deviceName, AgentAuthenticationMethods.Device) : undefined;
+  }
+
+  listDevices(principalId: string): AgentAdminSession[] {
+    return this.sessions.listDevices(principalId);
+  }
+
+  revokeDevice(id: string, principalId: string): boolean {
+    return this.sessions.revokeDevice(id, principalId);
+  }
+
+  issueDeviceCookie(token: string, request?: http.IncomingMessage): string {
+    if (request && this.isDeviceLanRequest(request) && !this.isSecureTransport(request))
+      return `${AgentLanDeviceCookieName}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${this.sessionMaxAgeSeconds}`;
+    return `${AgentDeviceCookieName}=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${this.sessionMaxAgeSeconds}`;
+  }
+
+  authorizeHttp(
+    request: http.IncomingMessage,
+    options: { requireCsrf: boolean; requireSession?: boolean },
+  ): AgentAccessResult {
     const clientAddress = this.clientAddress(request);
     const rate = this.httpRequests.consume(clientAddress);
     if (!rate.allowed) {
@@ -203,13 +367,32 @@ export class AgentServerAccessGuard {
         failure: { status: 429, code: "rate_limited", retryAfterSeconds: rate.retryAfterSeconds },
       };
     }
-    if (!this.required) {
-      return { ok: true, access: { principal: DefaultLocalPrincipal, clientAddress } };
-    }
+    return this.authorizeRequestIdentity(request, options);
+  }
 
+  /** Module graphs are static resources, not API operations; each import still requires host authentication. */
+  authorizeStaticResource(request: http.IncomingMessage): AgentAccessResult {
+    if (readHeader(request, "origin") && !this.isAllowedBrowserOrigin(request)) {
+      return { ok: false, failure: { status: 403, code: "forbidden_origin" } };
+    }
+    return this.authorizeRequestIdentity(request, { requireCsrf: false });
+  }
+
+  authorizeDeviceOwner(request: http.IncomingMessage, options: { requireCsrf: boolean }): AgentAccessResult {
+    return this.authorizeHttp(request, { ...options, requireSession: true });
+  }
+
+  private authorizeRequestIdentity(
+    request: http.IncomingMessage,
+    options: { requireCsrf: boolean; requireSession?: boolean },
+  ): AgentAccessResult {
+    const clientAddress = this.clientAddress(request);
     const sessionToken = this.readSessionToken(request);
     const session = this.sessions.read(sessionToken, true);
     if (!session) {
+      if (!options.requireSession && !this.requiresAuthentication(request)) {
+        return { ok: true, access: { principal: DefaultLocalPrincipal, clientAddress } };
+      }
       return { ok: false, failure: { status: 401, code: "authentication_required" } };
     }
     if (options.requireCsrf) {
@@ -227,6 +410,7 @@ export class AgentServerAccessGuard {
         session,
         sessionToken,
         clientAddress,
+        ...(this.isDeviceLanRequest(request) ? { deviceLanOrigin: `http://${readHeader(request, "host")}` } : {}),
       },
     };
   }
@@ -240,35 +424,19 @@ export class AgentServerAccessGuard {
         failure: { status: 429, code: "rate_limited", retryAfterSeconds: rate.retryAfterSeconds },
       };
     }
-    if (this.connections.size >= this.options.server.AccessControl.Limits.MaxConnections) {
+    if (this.connections.size >= this.server.AccessControl.Limits.MaxConnections) {
       return { ok: false, failure: { status: 503, code: "capacity_exceeded" } };
     }
     if (
       (this.connectionsByClient.get(clientAddress)?.size ?? 0) >=
-      this.options.server.AccessControl.Limits.MaxConnectionsPerClient
+      this.server.AccessControl.Limits.MaxConnectionsPerClient
     ) {
       return { ok: false, failure: { status: 503, code: "capacity_exceeded" } };
     }
-    if (!this.required) {
-      return { ok: true, access: { principal: DefaultLocalPrincipal, clientAddress } };
-    }
-    if (!this.isAllowedBrowserOrigin(request)) {
+    if (this.requiresAuthentication(request) && !this.isAllowedBrowserOrigin(request)) {
       return { ok: false, failure: { status: 403, code: "forbidden_origin" } };
     }
-    const sessionToken = this.readSessionToken(request);
-    const session = this.sessions.read(sessionToken, true);
-    if (!session) {
-      return { ok: false, failure: { status: 401, code: "authentication_required" } };
-    }
-    return {
-      ok: true,
-      access: {
-        principal: session.principal,
-        session,
-        sessionToken,
-        clientAddress,
-      },
-    };
+    return this.authorizeRequestIdentity(request, { requireCsrf: false });
   }
 
   registerConnection(socket: WebSocket, access: AgentAuthenticatedAccess): void {
@@ -316,7 +484,7 @@ export class AgentServerAccessGuard {
         failure: { status: 429, code: "rate_limited", retryAfterSeconds: rate.retryAfterSeconds },
       };
     }
-    if (this.required) {
+    if (connection.sessionToken) {
       const session = this.sessions.read(connection.sessionToken, true);
       if (!session) {
         return { ok: false, failure: { status: 401, code: "authentication_required" } };
@@ -333,15 +501,19 @@ export class AgentServerAccessGuard {
     return { ok: true, access: connection };
   }
 
-  shouldTerminateConnection(socket: WebSocket): boolean {
+  connectionFailure(
+    socket: WebSocket,
+  ): { readonly code: AgentWebSocketCloseCode; readonly reason: string } | undefined {
     const connection = this.connections.get(socket);
-    if (!connection) {
-      return true;
-    }
+    if (!connection || (connection.sessionToken !== undefined && !this.sessions.read(connection.sessionToken, false)))
+      return {
+        code: AgentWebSocketCloseCodes.AuthenticationRequired,
+        reason: AgentWebSocketCloseReasons.AuthenticationRequired,
+      };
     if (this.now() - connection.lastPongAt > this.idleSocketTimeoutMs) {
-      return true;
+      return { code: AgentWebSocketCloseCodes.HeartbeatTimeout, reason: AgentWebSocketCloseReasons.HeartbeatTimeout };
     }
-    return this.required && !this.sessions.read(connection.sessionToken, false);
+    return undefined;
   }
 
   issueCookie(token: string, request?: http.IncomingMessage): string {
@@ -362,8 +534,23 @@ export class AgentServerAccessGuard {
 
   clearCookie(request?: http.IncomingMessage): string {
     const secure = request ? this.isSecureTransport(request) : this.usesSecureCookie;
-    const cookieName = request ? this.cookieNameForRequest(request) : this.cookieName;
-    const attributes = [`${cookieName}=`, "Path=/", "HttpOnly", "SameSite=Strict", "Max-Age=0"];
+    const isLanDevice =
+      request && this.isDeviceLanRequest(request) && readCookie(request, AgentLanDeviceCookieName) !== undefined;
+    const isDevice = request && readCookie(request, AgentDeviceCookieName) !== undefined;
+    const cookieName = isDevice
+      ? AgentDeviceCookieName
+      : isLanDevice
+        ? AgentLanDeviceCookieName
+        : request
+          ? this.cookieNameForRequest(request)
+          : this.cookieName;
+    const attributes = [
+      `${cookieName}=`,
+      "Path=/",
+      "HttpOnly",
+      isDevice ? "SameSite=None" : "SameSite=Strict",
+      "Max-Age=0",
+    ];
     if (secure) {
       attributes.push("Secure");
     }
@@ -375,11 +562,11 @@ export class AgentServerAccessGuard {
   }
 
   private assertConfiguration(): void {
-    const externalHost = !isLoopbackHost(this.options.server.Host);
-    if (this.options.server.AccessControl.Mode === "disabled" && externalHost) {
+    const externalHost = !isLoopbackHost(this.server.Host);
+    if (this.server.AccessControl.Mode === "disabled" && externalHost) {
       throw new AgentLocalizedError("auth.publicAccessControlRequired");
     }
-    if (!this.required) {
+    if (!this.policy.authenticationRequired) {
       return;
     }
     this.accountStore.require();
@@ -390,7 +577,7 @@ export class AgentServerAccessGuard {
   }
 
   private isSecureRequest(request: http.IncomingMessage): boolean {
-    if (this.isSecureTransport(request)) {
+    if (this.isSecureTransport(request) || this.isDeviceLanRequest(request)) {
       return true;
     }
     return this.allowsInsecureHttp(request) || this.allowsInsecureLoopback(request);
@@ -398,21 +585,21 @@ export class AgentServerAccessGuard {
 
   private get usesSecureCookie(): boolean {
     return (
-      !isLoopbackHost(this.options.server.Host) &&
-      !this.options.automaticLoopbackHttp &&
-      !this.options.server.AccessControl.AllowInsecureLoopback &&
-      !this.options.server.AccessControl.AllowInsecureHttp
+      !isLoopbackHost(this.server.Host) &&
+      !this.policy.allowLoopbackHttp &&
+      !this.server.AccessControl.AllowInsecureLoopback &&
+      !this.server.AccessControl.AllowInsecureHttp
     );
   }
 
   private allowsInsecureHttp(request: http.IncomingMessage): boolean {
-    return this.options.server.AccessControl.AllowInsecureHttp && this.isAllowedBrowserOrigin(request);
+    return this.server.AccessControl.AllowInsecureHttp && this.isAllowedBrowserOrigin(request);
   }
 
   private allowsInsecureLoopback(request: http.IncomingMessage): boolean {
     return (
       isLoopbackOrigin(readHeader(request, "origin") ?? "") &&
-      (this.options.server.AccessControl.AllowInsecureLoopback || this.options.automaticLoopbackHttp === true)
+      (this.server.AccessControl.AllowInsecureLoopback || this.policy.allowLoopbackHttp === true)
     );
   }
 
@@ -421,9 +608,16 @@ export class AgentServerAccessGuard {
       return true;
     }
     const forwarded = readHeader(request, "x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+    let proxyOrigin: string | undefined;
+    try {
+      proxyOrigin = new URL(`https://${readHeader(request, "host") ?? ""}`).origin;
+    } catch {
+      return false;
+    }
     return (
       forwarded === "https" &&
-      this.options.server.AccessControl.TrustedProxyAddresses.includes(this.clientAddress(request))
+      (this.server.AccessControl.TrustedProxyAddresses.includes(this.clientAddress(request)) ||
+        (isLoopbackHost(this.clientAddress(request)) && this.deviceProxyOrigins.has(proxyOrigin)))
     );
   }
 
@@ -432,6 +626,10 @@ export class AgentServerAccessGuard {
   }
 
   private readSessionToken(request: http.IncomingMessage): string | undefined {
+    const lanToken = readCookie(request, AgentLanDeviceCookieName);
+    if (lanToken && this.isDeviceLanRequest(request)) return lanToken;
+    const deviceToken = readCookie(request, AgentDeviceCookieName);
+    if (deviceToken && this.isSecureTransport(request)) return deviceToken;
     const preferred = this.cookieNameForRequest(request);
     for (const name of [preferred, SecureSessionCookieName, InsecureSessionCookieName]) {
       const token = readCookie(request, name);
@@ -460,21 +658,6 @@ export class AgentServerAccessGuard {
   private now(): number {
     return this.options.now?.() ?? Date.now();
   }
-}
-
-export function resolveAuthenticationRequired(server: ResolvedAgentServerConfig): boolean {
-  if (server.AccessControl.Mode === "required") {
-    return true;
-  }
-  if (server.AccessControl.Mode === "disabled") {
-    return false;
-  }
-  return !isLoopbackHost(server.Host);
-}
-
-export function isLoopbackHost(host: string): boolean {
-  const normalized = host.trim().toLowerCase();
-  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]";
 }
 
 function createRateLimiter(capacity: number, maxEntries: number, now: (() => number) | undefined): AgentTokenBucket {

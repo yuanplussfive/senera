@@ -23,15 +23,20 @@ import {
   type AgentStateCardHistoryTurn,
   type AgentStateCardToolReference,
 } from "./AgentStateCardTypes.js";
+import { isAgentHumanUserMessage, type AgentConversationEntry } from "../Conversation/AgentConversation.js";
+import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 
 export interface AgentStateCardRuntimeRequest {
   currentRequest: string;
   requestId?: string;
+  /** Durable user-message identity for this execution; differs on a retry. */
+  conversationRequestId?: string;
   turnIndex?: number;
   sessionId?: string;
   logicalCacheScope?: string;
   activeSkills?: readonly string[];
   signal?: AbortSignal;
+  interaction?: AgentInteractionContext;
 }
 export interface AgentStateCardTurnRecord {
   sessionId?: string;
@@ -44,7 +49,11 @@ export interface AgentStateCardRuntimeOptions {
   maxRepairAttempts: number;
   historyTurns: number;
   assistantPreviewTokens: number;
-  readHistory?: (sessionId: string) => readonly AgentStateCardHistoryTurn[];
+  readHistory?: (sessionId: string, excludedRequestId?: string) => readonly AgentStateCardHistoryTurn[];
+  readTasks?: (
+    sessionId: string,
+    interaction?: AgentInteractionContext,
+  ) => readonly { readonly requestId: string; readonly request: string }[];
   learningRequests?: AgentBackgroundLearningRequestLedger;
   /** Derived-context failures stay in the background diagnostics stream. */
   logger?: AgentLogger;
@@ -74,39 +83,46 @@ export class AgentStateCardRuntime {
   project(request: AgentStateCardRuntimeRequest): AgentStateCard {
     return buildAgentStateCard({
       currentRequest: request.currentRequest,
-      history: this.history(request.sessionId),
+      history: this.history(request.sessionId, request.conversationRequestId ?? request.requestId),
       ...(request.turnIndex === undefined ? {} : { turnIndex: request.turnIndex }),
       ...(request.activeSkills ? { activeSkills: request.activeSkills } : {}),
     });
   }
   async resolve(request: AgentStateCardRuntimeRequest): Promise<AgentStateCard> {
-    const history = this.history(request.sessionId);
+    const history = this.history(request.sessionId, request.conversationRequestId ?? request.requestId);
+    const tasks = request.sessionId ? (this.options.readTasks?.(request.sessionId, request.interaction) ?? []) : [];
     const structural = this.project(request);
-    if (!this.config.Enabled || !request.currentRequest.trim() || history.length === 0) return structural;
+    if (!this.config.Enabled || !request.currentRequest.trim() || (history.length === 0 && tasks.length === 0))
+      return structural;
     const key = this.cacheKey(request);
     if (this.currentCard?.key === key) return this.currentCard.card;
+    const rewriteInput = buildAgentStateCardRewriteInput({
+      currentRequest: request.currentRequest,
+      history,
+      tasks,
+      activeSkills: request.activeSkills,
+      historyBudgetCharacters: this.config.HistoryBudgetCharacters,
+      assistantPreviewTokens: this.options.assistantPreviewTokens,
+      model: this.provider.Model,
+    });
     const execute = () =>
       this.client.execute({
         contract: {
           name: "RewriteStateCard",
           description: "Resolve the current request using grounded conversational context.",
-          schema: AgentStateCardRewriteSchema,
+          schema: AgentStateCardRewriteSchema.superRefine((value, context) => {
+            if (value.resumeRequestId && !rewriteInput.taskRequestIds.includes(value.resumeRequestId))
+              context.addIssue({ code: "custom", message: "Resume only a supplied durable task request." });
+          }),
           bamlFunction: "RewriteStateCard",
         },
         systemPrompt: AgentStateCardRewriteSystemPrompt,
-        userPrompt: buildAgentStateCardRewriteInput({
-          currentRequest: request.currentRequest,
-          history,
-          activeSkills: request.activeSkills,
-          historyBudgetCharacters: this.config.HistoryBudgetCharacters,
-          assistantPreviewTokens: this.options.assistantPreviewTokens,
-          model: this.provider.Model,
-        }),
+        userPrompt: rewriteInput.userPrompt,
         requestId: request.requestId ?? crypto.randomUUID(),
         signal: request.signal,
         cache: this.cacheOptions(request),
       });
-    let rewrite: Pick<AgentStateCard, "topicRelation" | "standaloneRequest">;
+    let rewrite: import("zod").z.infer<typeof AgentStateCardRewriteSchema>;
     try {
       rewrite = this.options.learningRequests
         ? await this.options.learningRequests.run(
@@ -136,7 +152,8 @@ export class AgentStateCardRuntime {
       this.currentCard = { key, card: structural };
       return structural;
     }
-    const resolved = { ...structural, ...rewrite };
+    const { resumeRequestId, ...fields } = rewrite;
+    const resolved = { ...structural, ...fields, ...(resumeRequestId ? { resumeRequestId } : {}) };
     this.currentCard = { key, card: resolved };
     return resolved;
   }
@@ -158,12 +175,12 @@ export class AgentStateCardRuntime {
       ].slice(-this.options.historyTurns),
     );
   }
-  private history(sessionId?: string): readonly AgentStateCardHistoryTurn[] {
+  private history(sessionId?: string, excludedRequestId?: string): readonly AgentStateCardHistoryTurn[] {
     const key = sessionId?.trim();
     if (!key) return [];
-    return (this.options.readHistory ? this.options.readHistory(key) : (this.recentTurns.get(key) ?? [])).slice(
-      -this.options.historyTurns,
-    );
+    return (
+      this.options.readHistory ? this.options.readHistory(key, excludedRequestId) : (this.recentTurns.get(key) ?? [])
+    ).slice(-this.options.historyTurns);
   }
   private cacheOptions(request: AgentStateCardRuntimeRequest): AgentLanguageModelCacheOptions | undefined {
     if (!request.sessionId?.trim()) return undefined;
@@ -184,4 +201,34 @@ export class AgentStateCardRuntime {
       request.currentRequest.trim(),
     ].join("\u0000");
   }
+}
+
+/**
+ * Projects the durable conversation into the bounded state-card history. A
+ * cancelled run keeps its user entry in the session store, while its missing
+ * assistant/tool side stays missing and is never treated as learned knowledge.
+ */
+export function projectAgentStateCardConversationHistory(
+  conversation: readonly AgentConversationEntry[],
+  completedHistory: readonly AgentStateCardHistoryTurn[] = [],
+  excludedRequestId?: string,
+): AgentStateCardHistoryTurn[] {
+  const completedByRequestId = new Map(
+    completedHistory.filter((turn) => turn.requestId !== undefined).map((turn) => [turn.requestId!, turn]),
+  );
+  const turns = new Map<string, AgentStateCardHistoryTurn>();
+  for (const entry of conversation) {
+    if (entry.requestId === excludedRequestId) continue;
+    if (!isAgentHumanUserMessage(entry)) continue;
+    const completed = completedByRequestId.get(entry.requestId);
+    turns.set(entry.requestId, {
+      requestId: entry.requestId,
+      request: entry.content,
+      layer: AgentStateCardHistoryLayers.Fine,
+      ...(completed?.assistant ? { assistant: completed.assistant } : {}),
+      tools: completed?.tools ?? [],
+      artifacts: completed?.artifacts ?? [],
+    });
+  }
+  return [...turns.values()];
 }

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { createAgentWorkspaceUndoCheckpoint } from "../Continuity/AgentContinuityLedger.js";
 import { materializeAgentWorkspaceMutationReceipt } from "./AgentWorkspaceMutationReceipt.js";
 import type { ToolArtifactPolicyManifest } from "../Types/AgentToolContractTypes.js";
 import type {
@@ -49,6 +50,11 @@ export function mergeAgentWorkspaceCaptures(
 
   const sources = [...new Set([...captureSources(exact), ...captureSources(observed)])];
   const status = worseCaptureStatus(exact.status, observed.status);
+  const before = mergeWorkspaceSnapshots(exact.before, observed.before, status);
+  const after = mergeWorkspaceSnapshots(exact.after, observed.after, status);
+  const changes = [
+    ...new Map([...observed.changes, ...exact.changes].map((change) => [change.path, change])).values(),
+  ].sort((left, right) => left.path.localeCompare(right.path));
   return {
     type: observed.type ?? exact.type,
     version: observed.version ?? exact.version,
@@ -57,11 +63,10 @@ export function mergeAgentWorkspaceCaptures(
     coverage: "observed",
     status,
     scope: observed.scope,
-    before: mergeWorkspaceSnapshots(exact.before, observed.before, status),
-    after: mergeWorkspaceSnapshots(exact.after, observed.after, status),
-    changes: [...new Map([...exact.changes, ...observed.changes].map((change) => [change.path, change])).values()].sort(
-      (left, right) => left.path.localeCompare(right.path),
-    ),
+    before,
+    after,
+    changes,
+    checkpoint: createAgentWorkspaceUndoCheckpoint({ before, after, changes }),
   };
 }
 

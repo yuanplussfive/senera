@@ -146,7 +146,7 @@ function createContext(workspaceRoot: string): AgentHostToolContext {
     workspaceRoot,
     tool: {
       name: "WorkspaceApplyPatch",
-      runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, Capabilities: { Progress: true } },
+      runtime: { Lifecycle: "Immediate", Capabilities: { Progress: true } },
     },
     config: {},
     registry: {

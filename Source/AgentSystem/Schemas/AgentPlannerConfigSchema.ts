@@ -4,6 +4,14 @@ import { disabledOrPositiveInteger } from "./AgentConfigSchemaPrimitives.js";
 export const ActionPlannerClientSchema = (path: string) =>
   z
     .object({
+      Temperature: z.number().min(0).max(2).optional(),
+      MaxTokens: disabledOrPositiveInteger(`${path}.MaxTokens`).optional(),
+    })
+    .strict();
+
+export const ActionPlannerFinalAnswerClientSchema = (path: string) =>
+  z
+    .object({
       ModelProviderId: z.string().min(1).optional(),
       Temperature: z.number().min(0).max(2).optional(),
       MaxTokens: disabledOrPositiveInteger(`${path}.MaxTokens`).optional(),
@@ -21,7 +29,6 @@ export const ActionPlannerSchema = z
       .strict()
       .optional(),
     Client: ActionPlannerClientSchema("ActionPlanner.Client").optional(),
-    PlanningClient: ActionPlannerClientSchema("ActionPlanner.PlanningClient").optional(),
-    FinalAnswerClient: ActionPlannerClientSchema("ActionPlanner.FinalAnswerClient").optional(),
+    FinalAnswerClient: ActionPlannerFinalAnswerClientSchema("ActionPlanner.FinalAnswerClient").optional(),
   })
   .strict();

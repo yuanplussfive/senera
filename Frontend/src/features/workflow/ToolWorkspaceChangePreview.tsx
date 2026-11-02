@@ -1,30 +1,93 @@
+import { Tooltip } from "../../shared/ui/Tooltip";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { buildResourceContentUrl } from "../../api/uploadClient";
-import { buildWorkspaceResourceUrl, readWorkspaceResource } from "../../api/workspaceResourceClient";
+import { buildWorkspaceResourceUrl } from "../../api/workspaceResourceClient";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { downloadUrl } from "../../lib/download";
-import { type FilePreviewDescriptor } from "../../lib/filePreview";
-import { LruCache } from "../../lib/LruCache";
 import { cn } from "../../lib/util";
-import { resolveWorkspaceFileIcon } from "../../shared/workspace/workspaceFileIcon";
 import { useWorkspaceResourceController } from "../../shared/workspace/WorkspaceResourceProvider";
 import { AppIcon, IconButton, MetaLabel, Popover, PopoverAnchor, PopoverContent, StatusToken } from "../../shared/ui";
+import { FilePreviewRowIcon } from "../chat/FilePreviewIcon";
 import { DiffPreview } from "./ToolResourcePreview";
-import {
-  PierreFilePreview,
-  preloadPierreFilePreview,
-  preloadPierrePatchPreview,
-} from "../../shared/code/PierreCodeView";
+import { PierreFilePreview } from "../../shared/code/PierreCodeView";
 import { useAppearance } from "../../shared/theme/useAppearance";
 import type { ToolResource, ToolWorkspaceChange, ToolWorkspaceObservation } from "./toolResourceProjection";
 import { resolveWorkspaceChangePreview, workspaceChangeStatusLabel } from "./workspaceChangeActivity";
+import { Button, Spinner } from "../../shared/ui";
+
+import {
+  readWorkspacePreview,
+  createWorkspacePreviewIdentity,
+  workspacePreviewKind,
+  type WorkspacePreviewState,
+} from "./workspaceChangePreviewLoader";
 
 const WorkspaceChangePreviewLimit = 3;
 const WorkspacePreviewDelayMs = 160;
-const WorkspacePreviewTextLimit = 24_000;
-const WorkspacePatchTextCache = new LruCache<string, string>(24);
-const WorkspacePreviewCache = new LruCache<string, Promise<WorkspacePreviewState>>(24);
+/** The review uses the same verified patch and file resolution as the dock, without a hover interaction. */
+export function WorkspaceChangeReviewFile({
+  change,
+  patchResources,
+}: {
+  readonly change: ToolWorkspaceChange;
+  readonly patchResources: readonly ToolResource[];
+}): JSX.Element {
+  const controller = useWorkspaceResourceController();
+  const { resolvedTheme } = useAppearance();
+  const [state, setState] = useState<WorkspacePreviewState>({ status: "loading" });
+  const [reloadKey, setReloadKey] = useState(0);
+  const descriptor = resolveWorkspaceChangePreview(change);
+  const previewKind = workspacePreviewKind(descriptor);
+  useEffect(() => {
+    if (!controller || !previewKind) {
+      setState({ status: "unavailable" });
+      return;
+    }
+    let active = true;
+    setState({ status: "loading" });
+    void readWorkspacePreview({ change, controller, patchResources, previewKind, theme: resolvedTheme }).then(
+      (next) => {
+        if (active) setState(next);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [change, controller, patchResources, previewKind, resolvedTheme, reloadKey]);
+  const source =
+    controller && change.workspaceStatus !== "deleted"
+      ? buildWorkspaceResourceUrl(controller.httpBaseUrl, change.key, true)
+      : undefined;
+  return (
+    <div className="min-w-0" data-workspace-review-file={change.key}>
+      {previewKind ? (
+        state.status === "loading" ? (
+          <div className="flex items-center gap-2 p-5 text-sm text-content-muted">
+            <Spinner />
+            {frontendMessage("ui.loading")}
+          </div>
+        ) : (
+          <WorkspaceChangeHoverContent
+            change={change}
+            state={state}
+            showHeader={false}
+            onRetry={() => setReloadKey((key) => key + 1)}
+          />
+        )
+      ) : (
+        <div className="flex items-center gap-3 p-4">
+          <FilePreviewRowIcon name={change.key} />
+          <span className="min-w-0 flex-1 truncate text-sm text-content-secondary">{change.key}</span>
+          {source ? (
+            <Button variant="ghost" size="sm" onClick={() => controller?.openResource({ path: change.key })}>
+              {frontendMessage("workflow.workspace.open")}
+            </Button>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function ToolWorkspaceChangePreview({
   changes,
@@ -334,32 +397,27 @@ export function WorkspaceChangeRow({
           onMouseEnter={() => requestPreview()}
           onMouseLeave={scheduleClose}
         >
-          <span
-            className={cn(
-              "grid h-7 w-7 shrink-0 place-items-center rounded-md",
-              status === "added" && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-              status === "deleted" && "bg-rose-500/10 text-rose-700 dark:text-rose-300",
-              status !== "added" && status !== "deleted" && "bg-surface-hover text-content-muted",
-            )}
-            aria-hidden="true"
-          >
-            <AppIcon icon={resolveWorkspaceFileIcon(change.key, workspaceIconKind(filePreview))} size={13} />
-          </span>
-          <button
-            type="button"
-            className={cn(
-              "min-w-0 flex-1 truncate text-left text-[11px] text-content-primary",
-              (canOpen || canPreview) && "hover:text-accent-content",
-            )}
-            disabled={!canOpen && !canPreview}
-            title={canOpen ? frontendMessage("workflow.workspace.open") : undefined}
-            data-workspace-change-trigger
-            onClick={open}
-            onFocus={() => requestPreview(true)}
-            onBlur={handleBlur}
-          >
-            {change.key}
-          </button>
+          <FilePreviewRowIcon
+            name={change.key}
+            tone={status === "added" ? "added" : status === "deleted" ? "deleted" : "neutral"}
+          />
+          <Tooltip content={canOpen ? frontendMessage("workflow.workspace.open") : undefined}>
+            <button
+              type="button"
+              className={cn(
+                "min-w-0 flex-1 truncate text-left text-[11px] text-content-primary",
+                (canOpen || canPreview) && "hover:text-accent-content",
+              )}
+              disabled={!canOpen && !canPreview}
+
+              data-workspace-change-trigger
+              onClick={open}
+              onFocus={() => requestPreview(true)}
+              onBlur={handleBlur}
+            >
+              {change.key}
+            </button>
+          </Tooltip>
           <StatusToken
             size="compact"
             className={cn(
@@ -428,7 +486,7 @@ export function WorkspaceChangeRow({
             }
           }}
         >
-          <WorkspaceChangeHoverContent change={change} state={previewState} />
+          <WorkspaceChangeHoverContent change={change} state={previewState} onRetry={beginPreview} />
         </PopoverContent>
       ) : null}
     </Popover>
@@ -438,18 +496,24 @@ export function WorkspaceChangeRow({
 function WorkspaceChangeHoverContent({
   change,
   state,
+  showHeader = true,
+  onRetry,
 }: {
   readonly change: ToolWorkspaceChange;
   readonly state: WorkspacePreviewState;
+  readonly showHeader?: boolean;
+  readonly onRetry?: () => void;
 }): JSX.Element {
   return (
     <div className="min-w-0" data-workspace-change-preview-content>
-      <header className="flex min-w-0 items-center gap-3 border-b border-line-subtle bg-surface-subtle/45 px-3 py-2.5">
-        <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-content-primary" title={change.key}>
-          {change.key}
-        </span>
-        <WorkspaceChangeCounts change={change} />
-      </header>
+      {showHeader ? (
+        <header className="flex min-w-0 items-center gap-3 border-b border-line-subtle bg-surface-subtle/45 px-3 py-2.5">
+          <Tooltip content={change.key}>
+            <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-content-primary">{change.key}</span>
+          </Tooltip>
+          <WorkspaceChangeCounts change={change} />
+        </header>
+      ) : null}
       {state.status === "ready" ? (
         <div
           className={cn("min-w-0", state.kind === "text" && "bg-surface-muted/60 px-2 py-2")}
@@ -489,7 +553,15 @@ function WorkspaceChangeHoverContent({
       {state.status === "error" ? (
         <div className="flex min-h-20 items-center gap-2 px-3 py-3 text-[11px] text-content-muted">
           <AppIcon icon="warning" size={14} aria-hidden="true" />
-          <span>{frontendMessage("workflow.workspace.previewFailed")}</span>
+          <div className="min-w-0 flex-1" role="alert">
+            <p>{frontendMessage("workflow.workspace.previewFailed")}</p>
+            <p className="mt-1 break-words">{state.message}</p>
+          </div>
+          {onRetry ? (
+            <Button variant="ghost" size="sm" onClick={onRetry}>
+              {frontendMessage("ui.retry")}
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -504,131 +576,6 @@ function WorkspaceChangeCounts({ change }: { readonly change: ToolWorkspaceChang
       {change.removedLines ? <span className="text-rose-700 dark:text-rose-300">−{change.removedLines}</span> : null}
     </span>
   );
-}
-
-type WorkspacePreviewState =
-  | { readonly status: "idle" | "loading" | "unavailable" | "error" }
-  | {
-      readonly status: "ready";
-      readonly kind: "diff" | "text";
-      readonly text: string;
-      readonly truncated: boolean;
-      readonly prerenderedHTML: string;
-    }
-  | { readonly status: "ready"; readonly kind: "image"; readonly source: string; readonly truncated: false };
-
-type WorkspacePreviewKind = "text" | "image";
-
-async function loadWorkspacePreview(input: {
-  readonly change: ToolWorkspaceChange;
-  readonly controller: NonNullable<ReturnType<typeof useWorkspaceResourceController>>;
-  readonly patchResources: readonly ToolResource[];
-  readonly previewKind: WorkspacePreviewKind | undefined;
-}): Promise<WorkspacePreviewSource> {
-  if (!input.previewKind) return { status: "unavailable" };
-  if (input.previewKind === "image") {
-    if (input.change.workspaceStatus === "deleted") return { status: "unavailable" };
-    return {
-      status: "ready",
-      kind: "image",
-      source: buildWorkspaceResourceUrl(input.controller.httpBaseUrl, input.change.key, true),
-      truncated: false,
-    };
-  }
-  const patch = await readPatchPreview(input);
-  if (patch) return { status: "ready", kind: "diff", ...boundPreviewText(patch) };
-  if (input.change.workspaceStatus === "deleted") return { status: "unavailable" };
-
-  const resource = await readWorkspaceResource(input.controller.httpBaseUrl, input.change.key);
-  if (resource.content === undefined) return { status: "unavailable" };
-  return { status: "ready", kind: "text", ...boundPreviewText(resource.content) };
-}
-
-type WorkspacePreviewSource =
-  | { readonly status: "unavailable" }
-  | { readonly status: "ready"; readonly kind: "diff" | "text"; readonly text: string; readonly truncated: boolean }
-  | { readonly status: "ready"; readonly kind: "image"; readonly source: string; readonly truncated: false };
-
-function readWorkspacePreview(input: {
-  readonly change: ToolWorkspaceChange;
-  readonly controller: NonNullable<ReturnType<typeof useWorkspaceResourceController>>;
-  readonly patchResources: readonly ToolResource[];
-  readonly previewKind: WorkspacePreviewKind;
-  readonly theme: "light" | "dark";
-}): Promise<WorkspacePreviewState> {
-  const cacheKey = createWorkspacePreviewIdentity(input);
-  const cached = WorkspacePreviewCache.get(cacheKey);
-  if (cached) return cached;
-
-  const pending = loadWorkspacePreview(input)
-    .then((source) => materializeWorkspacePreview(source, input.change.key, input.theme))
-    .catch(() => ({ status: "error" }) satisfies WorkspacePreviewState);
-  WorkspacePreviewCache.set(cacheKey, pending);
-  void pending.then((state) => {
-    if (state.status === "error") WorkspacePreviewCache.delete(cacheKey);
-  });
-  return pending;
-}
-
-async function materializeWorkspacePreview(
-  source: WorkspacePreviewSource,
-  fileName: string,
-  theme: "light" | "dark",
-): Promise<WorkspacePreviewState> {
-  if (source.status !== "ready") return source;
-  if (source.kind === "image") {
-    await decodeWorkspacePreviewImage(source.source);
-    return source;
-  }
-  const prerenderedHTML =
-    source.kind === "diff"
-      ? await preloadPierrePatchPreview({ patch: source.text, theme })
-      : await preloadPierreFilePreview({
-          code: source.text,
-          fileName,
-          lineNumbers: false,
-          theme,
-          wrapped: false,
-        });
-  return { ...source, prerenderedHTML };
-}
-
-function decodeWorkspacePreviewImage(source: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => {
-      void image.decode().then(resolve, reject);
-    };
-    image.onerror = reject;
-    image.src = source;
-  });
-}
-
-function createWorkspacePreviewIdentity(input: {
-  readonly change: ToolWorkspaceChange;
-  readonly controller: ReturnType<typeof useWorkspaceResourceController> | undefined;
-  readonly patchResources: readonly ToolResource[];
-  readonly previewKind: WorkspacePreviewKind | undefined;
-  readonly theme: "light" | "dark";
-}): string {
-  return JSON.stringify({
-    endpoint: input.controller?.httpBaseUrl,
-    path: input.change.key,
-    status: input.change.workspaceStatus ?? input.change.status,
-    previewKind: input.previewKind,
-    patchSources: input.patchResources.map((resource) => resource.uri),
-    theme: input.theme,
-  });
-}
-
-function workspacePreviewKind(preview: FilePreviewDescriptor | undefined): WorkspacePreviewKind | undefined {
-  if (preview?.renderKind === "image") return "image";
-  return preview?.contentKind === "text" ? "text" : undefined;
-}
-
-function workspaceIconKind(preview: FilePreviewDescriptor | undefined): "text" | "image" | "binary" {
-  if (preview?.renderKind === "image") return "image";
-  return preview?.contentKind === "text" ? "text" : "binary";
 }
 
 function WorkspaceChangeImagePreview({ source, alt }: { readonly source: string; readonly alt: string }): JSX.Element {
@@ -654,80 +601,4 @@ function WorkspaceChangeImagePreview({ source, alt }: { readonly source: string;
       />
     </div>
   );
-}
-
-async function readPatchPreview(input: {
-  readonly change: ToolWorkspaceChange;
-  readonly controller: NonNullable<ReturnType<typeof useWorkspaceResourceController>>;
-  readonly patchResources: readonly ToolResource[];
-}): Promise<string | undefined> {
-  const sources = input.patchResources
-    .map((resource) => buildResourceContentUrl(input.controller.httpBaseUrl, resource.uri))
-    .filter((source): source is string => Boolean(source));
-  const responses = await Promise.all(
-    sources.map(async (source) => {
-      try {
-        const text = await readWorkspacePatchText(source);
-        return text ? selectFilePatch(text, input.change.key) : undefined;
-      } catch (error) {
-        void error;
-        return undefined;
-      }
-    }),
-  );
-  return [...responses].reverse().find((value): value is string => Boolean(value));
-}
-
-async function readWorkspacePatchText(source: string): Promise<string | undefined> {
-  const cached = WorkspacePatchTextCache.get(source);
-  if (cached !== undefined) return cached;
-  const response = await fetch(source, { credentials: "include" });
-  if (!response.ok) return undefined;
-  const text = await response.text();
-  WorkspacePatchTextCache.set(source, text);
-  return text;
-}
-
-function boundPreviewText(text: string): { readonly text: string; readonly truncated: boolean } {
-  const normalized = text.replace(/\r\n?/gu, "\n");
-  return normalized.length > WorkspacePreviewTextLimit
-    ? { text: `${normalized.slice(0, WorkspacePreviewTextLimit)}\n…`, truncated: true }
-    : { text: normalized, truncated: false };
-}
-
-function selectFilePatch(patch: string, filePath: string): string | undefined {
-  const lines = patch.replace(/\r\n?/gu, "\n").split("\n");
-  const headerStarts = lines.flatMap((_, index) => (isPatchHeader(lines, index) ? [index] : []));
-  const target = normalizePatchPath(filePath);
-  for (const [index, start] of headerStarts.entries()) {
-    const nextStart = headerStarts[index + 1] ?? lines.length;
-    const block = lines.slice(start, nextStart);
-    if (readPatchHeaderPaths(block).some((path) => patchPathMatches(path, target))) return block.join("\n");
-  }
-  return headerStarts.length === 0 && patch.trim().length > 0 ? patch : undefined;
-}
-
-function isPatchHeader(lines: readonly string[], index: number): boolean {
-  const line = lines[index] ?? "";
-  const next = lines[index + 1] ?? "";
-  return line.startsWith("--- ") && next.startsWith("+++ ");
-}
-
-function readPatchHeaderPaths(lines: readonly string[]): readonly string[] {
-  const hunkStart = lines.findIndex((line) => line.startsWith("@@ "));
-  return lines
-    .slice(0, hunkStart >= 0 ? hunkStart : 4)
-    .flatMap((line) => (line.startsWith("--- ") || line.startsWith("+++ ") ? [normalizePatchPath(line.slice(4))] : []));
-}
-
-function patchPathMatches(candidate: string, target: string): boolean {
-  return candidate === target || candidate.startsWith(`${target} `) || candidate.startsWith(`${target}\t`);
-}
-
-function normalizePatchPath(value: string): string {
-  return value
-    .trim()
-    .replace(/^['"]|['"]$/gu, "")
-    .replace(/^(?:a|b)\//u, "")
-    .replace(/\\/gu, "/");
 }

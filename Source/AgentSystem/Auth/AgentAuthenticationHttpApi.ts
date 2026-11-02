@@ -5,9 +5,12 @@ import { projectAgentMessage } from "../I18n/AgentMessageProjection.js";
 import { readStreamJsonBody } from "../Core/AgentJsonParsing.js";
 import { applyCredentialedCors, writeCorsPreflight } from "./AgentCredentialedCors.js";
 import { AgentServerAccessGuard, type AgentAccessFailure } from "./AgentServerAccessGuard.js";
+import { AgentDeviceAuthenticationHttpApi } from "./AgentDeviceAuthenticationHttpApi.js";
+import type { AgentDeviceConnectionService } from "./AgentDeviceConnectionService.js";
 import {
   AgentAuthenticationHttpRoutes,
   AgentAuthenticationSessionStates,
+  projectAgentAuthenticationSession,
   type AgentAuthenticationSessionResponse,
 } from "./AgentAuthenticationProtocol.js";
 
@@ -21,18 +24,28 @@ const LoginRequestSchema = z
   .strict();
 
 export class AgentAuthenticationHttpApi {
-  constructor(private readonly access: AgentServerAccessGuard) {}
+  private readonly deviceApi: AgentDeviceAuthenticationHttpApi;
+
+  constructor(
+    private readonly access: AgentServerAccessGuard,
+    connections?: AgentDeviceConnectionService,
+  ) {
+    this.deviceApi = new AgentDeviceAuthenticationHttpApi(access, connections);
+  }
 
   canHandle(request: IncomingMessage): boolean {
-    return Object.values(AgentAuthenticationHttpRoutes).includes(
-      this.pathname(request) as (typeof AgentAuthenticationHttpRoutes)[keyof typeof AgentAuthenticationHttpRoutes],
+    return (
+      this.deviceApi.canHandle(this.pathname(request)) ||
+      Object.values(AgentAuthenticationHttpRoutes).includes(
+        this.pathname(request) as (typeof AgentAuthenticationHttpRoutes)[keyof typeof AgentAuthenticationHttpRoutes],
+      )
     );
   }
 
   async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     if (
       !applyCredentialedCors(request, response, {
-        allowedMethods: ["GET", "POST", "OPTIONS"],
+        allowedMethods: ["GET", "POST", "DELETE", "OPTIONS"],
         isOriginAllowed: (origin, corsRequest) => this.access.allowsOrigin(origin, corsRequest),
       })
     ) {
@@ -45,7 +58,11 @@ export class AgentAuthenticationHttpApi {
     }
 
     const pathname = this.pathname(request);
-    if (pathname === AgentAuthenticationHttpRoutes.Session && request.method === "GET") {
+    if (this.deviceApi.canHandle(pathname)) {
+      await this.deviceApi.handle(request, response);
+      return;
+    }
+    if (pathname === AgentAuthenticationHttpRoutes.Session && (request.method === "GET" || request.method === "POST")) {
       this.handleSession(request, response);
       return;
     }
@@ -64,14 +81,6 @@ export class AgentAuthenticationHttpApi {
   }
 
   private handleSession(request: IncomingMessage, response: ServerResponse): void {
-    if (!this.access.isAuthenticationRequired) {
-      this.writeJson(response, 200, {
-        ok: true,
-        session: { state: AgentAuthenticationSessionStates.Disabled },
-      } satisfies AgentAuthenticationSessionResponse);
-      return;
-    }
-
     const result = this.access.authorizeHttp(request, { requireCsrf: false });
     if (!result.ok) {
       if (result.failure.code === "authentication_required") {
@@ -84,18 +93,18 @@ export class AgentAuthenticationHttpApi {
       this.writeFailure(response, result.failure);
       return;
     }
-    const session = result.access.session;
-    if (!session) {
-      throw new Error("Authenticated access did not include its server session.");
+    let session = result.access.session;
+    if (!session && request.method === "POST") {
+      const local = this.access.initializeLocalOwnerSession(request);
+      if (!local) throw new Error("Local access did not permit session initialization.");
+      if (local.created) response.setHeader("Set-Cookie", this.access.issueCookie(local.token, request));
+      session = local.session;
     }
     this.writeJson(response, 200, {
       ok: true,
-      session: {
-        state: AgentAuthenticationSessionStates.Authenticated,
-        account: result.access.principal,
-        csrfToken: session.csrfToken,
-        expiresAt: new Date(session.expiresAt).toISOString(),
-      },
+      session: session
+        ? projectAgentAuthenticationSession(session)
+        : { state: AgentAuthenticationSessionStates.Disabled },
     } satisfies AgentAuthenticationSessionResponse);
   }
 
@@ -131,12 +140,7 @@ export class AgentAuthenticationHttpApi {
     response.setHeader("Set-Cookie", this.access.issueCookie(result.token, request));
     this.writeJson(response, 200, {
       ok: true,
-      session: {
-        state: AgentAuthenticationSessionStates.Authenticated,
-        account: result.session.principal,
-        csrfToken: result.session.csrfToken,
-        expiresAt: new Date(result.session.expiresAt).toISOString(),
-      },
+      session: projectAgentAuthenticationSession(result.session),
     } satisfies AgentAuthenticationSessionResponse);
   }
 

@@ -17,6 +17,7 @@ import type { AgentNativeRequiredToolChoice } from "./AgentModelEndpointContract
 import { errorMessage } from "../Core/AgentErrors.js";
 import { AgentModelUsageResolver, recordActiveAgentModelUsage, type AgentModelUsageSink } from "./AgentModelUsage.js";
 import { projectAgentPiAssistantUsage } from "./AgentPiModelUsage.js";
+import { priceAgentPiUsage } from "./AgentModelPricing.js";
 import type { AgentModelTimingSink } from "./AgentModelTiming.js";
 import type { AgentNativeToolApiStreams } from "./AgentNativeToolApiStreams.js";
 import type { AgentPromptWireSnapshot } from "./AgentPromptWireSnapshot.js";
@@ -29,6 +30,13 @@ import {
   resolveAgentPromptCacheStrategy,
 } from "./AgentPromptWireSnapshot.js";
 import { createAgentStreamIdleWatchdog, isAgentStreamActivityEvent } from "./AgentModelRequestTimeout.js";
+import { AgentModelRequestRequirements } from "../Core/AgentModelCapabilityContract.js";
+import { assertAgentModelRequirements } from "./AgentModelRequirements.js";
+import {
+  collectAgentProviderDiagnosticSecrets,
+  startAgentProviderStreamCapture,
+} from "../Diagnostics/AgentProviderStreamDiagnostics.js";
+import type { AgentProviderStreamRequestStatus } from "../PiShared/AgentPiDiagnosticsTypes.js";
 
 export interface AgentPiModelExecutionRequest {
   readonly requestId: string;
@@ -59,7 +67,7 @@ export class AgentPiModelRequestExecutor {
     apiStreams?: typeof AgentNativeToolApiStreams,
   ) {
     this.pi = createAgentPiConfiguredProvider(configuration, purpose, apiStreams);
-    this.usageResolver = new AgentModelUsageResolver(configuration.Model);
+    this.usageResolver = new AgentModelUsageResolver(configuration.Model, configuration.Pricing);
   }
 
   get api() {
@@ -68,7 +76,31 @@ export class AgentPiModelRequestExecutor {
 
   async execute(input: AgentPiModelExecutionRequest): Promise<AssistantMessage> {
     throwAbortReason(input.signal);
+    const context = normalizeContext(input.context);
+    assertAgentModelRequirements(this.configuration, {
+      ...AgentModelRequestRequirements.Text,
+      ...(input.toolChoice !== undefined || getCurrentTools(context.messages).length
+        ? AgentModelRequestRequirements.NativeTools
+        : {}),
+      ...(context.messages.some(
+        (message) => Array.isArray(message.content) && message.content.some((part) => part.type === "image"),
+      )
+        ? AgentModelRequestRequirements.Vision
+        : {}),
+    });
     const startedAt = performance.now();
+    const streamDiagnostic = startAgentProviderStreamCapture({
+      providerId: this.configuration.Id,
+      invocationId: input.requestId,
+      stage: input.stage,
+      model: this.pi.model,
+      secrets: collectAgentProviderDiagnosticSecrets({
+        apiKeys: [this.configuration.ApiKey],
+        headers: [this.pi.model.headers],
+      }),
+    });
+    let diagnosticStatus: AgentProviderStreamRequestStatus = "incomplete";
+    let diagnosticError: unknown;
     const firstToken = new AbortController();
     const deadline = new AbortController();
     const streamIdle = new AbortController();
@@ -86,7 +118,6 @@ export class AgentPiModelRequestExecutor {
       this.configuration.MaxRequestMs,
       this.configuration.FirstTokenTimeoutMs,
     );
-    const context = normalizeContext(input.context);
     const requestCharacters = JSON.stringify(context).length;
     const stablePrefix = {
       systemPrompt: getCurrentSystemPrompt(context.messages),
@@ -103,6 +134,7 @@ export class AgentPiModelRequestExecutor {
     let usageRecorded = false;
     const recordUsage = () => {
       if (!message || usageRecorded) return;
+      priceAgentPiUsage(message.usage, this.configuration.Pricing);
       responseCharacters = JSON.stringify(message.content).length;
       const usage = this.usageResolver.resolve(
         input.context,
@@ -164,6 +196,7 @@ export class AgentPiModelRequestExecutor {
         maxRetryDelayMs: this.configuration.RetryAfterMaxDelayMs,
         ...(input.cache ? { sessionId: input.cache.scope, cacheRetention: retention } : {}),
         ...(capture ? { onPayload: capture.onPayload } : {}),
+        onProviderStreamEvent: streamDiagnostic?.onProviderStreamEvent,
         ...(input.omitOutputTokenLimit || this.configuration.MaxOutputTokens <= 0
           ? {}
           : { maxTokens: this.configuration.MaxOutputTokens }),
@@ -181,6 +214,7 @@ export class AgentPiModelRequestExecutor {
         const next = await awaitWithAbortSignal(iterator.next(), signal);
         if (next.done) break;
         const event = next.value;
+        streamDiagnostic?.observe(event);
         if (event.type === "done" || event.type === "error") {
           message = event.type === "done" ? event.message : event.error;
           if (event.type === "done" || projectAgentPiAssistantUsage(message)) recordUsage();
@@ -209,11 +243,14 @@ export class AgentPiModelRequestExecutor {
         throw new Error(message.errorMessage ?? "Pi provider request did not complete.");
       wireCompleted = true;
       input.validate?.(message);
+      diagnosticStatus = "completed";
       await report("completed");
       return message;
     } catch (error) {
       const timeout = firstToken.signal.reason ?? streamIdle.signal.reason ?? deadline.signal.reason;
       const failure = timeout ?? (input.signal?.aborted ? input.signal.reason : error);
+      diagnosticStatus = input.signal?.aborted ? "aborted" : wireCompleted ? "validation_failed" : "failed";
+      diagnosticError = failure;
       await report("failed", failure);
       if (timeout || input.signal?.aborted) throw failure;
       if (failure instanceof AgentModelResponseBudgetError) throw failure;
@@ -224,6 +261,7 @@ export class AgentPiModelRequestExecutor {
       if (firstTokenTimer) clearTimeout(firstTokenTimer);
       if (requestTimer) clearTimeout(requestTimer);
       streamIdleWatchdog.clear();
+      streamDiagnostic?.finish(diagnosticStatus, diagnosticError);
     }
   }
 }

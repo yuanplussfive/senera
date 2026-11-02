@@ -3,6 +3,7 @@ import type { AgentTerminalResult } from "../Runtime/AgentExecutionProjector.js"
 import type { AgentModelProviderMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import type { AgentStateCard } from "../StateCard/AgentStateCardTypes.js";
+import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 
 export { DefaultAgentMemoryTimeZone } from "./AgentMemoryTime.js";
 export { InMemoryAgentMemorySourceRepository } from "./AgentMemoryInMemorySourceRepository.js";
@@ -76,6 +77,7 @@ export interface AgentMemoryDeletionImpact {
 }
 
 export interface AgentMemoryCompletedTurnInput {
+  interaction?: AgentInteractionContext;
   sessionId: string;
   requestId: string;
   startedAt: string;

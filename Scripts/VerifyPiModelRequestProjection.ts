@@ -31,7 +31,7 @@ for (const endpoint of AgentModelEndpointKinds) {
     RetryMaxDelayMs: 10_000,
     RetryAfterMaxDelayMs: 60_000,
     Headers: {},
-    Capabilities: { Vision: true, DeveloperRole: false },
+    Capabilities: { Chat: true, Vision: true, DeveloperRole: false },
   };
   const context = projectAgentPiModelRequestContext(
     {

@@ -1,4 +1,5 @@
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
+import { OverlayLayerScope, useOverlayLayer, useOverlayPortalContainer } from "./overlayPortalScope";
 import { type ReactNode, forwardRef } from "react";
 import { cn } from "../../lib/util";
 import { useResponsiveMode } from "../responsive";
@@ -14,18 +15,22 @@ interface ContentProps extends React.ComponentPropsWithoutRef<typeof ContextMenu
 }
 
 export const ContextMenuContent = forwardRef<HTMLDivElement, ContentProps>(
-  ({ className, collisionPadding = 8, children, ...props }, ref) => (
-    <ContextMenuPrimitive.Portal>
-      <ContextMenuPrimitive.Content
-        ref={ref}
-        collisionPadding={collisionPadding}
-        className={cn(menuSurfaceClassName, "context-menu-surface", className)}
-        {...props}
-      >
-        {children}
-      </ContextMenuPrimitive.Content>
-    </ContextMenuPrimitive.Portal>
-  ),
+  ({ className, collisionPadding = 8, children, style, ...props }, ref) => {
+    const layer = useOverlayLayer();
+    return (
+      <ContextMenuPrimitive.Portal container={useOverlayPortalContainer()}>
+        <ContextMenuPrimitive.Content
+          ref={ref}
+          collisionPadding={collisionPadding}
+          className={cn(menuSurfaceClassName, "context-menu-surface", className)}
+          style={{ ...style, zIndex: layer }}
+          {...props}
+        >
+          <OverlayLayerScope.Provider value={layer + 1}>{children}</OverlayLayerScope.Provider>
+        </ContextMenuPrimitive.Content>
+      </ContextMenuPrimitive.Portal>
+    );
+  },
 );
 ContextMenuContent.displayName = "ContextMenuContent";
 

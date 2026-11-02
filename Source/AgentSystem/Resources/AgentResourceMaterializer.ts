@@ -4,7 +4,6 @@ import { extension as mimeExtension } from "mime-types";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { isAgentBase64 } from "../Core/AgentBase64.js";
 import { isAgentUnknownRecord } from "../Core/AgentUnknownValue.js";
-import { createAgentUploadId } from "../Uploads/AgentUploadLocator.js";
 import type { AgentPublishedResource, AgentResourcePublisher } from "./AgentResourcePublisher.js";
 
 export interface AgentResourceMaterializationOptions {
@@ -99,7 +98,7 @@ export class AgentResourceMaterializer {
       }
       if (!isAgentUnknownRecord(value)) return { value, changed: false, resources: [] };
 
-      const record: Record<string, unknown> = {};
+      const record = { ...value };
       const resources: AgentPublishedResource[] = [];
       let changed = false;
       for (const [key, entry] of Object.entries(value)) {
@@ -213,5 +212,5 @@ function isBase64DataCharacter(value: string): boolean {
 
 function resourceFileName(mime: string): string {
   const extension = mimeExtension(mime) || mime.split("/", 2)[1]?.replace(/[^a-z0-9]+/giu, "") || "bin";
-  return `${createAgentUploadId()}.${extension}`;
+  return `resource.${extension}`;
 }

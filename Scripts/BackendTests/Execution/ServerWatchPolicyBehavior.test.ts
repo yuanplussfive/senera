@@ -43,4 +43,27 @@ describe("development server watch policy", () => {
     );
     expect(isDevServerWatchPathIgnored(workspaceRoot, path.join(workspaceRoot, "Source", "Agent.ts"))).toBe(false);
   });
+
+  it("leaves native sources and generated Android assets to Gradle without suppressing server tooling", () => {
+    const workspaceRoot = path.resolve("workspace");
+    for (const file of [
+      "app/src/main/java/ai/senera/mobile/ChannelClientActivity.java",
+      "app/src/main/assets/public/assets/console.js",
+      "app/build/outputs/apk/debug/app-debug.apk",
+      ".gradle/8.14/checksums/checksums.lock",
+    ]) {
+      expect(
+        isDevServerWatchPathIgnored(workspaceRoot, path.join(workspaceRoot, "Apps", "Mobile", "android", file)),
+      ).toBe(true);
+    }
+    expect(
+      isDevServerWatchPathIgnored(workspaceRoot, path.join(workspaceRoot, "Apps", "Mobile", "BuildAndroid.ts")),
+    ).toBe(false);
+    expect(
+      isDevServerWatchPathIgnored(workspaceRoot, path.join(workspaceRoot, "Apps", "Mobile", "android-tools.ts")),
+    ).toBe(false);
+    expect(
+      isDevServerWatchPathIgnored(workspaceRoot, path.join(workspaceRoot, "Packages", "Runtime", "src", "index.ts")),
+    ).toBe(false);
+  });
 });

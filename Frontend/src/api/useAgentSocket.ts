@@ -1,5 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ClientConnectionLifecycle } from "./connectionLifecycle";
+import { createClientWebSocket, type ClientWebSocket } from "./clientWebSocket";
+import { ConnectionLiveness } from "./connectionLiveness";
+import { PendingRequests } from "./pendingRequests";
+import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import { z } from "zod/mini";
+import { AgentChannelKinds } from "../../../Source/AgentSystem/Channels/AgentChannelTypes";
 import { EventKinds, type EventEnvelope, type WsRequest } from "./eventTypes";
 import { EventChannels, EventTransportSpecs, type EventKind } from "./generatedEventCatalog";
 import {
@@ -8,6 +14,8 @@ import {
   StreamingEventMaxLatencyMs,
 } from "./streamingEventCoalescer";
 import { AgentEventIdWindow } from "./eventDeliveryIdentity";
+import { readAgentTransportRetryDelayMs as readAgentSocketRetryDelayMs } from "./agentTransportRetry";
+export { readAgentSocketRetryDelayMs };
 import {
   createAgentTransportConnectionId,
   describeTransportError,
@@ -48,16 +56,11 @@ export type UseAgentSocketOptions = UseAgentSocketBaseOptions &
 export interface AgentSocketHandle {
   status: SocketStatus;
   send: (req: WsRequest) => boolean;
+  sendAccepted: (req: Extract<WsRequest, { type: "session.message" }> & { requestId: string }) => Promise<void> | false;
   reconnect: () => void;
 }
 
 const AgentSocketStableConnectionMs = 30_000;
-
-export function readAgentSocketRetryDelayMs(attempt: number, random = Math.random): number {
-  const ceiling = Math.min(15_000, 1_000 * 2 ** Math.max(0, attempt));
-  const boundedRandom = Math.min(1, Math.max(0, random()));
-  return Math.round(ceiling / 2 + (ceiling / 2) * boundedRandom);
-}
 
 export function parseAgentSocketEventData(data: unknown): EventEnvelope {
   const value: unknown = JSON.parse(typeof data === "string" ? data : "");
@@ -90,7 +93,7 @@ const AgentSocketEventEnvelopeSchema = z.looseObject({
   scope: z.optional(
     z.looseObject({
       parentRequestId: z.optional(AgentSocketNonBlankStringSchema),
-      channel: z.optional(z.enum(["console", "qq", "telegram", "discord"])),
+      channel: z.optional(z.enum({ Console: "console", ...AgentChannelKinds })),
       workflowName: z.optional(AgentSocketNonBlankStringSchema),
       jobId: z.optional(AgentSocketNonBlankStringSchema),
       agentName: z.optional(AgentSocketNonBlankStringSchema),
@@ -111,7 +114,44 @@ const AgentSocketEventEnvelopeSchema = z.looseObject({
 export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
   const { url, enabled = true, reconnectPolicy, onEvent, onEvents, onMalformedEvent } = opts;
   const [status, setStatus] = useState<SocketStatus>("idle");
-  const wsRef = useRef<WebSocket | null>(null);
+  const wsRef = useRef<ClientWebSocket | null>(null);
+  const acceptance = useMemo(
+    () => new PendingRequests<void>(() => new Error(frontendMessage("chat.sendUnconfirmed"))),
+    [],
+  );
+  const resetConnection = useCallback(() => {
+    acceptance.rejectAll(new Error(frontendMessage("chat.sendUnconfirmed")));
+  }, [acceptance]);
+  const pausedRef = useRef(document.visibilityState === "hidden");
+  const probeRef = useRef<
+    { resolve: () => void; reject: () => void; timer: ReturnType<typeof setTimeout> } | undefined
+  >(undefined);
+  const finishProbe = useCallback((healthy: boolean): void => {
+    const probe = probeRef.current;
+    if (!probe) return;
+    probeRef.current = undefined;
+    clearTimeout(probe.timer);
+    if (healthy) probe.resolve();
+    else probe.reject();
+  }, []);
+  const liveness = useMemo(
+    () =>
+      new ConnectionLiveness(
+        (timeout) =>
+          new Promise<void>((resolve, reject) => {
+            const socket = wsRef.current;
+            if (socket?.readyState !== WebSocket.OPEN) {
+              reject();
+              return;
+            }
+            probeRef.current = { resolve, reject, timer: setTimeout(() => finishProbe(false), timeout) };
+            socket.send(JSON.stringify({ type: "profile.get" }));
+          }),
+        () => wsRef.current?.close(4000, "Connection probe timed out"),
+        false,
+      ),
+    [finishProbe],
+  );
   const connectSeqRef = useRef(0);
   const retryRef = useRef(0);
   const retryTimerRef = useRef<number | null>(null);
@@ -313,9 +353,9 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
       stage: "lifecycle",
       state: "connecting",
     });
-    let ws: WebSocket;
+    let ws: ClientWebSocket;
     try {
-      ws = new WebSocket(url);
+      ws = createClientWebSocket(url);
     } catch (error) {
       setStatus("error");
       publishAgentTransportObservation({
@@ -340,6 +380,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
         return;
       }
       opened = true;
+      liveness.start(pausedRef.current);
       setStatus("open");
       publishAgentTransportObservation({
         connectionId: connectionIdRef.current,
@@ -356,6 +397,8 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
 
     ws.onmessage = (evt) => {
       if (connectSeq !== connectSeqRef.current || wsRef.current !== ws || urlRef.current !== url) return;
+      liveness.receive();
+      finishProbe(true);
       publishAgentTransportObservation({
         connectionId: connectionIdRef.current,
         observedAt: new Date().toISOString(),
@@ -365,6 +408,27 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
       });
       try {
         const env = parseAgentSocketEventData(evt.data);
+        const rejectedId =
+          env.kind === EventKinds.SessionBusy
+            ? (env.data as { rejectedRequestId?: string }).rejectedRequestId
+            : undefined;
+        const requestId =
+          rejectedId ??
+          env.requestId ??
+          (env.kind === EventKinds.SessionMessageQueued ? (env.data as { requestId: string }).requestId : undefined);
+        if (requestId) {
+          if (env.kind === EventKinds.RunStarted || env.kind === EventKinds.SessionMessageQueued)
+            acceptance.resolve(requestId, undefined);
+          else if (
+            env.kind === EventKinds.RequestInvalid ||
+            env.kind === EventKinds.SessionBusy ||
+            env.kind === EventKinds.SessionNotFound
+          )
+            acceptance.reject(
+              requestId,
+              new Error((env.data as { message?: string }).message ?? frontendMessage("chat.sendUnconfirmed")),
+            );
+        }
         dispatch(env);
       } catch (error) {
         publishAgentTransportObservation({
@@ -396,6 +460,9 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
       if (connectSeq !== connectSeqRef.current || wsRef.current !== ws) {
         return;
       }
+      liveness.stop();
+      finishProbe(false);
+      resetConnection();
       if (stableTimerRef.current !== null) {
         clearTimeout(stableTimerRef.current);
         stableTimerRef.current = null;
@@ -425,10 +492,11 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
         );
       }
     };
-  }, [dispatch, requestReconnect, url]);
+  }, [acceptance, dispatch, finishProbe, liveness, resetConnection, requestReconnect, url]);
 
   const scheduleRetry = useCallback((): void => {
-    if (retryTimerRef.current !== null || !enabledRef.current || navigator.onLine === false) return;
+    if (retryTimerRef.current !== null || !enabledRef.current || pausedRef.current || navigator.onLine === false)
+      return;
     const attempt = retryRef.current;
     retryRef.current = attempt + 1;
     const delay = readAgentSocketRetryDelayMs(attempt);
@@ -451,6 +519,9 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
 
   useEffect(() => {
     if (!enabled) {
+      liveness.stop();
+      finishProbe(false);
+      resetConnection();
       closedByUserRef.current = true;
       clearRetrySchedule();
       clearFlushSchedule();
@@ -467,10 +538,19 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     reconnectStoppedRef.current = false;
     connect();
     const handleOnline = (): void => {
-      if (!wsRef.current && retryTimerRef.current === null && reconnectPolicySeqRef.current === null) connect();
+      if (
+        !pausedRef.current &&
+        !wsRef.current &&
+        retryTimerRef.current === null &&
+        reconnectPolicySeqRef.current === null
+      )
+        connect();
     };
     window.addEventListener("online", handleOnline);
     return () => {
+      liveness.stop();
+      finishProbe(false);
+      resetConnection();
       closedByUserRef.current = true;
       window.removeEventListener("online", handleOnline);
       clearRetrySchedule();
@@ -481,7 +561,7 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
       wsRef.current = null;
       pendingRef.current = [];
     };
-  }, [clearFlushSchedule, clearRetrySchedule, connect, enabled]);
+  }, [clearFlushSchedule, clearRetrySchedule, connect, enabled, finishProbe, liveness, resetConnection]);
 
   const send = useCallback((req: WsRequest): boolean => {
     const ws = wsRef.current;
@@ -503,8 +583,21 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     }
   }, []);
 
+  const sendAccepted = useCallback(
+    (req: Extract<WsRequest, { type: "session.message" }> & { requestId: string }): Promise<void> | false => {
+      if (wsRef.current?.readyState !== WebSocket.OPEN || urlRef.current !== connectionUrlRef.current) return false;
+      return acceptance.request(req.requestId, AgentSocketStableConnectionMs, () => {
+        if (!send(req)) throw new Error(frontendMessage("chat.sendDisconnected"));
+      });
+    },
+    [acceptance, send],
+  );
+
   const reconnect = useCallback((): void => {
     if (!enabledRef.current) return;
+    liveness.stop();
+    finishProbe(false);
+    resetConnection();
     clearRetrySchedule();
     connectSeqRef.current += 1;
     reconnectPolicySeqRef.current = null;
@@ -513,9 +606,33 @@ export function useAgentSocket(opts: UseAgentSocketOptions): AgentSocketHandle {
     retryRef.current = 0;
     reconnectStoppedRef.current = false;
     connect();
-  }, [clearRetrySchedule, connect]);
+  }, [clearRetrySchedule, connect, finishProbe, liveness, resetConnection]);
 
-  return { status, send, reconnect };
+  useEffect(() => {
+    const lifecycle = new ClientConnectionLifecycle({
+      suspend: () => {
+        pausedRef.current = true;
+        liveness.suspend();
+        finishProbe(false);
+        clearRetrySchedule();
+      },
+      resume: () => {
+        pausedRef.current = false;
+        if (!enabledRef.current || reconnectStoppedRef.current) return;
+        flush();
+        if (wsRef.current?.readyState === WebSocket.OPEN) liveness.resume();
+        else if (!wsRef.current) connect();
+      },
+    });
+    lifecycle.start();
+    return () => {
+      lifecycle.stop();
+      liveness.stop();
+      finishProbe(false);
+    };
+  }, [clearRetrySchedule, connect, finishProbe, flush, liveness]);
+
+  return { status, send, sendAccepted, reconnect };
 }
 
 function isImmediateAgentControlEvent(kind: string): boolean {

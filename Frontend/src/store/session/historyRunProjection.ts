@@ -24,8 +24,8 @@ export function projectEntryToMessage(
   completedRequestIds?: ReadonlySet<string>,
 ): ChatMessage | null {
   if (entry.kind === "user.message") {
-    // Background completion wake-ups are internal model input. They remain in
-    // the durable transcript for context, but must not appear as a user bubble.
+    // Pre-lifecycle-redesign child-completion inputs are historical internal
+    // records. They remain hidden when older sessions are opened.
     if (entry.metadata?.backgroundTask) return null;
     return {
       id: `${entry.requestId}-user`,
@@ -183,18 +183,25 @@ export function mergeHistoryRuns(session: SessionRecord, runs: readonly RunRecor
 
 /**
  * History transports usage on the durable assistant entry metadata. Reattach
- * it to the run projection so live and hydrated sessions share one source for
- * message metrics without adding another history payload or recomputing totals.
+ * it and the original user attachments to the run projection so live and
+ * hydrated sessions share metadata without another history payload.
  */
-export function hydrateRunUsageFromMessages(session: SessionRecord): void {
+export function hydrateRunMetadataFromMessages(session: SessionRecord): void {
   const usageByRequestId = new Map(
     session.messages.flatMap((message) => {
       const usage = message.metadata?.run?.usage;
       return message.role === "assistant" && message.requestId && usage ? [[message.requestId, usage] as const] : [];
     }),
   );
+  const userMessages = new Map(
+    session.messages
+      .filter((message) => message.role === "user" && message.requestId)
+      .map((message) => [message.requestId, message]),
+  );
   for (const run of session.runs) {
     if (run.usage === undefined) run.usage = usageByRequestId.get(run.requestId);
+    if (run.inputAttachments === undefined) run.inputAttachments = userMessages.get(run.requestId)?.attachments;
+    if (run.hostInput === undefined) run.hostInput = userMessages.get(run.requestId)?.metadata?.hostInput;
   }
 }
 
@@ -263,6 +270,7 @@ const stepTraceProjectors = {
     toolName: trace.toolName,
     toolOrigin: trace.toolOrigin,
     callId: trace.callId,
+    parentToolCallId: trace.parentToolCallId,
     purpose: trace.purpose,
     toolBatch: toolBatchForTrace(requestId, trace),
     toolArgs: trace.toolArgs,
@@ -280,6 +288,7 @@ const stepTraceProjectors = {
     startedAt,
     endedAt,
     decisionKind: trace.decisionKind,
+    historyFallback: trace.historyFallback,
   }),
 
   retry: ({ trace, startedAt, endedAt }) => ({

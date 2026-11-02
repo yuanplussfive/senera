@@ -4,7 +4,7 @@ import type { AgentPiSessionLifecycleMetadata } from "../Pi/AgentPiSessionLifecy
 import type { AgentToolAvailabilitySnapshot } from "../ToolRuntime/AgentToolAvailabilitySnapshot.js";
 import type { AgentSessionLifecycleMetadata } from "../Session/AgentSessionLifecycleMetadata.js";
 import type { AgentSessionMessageQueueMode } from "../Session/AgentSessionMessageQueueMode.js";
-import type { AgentChannelFinalizationMetadata } from "../Channels/AgentChannelFinalizationTypes.js";
+import type { AgentChannelEvent, AgentChannelKind } from "../Channels/AgentChannelTypes.js";
 import type { AgentSessionRecoveryMode } from "../Session/AgentSessionRunRecovery.js";
 import type { AgentExplicitActivationSet } from "../Activation/AgentActivationTypes.js";
 
@@ -26,7 +26,7 @@ export interface AgentModelProviderMetadata {
  * describes a future selection, while this receipt describes what actually
  * ran and can therefore be projected to the model, UI, and self-service tool.
  */
-export type AgentModelSelectionSource = "request" | "session_preference" | "default" | "channel";
+export type AgentModelSelectionSource = "request" | "session_preference" | "default" | "channel" | "agent";
 
 export interface AgentEffectiveModelReceipt {
   readonly sessionId: string;
@@ -49,9 +49,11 @@ export interface AgentRunMetadata {
 
 /** Stable origin metadata shared by persisted sessions and conversation entries. */
 export interface AgentChannelMetadata {
-  platform: "qq" | "telegram" | "discord";
+  platform: AgentChannelKind;
   chatType?: "direct" | "group" | "channel" | "thread";
   chatId?: string;
+  /** Native conversation name, distinct from the sender's display name. */
+  chatName?: string;
   userId?: string;
   messageId?: string;
   /** Opaque host-owned conversation space identity used for cache affinity. */
@@ -59,6 +61,14 @@ export interface AgentChannelMetadata {
 }
 
 export interface AgentConversationEntryMetadata {
+  /** Trusted host provenance. Content remains data and never grants permissions. */
+  hostInput?: {
+    kind: "agent_message" | "agent_completion" | "job_completion" | "schedule";
+    sourceId: string;
+    deliveryId: string;
+    /** False leaves the notice durable for the next ordinary turn. */
+    wake?: boolean;
+  };
   /**
    * Durable user turn answered by an assistant entry. Recovery attempts have
    * their own run request id, so this relation must not be inferred from it.
@@ -66,6 +76,8 @@ export interface AgentConversationEntryMetadata {
   sourceRequestId?: string;
   run?: AgentRunMetadata;
   channel?: AgentChannelMetadata;
+  /** Native platform action that triggered this entry; it is not user-authored text. */
+  channelEvent?: AgentChannelEvent;
   scheduledTask?: {
     taskId: string;
     runId: string;
@@ -74,14 +86,11 @@ export interface AgentConversationEntryMetadata {
     sourceId: string;
     deliveryId: string;
   };
-  /** Internal wake input for a detached task; adapters render the model reply, not this envelope. */
-  backgroundTask?: {
-    taskId: string;
-    runId: string;
-  };
   queue?: {
     parentRequestId: string;
     mode: AgentSessionMessageQueueMode;
+    status?: import("../Core/AgentSessionInputContract.js").AgentSessionInputState;
+    message?: string;
   };
   recovery?: {
     mode: AgentSessionRecoveryMode;
@@ -108,6 +117,18 @@ export type AgentSessionOwnership =
     };
 
 export interface AgentSessionMetadata {
+  /** Last admitted execution policy, inherited by host wakeups without escalation. */
+  executionPolicy?: {
+    approvalMode: import("../Safety/AgentExecutionApprovalMode.js").AgentExecutionApprovalMode;
+    allowedToolNames?: readonly string[];
+    systemPromptLayer?: import("../Orchestration/AgentRunDispatchPort.js").AgentSystemPromptLayer;
+    pinnedSkills?: readonly import("../Skills/AgentSkillActivation.js").AgentPinnedSkillReference[];
+    thinkingLevel?: import("@earendil-works/pi-ai").ModelThinkingLevel;
+    inheritProjectContext?: boolean;
+    interaction?: import("../Interaction/AgentInteractionContext.js").AgentInteractionContext;
+  };
+  /** Persistent workspace Agent owning this conversation, independent of delegated child roles. */
+  agentId?: string;
   ownership?: AgentSessionOwnership;
   channel?: AgentChannelMetadata;
   lastRun?: AgentRunMetadata;
@@ -123,8 +144,6 @@ export interface AgentSessionMetadata {
   toolAvailability?: AgentToolAvailabilitySnapshot;
   lifecycle?: AgentSessionLifecycleMetadata;
   title?: string;
-  /** Bounded native channel rewrite examples; kept separate from the transcript. */
-  channelFinalization?: AgentChannelFinalizationMetadata;
 }
 
 export type AgentSessionModelPreferenceSource = "user" | "agent" | "channel";

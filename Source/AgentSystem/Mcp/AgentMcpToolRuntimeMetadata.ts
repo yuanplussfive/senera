@@ -1,4 +1,9 @@
-import { ToolSchedulingModes, type ToolSchedulingMode } from "../Types/AgentToolContractTypes.js";
+import {
+  ToolDeadlinePolicies,
+  ToolSchedulingModes,
+  type ToolDeadlinePolicy,
+  type ToolSchedulingMode,
+} from "../Types/AgentToolContractTypes.js";
 import type { AgentMcpToolDeclaration } from "./AgentMcpToolCatalogChange.js";
 
 /** Namespaced MCP metadata understood by Senera's generic tool runtime. */
@@ -14,6 +19,8 @@ const DefaultScheduling = ToolSchedulingModes.Parallel;
 export interface AgentMcpToolRuntimeProjection {
   readonly scheduling: ToolSchedulingMode;
   readonly maxConcurrency?: number;
+  readonly deadlinePolicy?: ToolDeadlinePolicy;
+  readonly deadlineMs?: number;
 }
 
 /**
@@ -34,9 +41,11 @@ export function projectAgentMcpToolRuntime(declaration: AgentMcpToolDeclaration)
 
   const scheduling = projectScheduling(declaration.name, raw.scheduling);
   const maxConcurrency = projectMaxConcurrency(declaration.name, raw.maxConcurrency);
+  const deadlineMs = projectDeadlineMs(declaration.name, raw.deadlineMs);
   return {
     scheduling,
     ...(maxConcurrency === undefined ? {} : { maxConcurrency }),
+    ...(deadlineMs === undefined ? {} : { deadlinePolicy: ToolDeadlinePolicies.ToolAware, deadlineMs }),
   };
 }
 
@@ -55,6 +64,16 @@ function projectMaxConcurrency(toolName: string, value: unknown): number | undef
   if (!Number.isSafeInteger(value) || (value as number) < 1 || (value as number) > 1_000) {
     throw new TypeError(
       `MCP tool ${toolName} metadata ${AgentMcpToolRuntimeMetadataKey}.maxConcurrency must be an integer from 1 to 1000.`,
+    );
+  }
+  return value as number;
+}
+
+function projectDeadlineMs(toolName: string, value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || (value as number) <= 0) {
+    throw new TypeError(
+      `MCP tool ${toolName} metadata ${AgentMcpToolRuntimeMetadataKey}.deadlineMs must be a positive safe integer.`,
     );
   }
   return value as number;

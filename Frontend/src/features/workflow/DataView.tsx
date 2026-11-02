@@ -1,12 +1,18 @@
+import { Tooltip } from "../../shared/ui/Tooltip";
 import { memo, useMemo, useState } from "react";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
+import { useFrontendLocale } from "../../i18n/useFrontendLocale";
+import { Button } from "../../shared/ui/Button";
 import { readNonBlankString as readString } from "../../lib/unknownValue";
 import { MarkdownRenderer } from "../../shared/code/MarkdownRenderer";
 import { Popover, PopoverContent, PopoverTrigger } from "../../shared/ui/Popover";
 import { AppIcon } from "../../shared/ui/AppIcon";
 
 const LONG_VALUE_PREVIEW_LENGTH = 128;
+/** Presentation page size; the full result stays available for expansion and copying. */
+const CollectionPageSize = 40;
 
 /**
  * 任意结构化数据的渲染——DevTools 风格的缩进树，**不用卡片框**。
@@ -20,6 +26,7 @@ const LONG_VALUE_PREVIEW_LENGTH = 128;
  * - 空集合 / 空字符串：muted 占位
  */
 export const DataView = memo(function DataView({ value }: { value: unknown }): JSX.Element {
+  useFrontendLocale();
   return (
     <div className="min-w-0 w-full" data-data-view>
       <Node value={value} depth={0} />
@@ -35,17 +42,18 @@ function Node({ value, depth }: { value: unknown; depth: number }): JSX.Element 
     if (frame) {
       return <SourceFrameBlock frame={frame} depth={depth} />;
     }
-    return <ObjectBlock entries={Object.entries(value)} depth={depth} />;
+    return <ObjectBlock value={value} depth={depth} />;
   }
   return <span className="text-content-muted">{String(value)}</span>;
 }
 
 // ---------- 对象块 ----------
 
-function ObjectBlock({ entries, depth }: { entries: Array<[string, unknown]>; depth: number }): JSX.Element {
-  const items = useMemo(() => combineUnitPairs(entries), [entries]);
+function ObjectBlock({ value, depth }: { value: Record<string, unknown>; depth: number }): JSX.Element {
+  const items = useMemo(() => combineUnitPairs(Object.entries(value)), [value]);
+  const [visibleCount, setVisibleCount] = useState(CollectionPageSize);
 
-  if (entries.length === 0) {
+  if (items.length === 0) {
     return <span className="font-mono text-[11.5px] italic text-content-muted">{`{}`}</span>;
   }
 
@@ -53,9 +61,13 @@ function ObjectBlock({ entries, depth }: { entries: Array<[string, unknown]>; de
 
   return (
     <div className={wrapperClass}>
-      {items.map(({ key, value, unit }) => (
+      {items.slice(0, visibleCount).map(({ key, value, unit }) => (
         <Row key={key} keyName={key} value={value} unit={unit} depth={depth} />
       ))}
+      <CollectionMore
+        remaining={items.length - visibleCount}
+        onMore={() => setVisibleCount((count) => count + CollectionPageSize)}
+      />
     </div>
   );
 }
@@ -63,13 +75,16 @@ function ObjectBlock({ entries, depth }: { entries: Array<[string, unknown]>; de
 // ---------- 数组块 ----------
 
 function ArrayBlock({ items, depth }: { items: unknown[]; depth: number }): JSX.Element {
+  const [visibleCount, setVisibleCount] = useState(CollectionPageSize);
   if (items.length === 0) {
     return <span className="font-mono text-[11.5px] italic text-content-muted">{`[]`}</span>;
   }
 
   // 全是简单原始值 → chips 横排
-  const allPrimitive = items.every((it) => typeof it === "string" || typeof it === "number" || typeof it === "boolean");
-  if (allPrimitive && items.length <= 12) {
+  const compact =
+    items.length <= 12 &&
+    items.every((it) => typeof it === "string" || typeof it === "number" || typeof it === "boolean");
+  if (compact) {
     return (
       <div className="flex flex-wrap gap-1.5 py-1">
         {items.map((it, i) => (
@@ -92,16 +107,28 @@ function ArrayBlock({ items, depth }: { items: unknown[]; depth: number }): JSX.
   const wrapperClass = depth > 0 ? "ml-1 min-w-0 border-l border-line-subtle pl-3" : "min-w-0";
   return (
     <div className={wrapperClass}>
-      {items.map((it, i) => (
+      {items.slice(0, visibleCount).map((it, i) => (
         <Row key={i} keyName={`[${i}]`} value={it} depth={depth} indexLike />
       ))}
+      <CollectionMore
+        remaining={items.length - visibleCount}
+        onMore={() => setVisibleCount((count) => count + CollectionPageSize)}
+      />
     </div>
   );
 }
 
 // ---------- 单行 ----------
 
-function Row({
+function CollectionMore({ remaining, onMore }: { remaining: number; onMore: () => void }): JSX.Element | null {
+  return remaining > 0 ? (
+    <Button size="sm" variant="ghost" onClick={onMore} className="mt-1">
+      {frontendFeatureMessage("workflow.data.showMore", { count: remaining })}
+    </Button>
+  ) : null;
+}
+
+const Row = memo(function Row({
   keyName,
   value,
   unit,
@@ -154,19 +181,20 @@ function Row({
       ) : null}
     </div>
   );
-}
+});
 
 function KeyText({ name, indexLike }: { name: string; indexLike: boolean }): JSX.Element {
   return (
-    <span
-      className={cn(
-        "min-w-0 max-w-full shrink-0 self-start truncate pt-px",
-        indexLike ? "font-mono text-[11px] text-content-muted" : "text-[11px] font-medium text-content-secondary",
-      )}
-      title={name}
-    >
-      {humanizeAlgo(name)}
-    </span>
+    <Tooltip content={name}>
+      <span
+        className={cn(
+          "min-w-0 max-w-full shrink-0 self-start truncate pt-px",
+          indexLike ? "font-mono text-[11px] text-content-muted" : "text-[11px] font-medium text-content-secondary",
+        )}
+      >
+        {humanizeAlgo(name)}
+      </span>
+    </Tooltip>
   );
 }
 
@@ -225,7 +253,7 @@ function SourceFrameBlock({ frame, depth }: { frame: SourceFrame; depth: number 
           </code>
         </pre>
       </div>
-      {frame.metadata.length > 0 ? <ObjectBlock entries={frame.metadata} depth={depth + 1} /> : null}
+      {frame.metadata.length > 0 ? <ObjectBlock value={Object.fromEntries(frame.metadata)} depth={depth + 1} /> : null}
     </div>
   );
 }
@@ -273,7 +301,7 @@ function FormattedValue({ value, unit }: { value: unknown; unit?: string }): JSX
   // 落到这里说明上层 Row 没把它当 complex 处理（应该是空对象/空数组，已在上面返回）
   if (Array.isArray(value)) return <ArrayBlock items={value} depth={0} />;
   if (isPlainObject(value)) {
-    return <ObjectBlock entries={Object.entries(value)} depth={0} />;
+    return <ObjectBlock value={value} depth={0} />;
   }
   return <span>{String(value)}</span>;
 }
@@ -313,9 +341,9 @@ function FormattedString({ value, unit }: { value: string; unit?: string }): JSX
         rel="noopener noreferrer"
         className="inline-flex min-w-0 max-w-full items-center gap-1 text-accent-content underline decoration-accent-border underline-offset-2 hover:text-accent-content-hover"
       >
-        <span className="min-w-0 truncate" title={value}>
-          {value}
-        </span>
+        <Tooltip content={value}>
+          <span className="min-w-0 truncate">{value}</span>
+        </Tooltip>
         <AppIcon icon="external-link" size={12} className="shrink-0" />
       </a>
     );
@@ -344,30 +372,35 @@ function LongValue({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
-          type="button"
-          className="group flex min-w-0 w-full max-w-full items-baseline gap-1 rounded-md px-1 py-0.5 text-left text-content-primary outline-none transition-colors hover:bg-surface-hover focus-visible:text-accent-content"
-          aria-label={frontendMessage("workflow.data.viewFull")}
-          title={frontendMessage("workflow.data.viewFull")}
-          data-data-value-preview
-        >
-          <span className="min-w-0 flex-1 truncate">{preview}</span>
-          {unit ? <span className="shrink-0 text-content-secondary">{unit}</span> : null}
-          <AppIcon
-            icon="maximize"
-            size={12}
-            className="shrink-0 text-content-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-            aria-hidden="true"
-          />
-        </button>
+        <Tooltip content={frontendMessage("workflow.data.viewFull")}>
+          <button
+            type="button"
+            className="group flex min-w-0 w-full max-w-full items-baseline gap-1 rounded-md px-1 py-0.5 text-left text-content-primary outline-none transition-colors hover:bg-surface-hover focus-visible:text-accent-content"
+            aria-label={frontendMessage("workflow.data.viewFull")}
+
+            data-data-value-preview
+          >
+            <span className="min-w-0 flex-1 truncate">{preview}</span>
+            {unit ? <span className="shrink-0 text-content-secondary">{unit}</span> : null}
+            <AppIcon
+              icon="maximize"
+              size={12}
+              className="shrink-0 text-content-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+              aria-hidden="true"
+            />
+          </button>
+        </Tooltip>
       </PopoverTrigger>
       <PopoverContent
         align="start"
         side="left"
-        className="data-value-popover w-[min(40rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] border-line bg-surface-raised p-0"
+        className="data-value-popover w-[min(40rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] overflow-hidden border-line bg-surface-raised p-0"
         data-data-value-full
       >
-        <div className="max-h-[min(28rem,calc(100dvh-8rem))] overflow-auto p-3">
+        <div
+          className="max-h-[min(28rem,calc(100dvh-8rem))] overflow-auto overscroll-contain p-3"
+          data-data-value-scroll
+        >
           {isUrl ? (
             <a
               href={value}
@@ -383,7 +416,7 @@ function LongValue({
               {value}
             </MarkdownRenderer>
           ) : (
-            <pre className="max-h-[min(26rem,calc(100dvh-10rem))] overflow-auto whitespace-pre-wrap break-words font-mono text-[12px] leading-5 text-content-primary">
+            <pre className="whitespace-pre-wrap break-words font-mono text-[12px] leading-5 text-content-primary">
               {value}
             </pre>
           )}

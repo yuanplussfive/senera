@@ -1,0 +1,161 @@
+{
+  "name": "ChannelSendMedia",
+  "loading": "Bootstrap",
+  "description": "Send one native image/audio/video/file here using a workspace-relative path or Senera resource URI. Download remote media first. Optionally quote a message; send accompanying text separately with ChannelSendMessage. A needs_review result contains new inbox events and confirms nothing was sent; reconsider before retrying.",
+  "presentation": {
+    "category": "channel-message",
+    "icon": "image",
+    "activity": {
+      "action": {
+        "zh-CN": "发送 QQ 媒体",
+        "en-US": "Send QQ media"
+      },
+      "argumentPath": "/resource"
+    },
+    "preview": {
+      "body": {
+        "pointer": "/status",
+        "from": "result"
+      }
+    }
+  },
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "taskId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Durable task ID from conversation_tasks or ChannelUpdateConversation; scope review/wait to its verified participants."
+      },
+      "allowUnread": {
+        "type": "boolean",
+        "default": false,
+        "description": "Explicitly send even with unread activity, only when this action remains appropriate independently of it. Otherwise new activity returns needs_review without sending."
+      },
+      "resource": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S",
+        "description": "Workspace file path or canonical Senera resource URI. Do not supply Markdown or base64."
+      },
+      "kind": {
+        "type": "string",
+        "enum": ["image", "audio", "video", "file"],
+        "description": "Native delivery format. Choose file for documents or downloads."
+      },
+      "fileName": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[^/\\\\\\r\\n]+$",
+        "description": "Optional recipient-visible file name. Defaults to the resource's original name."
+      },
+      "messageId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Optional native reply target from this conversation. Copy the exact message ID; it is opaque and may contain letters. Visible quoting depends on channel capabilities."
+      }
+    },
+    "required": ["resource", "kind"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "status": {
+            "const": "sent"
+          },
+          "messageId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["status", "messageId"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "status": {
+            "const": "needs_review"
+          },
+          "inbox": {
+            "type": "object",
+            "properties": {
+              "afterSequence": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "throughSequence": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "hasMore": {
+                "type": "boolean"
+              },
+              "entries": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "required": ["afterSequence", "throughSequence", "hasMore", "entries"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["status", "inbox"],
+        "additionalProperties": false
+      }
+    ]
+  },
+  "permissions": ["channel:send"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [],
+  "surfaces": ["channel"],
+  "platforms": ["onebot11", "qq", "onebot"],
+  "search": {
+    "Summary": "向当前 QQ 会话原生发送图片、文件、语音或视频。",
+    "Tags": ["QQ", "发送", "图片", "文件", "语音", "视频"],
+    "Capabilities": [
+      {
+        "Id": "channel.media",
+        "Title": "Send current-channel media",
+        "Description": "Deliver a verified workspace resource as native media.",
+        "Facets": {
+          "Actions": ["send"],
+          "Targets": ["current-channel-lane"],
+          "Inputs": ["resource-path", "media-kind"],
+          "Outputs": ["message-id"],
+          "Effects": ["external-message-send"]
+        },
+        "Aliases": ["发送文件", "发送图片", "send media"],
+        "Risk": {
+          "SideEffect": "external-communication",
+          "Permission": "channel-send"
+        }
+      }
+    ],
+    "UseCases": ["用户要求发送工作区文件或图片"],
+    "Examples": ["将 tsconfig.json 以文件发送到当前 QQ 会话"],
+    "Avoid": ["不要把 Markdown 链接当作附件；不要发送未下载的网页地址"]
+  },
+  "evidenceCapabilities": []
+}

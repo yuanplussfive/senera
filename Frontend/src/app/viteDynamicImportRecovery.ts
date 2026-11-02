@@ -2,10 +2,6 @@ const VITE_PRELOAD_ERROR_EVENT = "vite:preloadError";
 const retryStoragePrefix = "senera.vite-preload-retry:";
 const installationKey = "__seneraVitePreloadRecoveryInstalled";
 
-interface VitePreloadErrorEvent extends Event {
-  readonly payload?: unknown;
-}
-
 interface RecoveryWindow extends Window {
   [installationKey]?: true;
 }
@@ -26,13 +22,13 @@ export function installViteDynamicImportRecovery(): void {
 }
 
 function reloadForCurrentDeployment(event: Event): void {
-  const preloadError = event as VitePreloadErrorEvent;
-  const storageKey = `${retryStoragePrefix}${window.location.pathname}${window.location.search}`;
-  const signature = readErrorSignature(preloadError.payload);
+  // Different missing assets belong to the same deployment. Retrying once per
+  // error would reload again whenever the next stylesheet or chunk failed.
+  const storageKey = `${retryStoragePrefix}${import.meta.url}`;
 
   try {
-    if (window.sessionStorage.getItem(storageKey) === signature) return;
-    window.sessionStorage.setItem(storageKey, signature);
+    if (window.sessionStorage.getItem(storageKey)) return;
+    window.sessionStorage.setItem(storageKey, "1");
   } catch {
     // Without a per-tab guard a persistent 404 could trap the user in reloads.
     return;
@@ -40,9 +36,4 @@ function reloadForCurrentDeployment(event: Event): void {
 
   event.preventDefault();
   window.location.reload();
-}
-
-function readErrorSignature(payload: unknown): string {
-  if (payload instanceof Error) return `${payload.name}:${payload.message}`;
-  return String(payload);
 }

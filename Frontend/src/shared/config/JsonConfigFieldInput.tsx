@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { ConfigFormFieldData } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import { MenuSelect, SecretInput, Switch } from "../ui";
+import { DurationInput, MenuSelect, SecretInput, Switch } from "../ui";
+import { ModelSelect } from "../models/ModelSelect";
 import { JsonConfigArrayFieldControl } from "./JsonConfigArrayFieldControl";
 import { jsonConfigInputClassName } from "./JsonConfigControlStyles";
 import { JsonConfigRecordField } from "./JsonConfigRecordField";
@@ -36,6 +37,19 @@ export function renderJsonConfigFieldInput(
     return <OptionControl field={field} value={value} disabled={disabled} onChange={onChange} />;
   }
   if (field.type === "number") {
+    if (field.durationUnit)
+      return (
+        <DurationInput
+          value={typeof value === "number" ? value : undefined}
+          storageUnit={field.durationUnit}
+          min={field.min}
+          max={field.max}
+          step={field.step}
+          disabled={disabled}
+          ariaLabel={field.label}
+          onChange={onChange}
+        />
+      );
     return <NumberFieldControl field={field} value={value} disabled={disabled} onChange={onChange} />;
   }
   if (field.type === "array") {
@@ -57,6 +71,9 @@ export function renderJsonConfigFieldInput(
         disabled={disabled}
         inputClassName={jsonConfigInputClassName}
         onChange={onChange}
+        renderInput={(itemField, itemValue, itemDisabled, onItemChange) =>
+          renderJsonConfigFieldInput(itemField, itemValue, itemDisabled, onItemChange, readSecret)
+        }
       />
     );
   }
@@ -157,7 +174,6 @@ function JsonConfigSecretField({
     <SecretInput
       value={secret}
       placeholder={isRedactedConfigSecretValue(value) ? undefined : field.placeholder}
-      hideRevealWhenEmpty
       disabled={disabled}
       ariaLabel={field.label}
       onChange={(next) => {
@@ -217,55 +233,26 @@ function OptionControl({
     );
   }
   if (field.modelSelection) {
-    const currentValue = String(value ?? "");
-    const placeholder = field.placeholder ?? frontendMessage("config.form.selectPlaceholder");
-    const menuOptions = [
-      ...(!field.required ? [{ value: "", label: placeholder }] : []),
-      ...options.map((option) => ({ value: String(option), label: optionLabel(field, option) })),
-    ];
     return (
-      <>
-        <MenuSelect
-          value={currentValue}
-          placeholder={placeholder}
-          options={menuOptions}
-          disabled={disabled}
-          triggerClassName={jsonConfigInputClassName}
-          onChange={(next) => {
-            const option = options.find((candidate) => String(candidate) === next);
-            if (option !== undefined) {
-              onChange(option);
-              return;
-            }
-            if (!field.required && next === "") onChange(undefined);
-          }}
-        />
-        {/* Keep a native combobox in the accessibility tree for platform
-            keyboard users while the visible control uses the shared menu. */}
-        <select
-          value={currentValue}
-          disabled={disabled}
-          aria-label={field.label}
-          className="sr-only"
-          onChange={(event) => {
-            const option = options.find((candidate) => String(candidate) === event.currentTarget.value);
-            if (option !== undefined) {
-              onChange(option);
-              return;
-            }
-            if (!field.required && event.currentTarget.value === "") onChange(undefined);
-          }}
-        >
-          <option value="" disabled={field.required !== false}>
-            {placeholder}
-          </option>
-          {options.map((option) => (
-            <option key={String(option)} value={String(option)}>
-              {optionLabel(field, option)}
-            </option>
-          ))}
-        </select>
-      </>
+      <ModelSelect
+        value={String(value ?? "")}
+        placeholder={field.placeholder ?? frontendMessage("config.form.selectPlaceholder")}
+        ariaLabel={field.label}
+        disabled={disabled}
+        triggerClassName={jsonConfigInputClassName}
+        options={[
+          ...(!field.required
+            ? [{ value: "", label: field.placeholder ?? frontendMessage("config.form.selectPlaceholder") }]
+            : []),
+          ...(field.modelOptions ??
+            options.map((option) => ({ value: String(option), label: optionLabel(field, option) }))),
+        ]}
+        onChange={(next) => {
+          const option = options.find((candidate) => String(candidate) === next);
+          if (option !== undefined) onChange(option);
+          else if (!field.required && !next) onChange(undefined);
+        }}
+      />
     );
   }
   const selectedIndex = options.findIndex((option) => sameOptionValue(value, option));

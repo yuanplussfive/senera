@@ -8,6 +8,7 @@ export function SettingsControlRow({
   className,
   controlClassName,
   wide = false,
+  layout = "inline",
 }: {
   label: ReactNode;
   description?: ReactNode;
@@ -15,12 +16,16 @@ export function SettingsControlRow({
   className?: string;
   controlClassName?: string;
   wide?: boolean;
+  layout?: "inline" | "stacked";
 }): JSX.Element {
   return (
     <div
       className={cn(
-        "grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(132px,42%)] items-center gap-x-4 gap-y-2 border-b border-line-subtle px-0 py-4 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_minmax(220px,320px)] sm:gap-x-8 sm:items-center",
-        wide && "sm:grid-cols-[minmax(0,1fr)_minmax(320px,1fr)] sm:items-start",
+        "grid min-w-0 gap-x-4 gap-y-3 border-b border-line-subtle px-0 py-4 last:border-b-0",
+        layout === "stacked"
+          ? "grid-cols-1 items-start"
+          : "grid-cols-[minmax(0,1fr)_minmax(132px,42%)] items-center sm:grid-cols-[minmax(0,1fr)_minmax(220px,320px)] sm:gap-x-8",
+        layout === "inline" && wide && "sm:grid-cols-[minmax(0,1fr)_minmax(320px,1fr)] sm:items-start",
         className,
       )}
       data-settings-field-row
@@ -29,7 +34,13 @@ export function SettingsControlRow({
         <div className="text-[13px] font-medium leading-5 text-content-primary">{label}</div>
         {description ? <div className="mt-1 text-[11.5px] leading-5 text-content-secondary">{description}</div> : null}
       </div>
-      <div className={cn("flex min-w-0 w-full justify-end sm:w-full sm:justify-self-end", controlClassName)}>
+      <div
+        className={cn(
+          "min-w-0 w-full",
+          layout === "inline" && "flex justify-end sm:justify-self-end",
+          controlClassName,
+        )}
+      >
         {control}
       </div>
     </div>

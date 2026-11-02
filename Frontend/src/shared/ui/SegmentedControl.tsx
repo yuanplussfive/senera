@@ -1,6 +1,6 @@
 import { useRef, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "../../lib/util";
-import { FluidSegmentedLayers, useFluidSegmentedSurface } from "./FluidSegmentedSurface";
+import { FluidSegmentedLayers, useFluidSegmentedSurface, type FluidSegmentedVariant } from "./FluidSegmentedSurface";
 
 const segmentedNavigationKeys = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"]);
 
@@ -16,6 +16,7 @@ export interface SegmentedControlProps<TValue extends string> {
   options: readonly SegmentedControlOption<TValue>[];
   value: TValue | "";
   disabled?: boolean;
+  variant?: FluidSegmentedVariant;
   className?: string;
   onChange: (value: TValue) => void;
 }
@@ -45,6 +46,7 @@ export function SegmentedControl<TValue extends string>({
   options,
   value,
   disabled = false,
+  variant = "segmented",
   className,
   onChange,
 }: SegmentedControlProps<TValue>): JSX.Element {
@@ -66,12 +68,14 @@ export function SegmentedControl<TValue extends string>({
       ref={surface.containerRef}
       role="radiogroup"
       aria-label={ariaLabel}
+      data-variant={variant}
       className={cn(
         "relative inline-grid min-h-9 min-w-0 grid-flow-col auto-cols-fr items-center gap-0.5 rounded-lg bg-surface-subtle p-1 ring-1 ring-inset ring-line-subtle",
+        variant === "underline" && "gap-5 rounded-none bg-transparent p-0 ring-0",
         className,
       )}
     >
-      <FluidSegmentedLayers surface={surface} />
+      <FluidSegmentedLayers surface={surface} variant={variant} />
       {options.map((option, index) => {
         const selected = value === option.value;
         return (
@@ -91,6 +95,7 @@ export function SegmentedControl<TValue extends string>({
               "transition-[color,font-weight] duration-150 ease-out",
               "focus-visible:ring-2 focus-visible:ring-accent-focus",
               "disabled:pointer-events-none disabled:opacity-45",
+              variant === "underline" && "h-10 rounded-none px-0",
               selected ? "text-content-primary" : "text-content-secondary hover:text-content-primary",
             )}
             onClick={() => onChange(option.value)}

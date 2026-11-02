@@ -152,21 +152,42 @@ describe("Session run coordinator queue behavior", () => {
       }),
     ).resolves.toBe(true);
 
-    expect(pi.steered).toEqual(["Check the package manifest first"]);
-    expect(pi.followUps).toEqual(["Then summarize the release scripts"]);
+    expect(pi.steered).toEqual([]);
+    expect(pi.followUps).toEqual([]);
+    await pendingLoop.boundary({ phase: "steer", committedInputs: new Set() });
+    expect(pi.steered).toHaveLength(1);
+    expect(pi.steered[0]).toContain("Check the package manifest first");
+    expect(pi.followUps).toEqual([]);
+    await pendingLoop.boundary({ phase: "follow_up", committedInputs: new Set(pi.steered) });
+    expect(pi.followUps).toHaveLength(1);
+    expect(pi.followUps[0]).toContain("Then summarize the release scripts");
+    expect(fixture.store.loadQueuedInput(fixture.session.id, "request-steer")?.state).toBe("delivered");
     expect(fixture.store.loadConversation(fixture.session.id).map((entry) => entry.requestId)).toEqual([
       "request-active",
       "request-steer",
       "request-follow-up",
     ]);
-    expect(events).toEqual([]);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: AgentEventKinds.SessionMessageQueued,
+          context: expect.objectContaining({ sessionId: fixture.session.id, requestId: "request-steer" }),
+          data: expect.objectContaining({
+            sessionId: fixture.session.id,
+            requestId: "request-steer",
+            parentRequestId: "request-active",
+            mode: AgentSessionMessageQueueModes.Steer,
+          }),
+        }),
+      ]),
+    );
 
     unregister();
     await fixture.coordinator.cancelActiveRun({ sessionId: fixture.session.id });
     await run;
   });
 
-  test("does not persist queued input when Pi rejects it", async () => {
+  test("preserves accepted input when Pi scheduling fails", async () => {
     const pendingLoop = createPendingLoop();
     const piSessions = new AgentPiActiveSessionRegistry();
     const fixture = createCoordinatorFixture({ loop: pendingLoop.loop, piSessions });
@@ -194,9 +215,14 @@ describe("Session run coordinator queue behavior", () => {
         input: "Change direction",
         queueMode: AgentSessionMessageQueueModes.Steer,
       }),
-    ).rejects.toThrow("Pi queue is unavailable");
+    ).resolves.toBe(true);
+    await expect(pendingLoop.boundary({ phase: "steer", committedInputs: new Set() })).rejects.toThrow(
+      "Pi queue is unavailable",
+    );
+    expect(fixture.store.loadQueuedInput(fixture.session.id, "request-rejected")?.state).toBe("pending");
     expect(fixture.store.loadConversation(fixture.session.id).map((entry) => entry.requestId)).toEqual([
       "request-active",
+      "request-rejected",
     ]);
 
     unregister();
@@ -238,11 +264,13 @@ describe("Session run coordinator queue behavior", () => {
       queueMode: AgentSessionMessageQueueModes.Steer,
     });
 
+    await pendingLoop.boundary({ phase: "steer", committedInputs: new Set() });
     expect(pi.steered[0]).toContain("<current_user_message>");
     expect(pi.steered[0]).toContain("<resourceUri>senera://resource/upload-a</resourceUri>");
     expect(fixture.store.loadConversation(fixture.session.id).at(-1)?.metadata?.queue).toEqual({
       parentRequestId: "request-active",
       mode: AgentSessionMessageQueueModes.Steer,
+      status: "pending",
     });
 
     unregister();

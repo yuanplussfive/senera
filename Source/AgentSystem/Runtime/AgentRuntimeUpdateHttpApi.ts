@@ -11,10 +11,13 @@ import {
   type AgentRuntimeUpdateStatusResponse,
 } from "./AgentRuntimeUpdateContract.js";
 import type { AgentRuntimeUpdateOrigin } from "./AgentRuntimeUpdateOrigin.js";
+import { isAgentWebRedirect } from "../Web/AgentWebRedirectPolicy.js";
+import { readBoundedWebBody } from "../Web/AgentWebResponseBody.js";
 
 const ManifestCacheTtlMs = 5 * 60 * 1_000;
 const ManifestMaxBytes = 512 * 1_024;
 const MaximumRedirects = 4;
+const ManifestRequestTimeoutMs = 8_000;
 
 export interface AgentRuntimeUpdateHttpApiOptions {
   readonly currentVersion: string;
@@ -180,6 +183,7 @@ async function fetchManifest(
 ): Promise<AgentRuntimeUpdateManifest> {
   const response = await fetchWithTrustedRedirects(url, trustedRedirectHosts, fetcher);
   if (!response.ok) {
+    await response.body?.cancel();
     throw new AgentRuntimeUpdateFailure(
       response.status === 404
         ? AgentRuntimeUpdateFailureCodes.NotPublished
@@ -188,38 +192,42 @@ async function fetchManifest(
   }
   const length = Number(response.headers.get("content-length"));
   if (Number.isFinite(length) && length > ManifestMaxBytes) {
+    await response.body?.cancel();
     throw new AgentRuntimeUpdateFailure(AgentRuntimeUpdateFailureCodes.InvalidManifest);
   }
-  const body = await response.text();
-  if (Buffer.byteLength(body, "utf8") > ManifestMaxBytes) {
+  const result = await readBoundedWebBody(response, ManifestMaxBytes);
+  if (result.transfer.truncated) {
     throw new AgentRuntimeUpdateFailure(AgentRuntimeUpdateFailureCodes.InvalidManifest);
   }
   try {
-    return parseManifest(JSON.parse(body) as unknown);
+    return parseManifest(JSON.parse(new TextDecoder().decode(result.body)) as unknown);
   } catch (error) {
     if (error instanceof AgentRuntimeUpdateFailure) throw error;
     throw new AgentRuntimeUpdateFailure(AgentRuntimeUpdateFailureCodes.InvalidManifest);
   }
 }
 
-async function fetchWithTrustedRedirects(
+export async function fetchWithTrustedRedirects(
   initialUrl: string,
   trustedRedirectHosts: readonly string[],
   fetcher: typeof fetch,
+  signal?: AbortSignal,
 ): Promise<Response> {
   let nextUrl = new URL(initialUrl);
   const trustedHosts = new Set(trustedRedirectHosts.map((host) => host.toLowerCase()));
+  const requestSignal = signal ?? AbortSignal.timeout(ManifestRequestTimeoutMs);
   for (let redirects = 0; redirects <= MaximumRedirects; redirects += 1) {
     let response: Response;
     try {
       response = await fetcher(nextUrl, {
-        signal: AbortSignal.timeout(8_000),
+        signal: requestSignal,
         redirect: "manual",
       });
     } catch {
       throw new AgentRuntimeUpdateFailure(AgentRuntimeUpdateFailureCodes.RequestFailed);
     }
-    if (!isRedirect(response.status)) return response;
+    if (!isAgentWebRedirect(response.status)) return response;
+    await response.body?.cancel();
     if (redirects === MaximumRedirects) {
       throw new AgentRuntimeUpdateFailure(AgentRuntimeUpdateFailureCodes.RedirectRejected);
     }
@@ -320,10 +328,6 @@ function safeUrl(value: unknown): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-function isRedirect(status: number): boolean {
-  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
 }
 
 function failureCode(error: unknown): AgentRuntimeUpdateFailureCode {

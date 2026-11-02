@@ -1,22 +1,12 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import type { AgentLocalAdminAccount } from "./AgentLocalAdminAccount.js";
+import {
+  AgentAuthenticationMethods,
+  type AgentAuthenticationMethod,
+  type AgentAdminSession,
+  type AgentServerPrincipal,
+} from "./AgentAuthenticationProtocol.js";
 
-export interface AgentServerPrincipal {
-  readonly id: string;
-  readonly loginName: string;
-  readonly displayName: string;
-  readonly role: "owner";
-}
-
-export interface AgentAdminSession {
-  readonly id: string;
-  readonly principal: AgentServerPrincipal;
-  readonly csrfToken: string;
-  readonly expiresAt: number;
-  readonly idleExpiresAt: number;
-  readonly createdAt: number;
-  readonly lastSeenAt: number;
-}
+export type { AgentAdminSession, AgentServerPrincipal } from "./AgentAuthenticationProtocol.js";
 
 interface StoredSession extends AgentAdminSession {
   readonly digest: string;
@@ -35,7 +25,11 @@ export class AgentAdminSessionStore {
     },
   ) {}
 
-  issue(account: AgentLocalAdminAccount): { token: string; session: AgentAdminSession } {
+  issue(
+    account: Pick<AgentServerPrincipal, "id" | "loginName" | "displayName">,
+    deviceName?: string,
+    authenticationMethod: AgentAuthenticationMethod = AgentAuthenticationMethods.Account,
+  ): { token: string; session: AgentAdminSession } {
     const now = this.now();
     this.prune(now);
     this.evictForNewSession();
@@ -44,6 +38,7 @@ export class AgentAdminSessionStore {
     const session: StoredSession = {
       id: randomToken(),
       digest: this.digest(token),
+      authenticationMethod,
       principal: {
         id: account.id,
         loginName: account.loginName,
@@ -55,6 +50,7 @@ export class AgentAdminSessionStore {
       idleExpiresAt: now + this.options.idleTtlMs,
       createdAt: now,
       lastSeenAt: now,
+      ...(deviceName ? { deviceName } : {}),
     };
     this.sessions.set(session.digest, session);
     return { token, session: publicSession(session) };
@@ -101,6 +97,33 @@ export class AgentAdminSessionStore {
 
   revokeAll(): void {
     this.sessions.clear();
+  }
+
+  listDevices(principalId: string): AgentAdminSession[] {
+    this.prune(this.now());
+    return [...this.sessions.values()]
+      .filter((session) => session.principal.id === principalId && session.deviceName !== undefined)
+      .map(publicSession);
+  }
+
+  hasSession(id: string): boolean {
+    return this.findById(id) !== undefined;
+  }
+
+  findById(id: string): AgentAdminSession | undefined {
+    this.prune(this.now());
+    const session = [...this.sessions.values()].find((session) => session.id === id);
+    return session ? publicSession(session) : undefined;
+  }
+
+  revokeDevice(id: string, principalId: string): boolean {
+    for (const [digest, session] of this.sessions) {
+      if (session.id === id && session.principal.id === principalId && session.deviceName !== undefined) {
+        this.sessions.delete(digest);
+        return true;
+      }
+    }
+    return false;
   }
 
   private evictForNewSession(): void {

@@ -24,6 +24,8 @@ export interface AgentSessionActiveRequest {
 
 export interface AgentSession {
   id: string;
+  /** Cached display title from persistence; explicit renames belong to metadata.title. */
+  title?: string;
   createdAt: string;
   updatedAt: string;
   status: AgentSessionStatus;
@@ -33,6 +35,8 @@ export interface AgentSession {
 }
 
 export interface AgentSessionSnapshot {
+  title?: string;
+  agentId?: string;
   sessionId: string;
   status: AgentSessionStatus;
   createdAt: string;

@@ -1,0 +1,15 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name" translatable="false">Senera</string>
+    <string name="title_activity_main" translatable="false">Senera</string>
+    <string name="package_name" translatable="false">ai.senera.mobile</string>
+    <string name="custom_url_scheme" translatable="false">ai.senera.mobile</string>
+    <string name="download_failed">Unable to start the download.</string>
+    <string name="download_permission_required">Storage permission is required to download on Android 8 and 9.</string>
+    <string name="connection_dns">Address could not be resolved. Check the server name and the selected network.</string>
+    <string name="connection_tls">Certificate verification failed. Use a trusted HTTPS certificate.</string>
+    <string name="connection_timeout">Connection timed out. Check the computer is running, the same Wi-Fi, firewall and router isolation settings.</string>
+    <string name="connection_failed">Unable to load the console. Check the computer address, service and network.</string>
+    <string name="connection_retry">Retry</string>
+    <string name="connection_back">Choose another connection</string>
+</resources>

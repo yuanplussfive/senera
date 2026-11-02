@@ -24,6 +24,7 @@ export interface DesktopServerHandle extends DesktopServerSnapshot {
  * windows and IPC, while synchronous database startup and workspace initialization run elsewhere.
  */
 export class DesktopServerHost {
+  private readonly output = new ProcessOutputTail();
   private readonly pending = new Map<string, { resolve(): void; reject(error: Error): void }>();
   private snapshot: DesktopServerSnapshot | undefined;
   private startup?: { resolve(host: DesktopServerHost): void; reject(error: Error): void };
@@ -33,19 +34,25 @@ export class DesktopServerHost {
     private readonly process: UtilityProcess,
     private readonly onWorkspaceOpened: DesktopServerHostOptions["onWorkspaceOpened"],
   ) {
+    captureProcessOutput(process.stdout, this.output);
+    captureProcessOutput(process.stderr, this.output);
     process.on("message", (message: unknown) => this.receiveMessage(message));
-    process.on("exit", (code) => this.finish(new Error(`Desktop server process exited with code ${code}.`)));
+    process.on("exit", (code) => this.finish(this.exitedError(`Desktop server process exited with code ${code}.`)));
     process.on("error", (_type, location, report) => {
-      this.finish(new Error(`Desktop server process terminated at ${location}: ${report}`));
+      this.finish(this.exitedError(`Desktop server process terminated at ${location}: ${report}`));
     });
   }
 
   static start(options: DesktopServerHostOptions): Promise<DesktopServerHost> {
-    const modulePath = fileURLToPath(new URL("./DesktopServerProcess.js", import.meta.url));
+    // Built by `Build/BundleDesktopServer.ts`: loading the unbundled graph costs
+    // seconds of module resolution before the window can show anything.
+    const modulePath = fileURLToPath(new URL("./DesktopServerProcess.bundle.mjs", import.meta.url));
     const process = utilityProcess.fork(modulePath, [], {
       cwd: options.bootstrap.resourcesRoot,
       env: processEnvironment(),
-      stdio: "ignore",
+      // Keep the server isolated from the Electron main process while retaining
+      // bounded diagnostics when its module graph cannot start.
+      stdio: ["ignore", "pipe", "pipe"],
       serviceName: "Senera Server",
     });
     const host = new DesktopServerHost(process, options.onWorkspaceOpened);
@@ -127,9 +134,11 @@ export class DesktopServerHost {
   private rejectRequest(requestId: string | undefined, error: Error): void {
     if (requestId) {
       const request = this.pending.get(requestId);
-      if (!request) return;
-      this.pending.delete(requestId);
-      request.reject(error);
+      if (request) {
+        this.pending.delete(requestId);
+        request.reject(error);
+        return;
+      }
       return;
     }
     this.startup?.reject(error);
@@ -144,10 +153,38 @@ export class DesktopServerHost {
     this.pending.clear();
   }
 
+  private exitedError(message: string): Error {
+    const diagnostic = this.output.text();
+    return new Error(diagnostic ? `${message}\n\nDesktop server diagnostics:\n${diagnostic}` : message);
+  }
+
   private requireSnapshot(): DesktopServerSnapshot {
     if (!this.snapshot) throw new Error("Desktop server process has not reported readiness.");
     return this.snapshot;
   }
+}
+
+const DesktopServerDiagnosticLimit = 32 * 1024;
+
+/** Retains the end of a child stream without allowing failure diagnostics to grow unbounded. */
+class ProcessOutputTail {
+  private value = "";
+
+  append(chunk: Buffer | string): void {
+    this.value += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    if (this.value.length > DesktopServerDiagnosticLimit) {
+      this.value = this.value.slice(-DesktopServerDiagnosticLimit);
+    }
+  }
+
+  text(): string | undefined {
+    const output = this.value.trim();
+    return output || undefined;
+  }
+}
+
+function captureProcessOutput(stream: NodeJS.ReadableStream | null, output: ProcessOutputTail): void {
+  stream?.on("data", (chunk: Buffer | string) => output.append(chunk));
 }
 
 function processEnvironment(): NodeJS.ProcessEnv {

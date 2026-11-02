@@ -3,6 +3,7 @@ import { serializeError } from "../Diagnostics/AgentErrorSerializer.js";
 import { createRequestId } from "../Core/AgentIds.js";
 import { projectAgentErrorMessage, projectAgentMessage } from "../I18n/AgentMessageProjection.js";
 import type { AgentSystemConfigOperationKind } from "../Config/AgentConfigEventTypes.js";
+import { AgentSessionMessageQueueModeValues } from "../Session/AgentSessionMessageQueueMode.js";
 import type { AgentWebSocketRequest, AgentWebSocketRequestOf } from "./AgentWebSocketProtocol.js";
 import type { AgentWebSocketRequestContext } from "./AgentWebSocketTypes.js";
 
@@ -87,6 +88,8 @@ export function projectAgentWebSocketParseFailure(
   if (typeof rawRequest !== "object" || rawRequest === null || Array.isArray(rawRequest)) return null;
   const record = rawRequest as Record<string, unknown>;
   const type = record.type;
+  const sessionMessageFailure = projectSessionMessageParseFailure(record, issues);
+  if (sessionMessageFailure) return sessionMessageFailure;
   if (type === "workspace.switch" && typeof record.requestId === "string") {
     return {
       kind: AgentEventKinds.WorkspaceSwitchFailed,
@@ -116,6 +119,41 @@ export function projectAgentWebSocketParseFailure(
       },
     },
   };
+}
+
+function projectSessionMessageParseFailure(record: Record<string, unknown>, issues: unknown): AgentDomainEvent | null {
+  if (record.type !== "session.message") return null;
+  const sessionId = readNonEmptyString(record.sessionId);
+  const requestId = readNonEmptyString(record.requestId);
+  if (!sessionId || !requestId) return null;
+
+  const data = {
+    ...projectAgentMessage("websocket.requestInvalid"),
+    details: {
+      requestType: "session.message",
+      issues,
+    },
+  };
+  if (isQueuedSessionMessageMode(record.queueMode)) {
+    return {
+      kind: AgentEventKinds.RequestInvalid,
+      context: { sessionId, requestId },
+      data: { code: "request_parse_failed", ...data },
+    };
+  }
+  return {
+    kind: AgentEventKinds.RunFailed,
+    context: { sessionId, requestId },
+    data,
+  };
+}
+
+function isQueuedSessionMessageMode(value: unknown): boolean {
+  return typeof value === "string" && AgentSessionMessageQueueModeValues.some((mode) => mode === value);
+}
+
+function readNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 export function projectAgentWebSocketRequestFailure(
@@ -160,6 +198,13 @@ export function projectAgentWebSocketRequestFailure(
         },
       },
     };
+  }
+
+  // A queued message joins an existing turn and never owns a run. Reporting a
+  // queue-admission error as run.failed leaves the client with an orphaned
+  // user message, because no matching run.started can ever arrive.
+  if (request.type === "session.message" && request.queueMode) {
+    return projectRequestExecutionFailure(request, error);
   }
 
   if (isRunRequest(request)) {

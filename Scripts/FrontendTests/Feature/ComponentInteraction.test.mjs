@@ -166,10 +166,10 @@ test("catalog-backed empty suggestions update when the frontend locale changes",
   expect(screen.getByRole("button", { name: "Prioritize today's work" })).toBeInTheDocument();
 });
 
-test("logo mark uses a document-relative asset path for packaged desktop windows", () => {
+test("logo mark resolves its asset through the bundler base for dev and packaged windows", () => {
   const { container } = render(React.createElement(LogoMark));
 
-  expect(container.querySelector("img")).toHaveAttribute("src", "./favicon.svg");
+  expect(container.querySelector("img")).toHaveAttribute("src", `${import.meta.env.BASE_URL}favicon.svg`);
 });
 
 test("interaction form collects schema-driven values for the suspended tool call", async () => {

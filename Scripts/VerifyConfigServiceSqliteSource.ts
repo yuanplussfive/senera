@@ -284,11 +284,14 @@ try {
   assert.equal(migratedSnapshot.value.Defaults?.ActionPlanner?.MaxRepairAttempts, 2);
   assert.equal("Mode" in (migratedSnapshot.value.Defaults?.ToolExecution ?? {}), false);
   assert.equal("MaxRepairAttempts" in (migratedSnapshot.value.Defaults?.AgentLoop ?? {}), false);
-  assert.equal(migratedSnapshot.value.Defaults?.ActionPlanner?.Client?.ModelProviderId, "desktop/updated-model");
-  assert.equal("Provider" in (migratedSnapshot.value.Defaults?.ActionPlanner?.PlanningClient ?? {}), false);
+  assert.equal("ModelProviderId" in (migratedSnapshot.value.Defaults?.ActionPlanner?.Client ?? {}), false);
+  assert.equal(
+    "PlanningClient" in ((migratedSnapshot.value.Defaults?.ActionPlanner ?? {}) as Record<string, unknown>),
+    false,
+  );
   assert.equal("Cli" in migratedSnapshot.value, false);
   assert.equal("AgentDelegation" in migratedSnapshot.value, false);
-  assert.equal(migratedSnapshot.value.ActionPlanner?.Client?.ModelProviderId, "desktop/updated-model");
+  assert.equal("ModelProviderId" in (migratedSnapshot.value.ActionPlanner?.Client ?? {}), false);
   assert.equal("Provider" in (migratedSnapshot.value.ActionPlanner?.FinalAnswerClient ?? {}), false);
   assert.equal(migratedSnapshot.value.ModelProviders[0].Id, "desktop/updated-model");
   assert.equal(migratedSnapshot.value.ModelProviderEndpoints?.[0]?.BaseUrl, "https://desktop.example.invalid/v1");

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { AgentExtensionNameSchema } from "../Extensions/AgentExtensionIdentity.js";
 import { AgentExtensionLocalizedTextSchema } from "../Extensions/AgentExtensionLocalization.js";
+import { AgentPluginUsageExamplesSchema } from "../Extensions/AgentPluginUsageExamples.js";
 import {
   AgentToolDiscoverySourceSchema,
   ToolArtifactPolicySchema,
@@ -16,7 +17,9 @@ import { AgentToolPerceptionKinds, AgentToolPerceptionScopes } from "../Types/Ag
 import { inspectAgentToolSchedulingContract } from "../Types/AgentToolRuntimeContract.js";
 import { AgentToolChildGrantModes, ToolLoadingModes } from "../Types/AgentToolContractTypes.js";
 import { isObjectJsonSchema } from "../ToolContracts/AgentJsonSchemaObjectRoot.js";
+import { inspectAgentJsonSchemaDefaultPolicy } from "../ToolContracts/AgentJsonSchemaDefaultPolicy.js";
 import { AgentSystemExtensionPlatformSchema } from "./AgentSystemExtensionPlatform.js";
+import { AgentChannelKinds } from "../Channels/AgentChannelTypes.js";
 import {
   AgentSystemExtensionSettingsSurfaceValues,
   AgentSystemExtensionSettingsSurfaces,
@@ -75,9 +78,24 @@ export const AgentSystemToolContractSchema = z
       .array(z.enum(["console", "channel"]))
       .min(1)
       .optional(),
+    platforms: z.array(z.enum(AgentChannelKinds)).min(1).optional(),
   })
   .strict()
   .superRefine((tool, context) => {
+    for (const issue of inspectAgentJsonSchemaDefaultPolicy(tool.inputSchema)) {
+      context.addIssue({
+        code: "custom",
+        path: ["inputSchema", ...issue.path],
+        message: issue.message,
+      });
+    }
+    if (tool.platforms && (!tool.surfaces || !tool.surfaces.includes("channel"))) {
+      context.addIssue({
+        code: "custom",
+        path: ["platforms"],
+        message: "Tool platforms may only be declared for a channel-scoped tool.",
+      });
+    }
     if (!tool.search.Capabilities || tool.search.Capabilities.length === 0) {
       context.addIssue({
         code: "custom",
@@ -205,13 +223,11 @@ export const AgentSystemExtensionManifestSchema = z
     domain: AgentExtensionNameSchema,
     /** Product settings surface that owns this package's configuration UI. */
     settingsSurface: z.enum(AgentSystemExtensionSettingsSurfaceValues),
-    version: z
-      .string()
-      .trim()
-      .regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u),
     displayName: AgentExtensionLocalizedTextSchema,
     description: AgentExtensionLocalizedTextSchema,
     /** Package-level refinement of the owning domain presentation. */
+    usageExamples: AgentPluginUsageExamplesSchema.optional(),
+    documentation: AgentExtensionLocalizedTextSchema.optional(),
     presentation: AgentSystemToolPresentationOverrideSchema.optional(),
     priority: z.number().finite().optional(),
     platforms: z.array(AgentSystemExtensionPlatformSchema).min(1).optional(),
@@ -262,6 +278,13 @@ export const AgentSystemSidecarToolContractSchema = z
   })
   .strict()
   .superRefine((tool, context) => {
+    for (const issue of inspectAgentJsonSchemaDefaultPolicy(tool.inputSchema)) {
+      context.addIssue({
+        code: "custom",
+        path: ["inputSchema", ...issue.path],
+        message: issue.message,
+      });
+    }
     const body = tool.presentation.preview?.body;
     if (!body) {
       context.addIssue({

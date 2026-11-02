@@ -1,5 +1,3 @@
-import { z } from "zod";
-
 export const SeneraShellDialects = {
   Posix: "posix-sh",
   PowerShell: "powershell",
@@ -7,15 +5,16 @@ export const SeneraShellDialects = {
 
 export type SeneraShellDialect = (typeof SeneraShellDialects)[keyof typeof SeneraShellDialects];
 
-export const SeneraShellCommandSpecSchema = z
-  .object({
-    mode: z.literal("shell"),
-    dialect: z.enum([SeneraShellDialects.Posix, SeneraShellDialects.PowerShell]),
-    script: z.string().trim().min(1),
-  })
-  .strict();
-
-export type SeneraShellCommandSpec = z.infer<typeof SeneraShellCommandSpecSchema>;
+/**
+ * Structural command value after the owning tool package has validated its
+ * JSON Schema. Process infrastructure consumes it without becoming a second
+ * public tool-contract parser.
+ */
+export interface SeneraShellCommandSpec {
+  readonly mode: "shell";
+  readonly dialect: SeneraShellDialect;
+  readonly script: string;
+}
 
 export function isSeneraShellDialectCompatible(requested: SeneraShellDialect, available: SeneraShellDialect): boolean {
   return requested === available;

@@ -105,6 +105,14 @@
       "snapshot": "snapshots/0013.schema.sql",
       "migrationSha256": "d2d32ac2afab2d2a5a4d51799a20d4bbb723824448985919ac58903287e33af4",
       "snapshotSha256": "01669ff1699ca395768e52aacaf8c2d06f1a3590e626030857d8e76c933573ed"
+    },
+    {
+      "version": 14,
+      "name": "session-inputs",
+      "migration": "migrations/0014-session-inputs.sql",
+      "snapshot": "snapshots/0014.schema.sql",
+      "migrationSha256": "2a53668a5430702f5ec0227cb63cfc915c2da2227950cf785fc06fec2f03bf80",
+      "snapshotSha256": "8ce7832ad59883939f98062769b1f968b2111542c170cc94319027f842648123"
     }
   ]
 }

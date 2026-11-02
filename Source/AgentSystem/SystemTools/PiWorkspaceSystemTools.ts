@@ -2,180 +2,64 @@ import fs from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { createInterface } from "node:readline";
 import path from "node:path";
+import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import {
-  BACKGROUND_CONTEXT,
   createReadTool as createPiReadTool,
-  withAbortSignal,
-  type AgentHarnessToolInvocation,
-  type Context,
-  type ReadToolInput,
-} from "@earendil-works/pi-agent-core";
-import {
   createFindTool,
-  createFindToolDefinition,
-  createGrepToolDefinition,
   createLsTool,
-  createLsToolDefinition,
+  type ReadToolInput,
   type FindOperations,
   type FindToolInput,
   type GrepToolInput,
   type LsOperations,
   type LsToolInput,
 } from "@earendil-works/pi-coding-agent";
+import { fileTypeFromBuffer } from "file-type";
 import { rgPath } from "@vscode/ripgrep";
 import { resolveAsarUnpackedExecutablePath } from "../Core/AgentExecutablePath.js";
 export { resolveAsarUnpackedExecutablePath } from "../Core/AgentExecutablePath.js";
 import { minimatch } from "minimatch";
-import { z } from "zod";
-import {
-  AgentHostToolProtocolVersion,
-  ToolResultAssessmentPolicies,
-  ToolSchedulingModes,
-  type ToolResourceArgumentManifest,
-  type ToolSearchManifest,
-} from "../Types/AgentToolContractTypes.js";
 import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import { searchWorkspaceContent } from "../WorkspaceResources/AgentWorkspaceContentSearch.js";
 import { workspaceContentExclusionGlobs } from "../WorkspaceResources/AgentWorkspaceFileDiscovery.js";
-import { defineSystemTool, type AgentSystemToolMetadata } from "./AgentSystemToolDefinition.js";
+import { defineSystemTool, systemToolArguments } from "./AgentSystemToolDefinition.js";
 
 const bundledRipgrepPath = resolveAsarUnpackedExecutablePath(rgPath);
 
-const PiReadTool = createPiReadTool();
-const PiGrepContract = createGrepToolDefinition(".");
-const PiFindContract = createFindToolDefinition(".");
-const PiListContract = createLsToolDefinition(".");
-
-const WorkspaceReadInput = piInputSchema<ReadToolInput>(PiReadTool.parameters);
-const WorkspaceGrepInput = piInputSchema<GrepToolInput>(PiGrepContract.parameters);
-const WorkspaceFindInput = piInputSchema<FindToolInput>(PiFindContract.parameters);
-const WorkspaceListInput = piInputSchema<LsToolInput>(PiListContract.parameters);
-const WorkspaceReadResource = Object.freeze({
-  Capability: "senera.workspace.path",
-  Pointer: "/path",
-  Parameters: { Intent: "read" },
-}) satisfies ToolResourceArgumentManifest;
-
-const PiToolContent = z.discriminatedUnion("type", [
-  z
-    .object({
-      type: z.literal("text"),
-      text: z.string(),
-      textSignature: z.string().optional(),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("image"),
-      data: z.string(),
-      mimeType: z.string(),
-    })
-    .strict(),
-]);
-
-const PiToolResult = z
-  .object({
-    content: z.array(PiToolContent),
-    details: z.unknown().optional(),
-  })
-  .strict();
-
-const WorkspaceToolsExtension = {
-  name: "workspace-tools",
-  displayName: {
-    "zh-CN": "工作区工具",
-    "en-US": "Workspace Tools",
-  },
-  description: {
-    "zh-CN": "使用 Pi 原生文件工具安全地读取、搜索和浏览当前工作区。",
-    "en-US": "Safely reads, searches, and browses the current workspace with Pi's native file tools.",
-  },
-  priority: 95,
-} as const;
-
-const WorkspaceReadSearch = workspaceToolSearch({
-  commandAlias: "read",
-  summary: "读取工作区中的文本文件或受支持图像，并使用 offset/limit 继续读取大文件。",
-  tags: ["工作区", "文件读取", "文本文件", "图像文件"],
-  capabilityId: "workspace.file.read",
-  title: "Workspace file read",
-  description: "Read one workspace file through Senera's authorized execution environment.",
-  actions: ["read", "continue"],
-  targets: ["workspace-file", "text-file", "image-file"],
-  inputs: ["path", "offset", "limit"],
-  outputs: ["file-content", "truncation-metadata"],
-  aliases: ["读取文件", "查看文件", "read file"],
-});
-
-const WorkspaceGrepSearch = workspaceToolSearch({
-  commandAlias: "grep",
-  summary: "使用 Pi 原生 grep 和随包 ripgrep 搜索工作区内容，遵循 .gitignore。",
-  tags: ["工作区", "内容搜索", "代码搜索"],
-  capabilityId: "workspace.content.search",
-  title: "Workspace content search",
-  description: "Search workspace file contents with Pi's grep result and truncation semantics.",
-  actions: ["search", "grep"],
-  targets: ["workspace", "file-content"],
-  inputs: ["pattern", "path", "glob", "context", "limit"],
-  outputs: ["matching-lines", "file-paths", "line-numbers"],
-  aliases: ["搜索代码", "查找内容", "search code"],
-});
-
-const WorkspaceFindSearch = workspaceToolSearch({
-  commandAlias: "find",
-  summary: "按 glob 查找工作区文件，包含隐藏文件并遵循嵌套 .gitignore。",
-  tags: ["工作区", "文件查找", "文件索引"],
-  capabilityId: "workspace.file.find",
-  title: "Workspace file find",
-  description: "Find workspace files by glob with Pi's result and truncation semantics.",
-  actions: ["find", "enumerate"],
-  targets: ["workspace", "file-path"],
-  inputs: ["pattern", "path", "limit"],
-  outputs: ["relative-file-paths", "truncation-metadata"],
-  aliases: ["查找文件", "文件索引", "find files"],
-});
-
-const WorkspaceListSearch = workspaceToolSearch({
-  commandAlias: "ls",
-  summary: "按字母顺序列出工作区目录，包含点文件并标识子目录。",
-  tags: ["工作区", "目录浏览", "目录列出"],
-  capabilityId: "workspace.directory.list",
-  title: "Workspace directory list",
-  description: "List one workspace directory with Pi's sorting and truncation semantics.",
-  actions: ["list", "browse"],
-  targets: ["workspace-directory"],
-  inputs: ["path", "limit"],
-  outputs: ["directory-entry"],
-  aliases: ["列出目录", "浏览目录", "list directory"],
-});
-
 export const WorkspaceReadSystemTool = defineSystemTool({
-  extension: WorkspaceToolsExtension,
-  metadata: workspaceToolMetadata(PiReadTool.description, WorkspaceReadSearch),
-  name: "WorkspaceRead",
-  input: WorkspaceReadInput,
-  output: PiToolResult,
-  execute(input, context) {
-    return PiReadTool.execute(
-      toolCallId(context),
-      input,
-      () => undefined,
-      { env: context.executionEnv },
-      createSystemToolInvocation(context),
-      createSystemToolContext(context),
-    );
+  capability: "system.tool.workspace-tools.WorkspaceRead",
+  async execute(input, context) {
+    context.signal?.throwIfAborted();
+    const args = systemToolArguments<ReadToolInput & Record<string, unknown>>(input);
+    // Read once through the host's authorized file handle. MIME detection and
+    // Pi's formatter consume the same snapshot without reopening the path.
+    const result = await context.executionEnv.readBinaryFile(args.path, context.signal);
+    if (!result.ok) throw result.error;
+    const content = Buffer.from(result.value);
+    const tool = createPiReadTool(context.workspaceRoot, {
+      operations: {
+        readFile: async () => content,
+        async access() {
+          context.signal?.throwIfAborted();
+        },
+        async detectImageMimeType() {
+          const type = await fileTypeFromBuffer(content);
+          return type?.mime.startsWith("image/") ? type.mime : undefined;
+        },
+      },
+    });
+    return projectPiWorkspaceToolResult(await tool.execute(toolCallId(context), args, context.signal));
   },
 });
 
 export const WorkspaceGrepSystemTool = defineSystemTool({
-  extension: WorkspaceToolsExtension,
-  metadata: workspaceToolMetadata(PiGrepContract.description, WorkspaceGrepSearch),
-  name: "WorkspaceGrep",
-  input: WorkspaceGrepInput,
-  output: PiToolResult,
+  capability: "system.tool.workspace-tools.WorkspaceGrep",
   async execute(input, context) {
     assertBundledRipgrepAvailable();
-    const canonicalInput = await canonicalizeOptionalPath(input, context);
+    const canonicalInput = await canonicalizeOptionalPath(
+      systemToolArguments<GrepToolInput & Record<string, unknown>>(input),
+      context,
+    );
     return searchWorkspaceContent({
       workspaceRoot: context.workspaceRoot,
       ripgrepPath: bundledRipgrepPath,
@@ -197,33 +81,31 @@ export const WorkspaceGrepSystemTool = defineSystemTool({
 });
 
 export const WorkspaceFindSystemTool = defineSystemTool({
-  extension: WorkspaceToolsExtension,
-  metadata: workspaceToolMetadata(PiFindContract.description, WorkspaceFindSearch),
-  name: "WorkspaceFind",
-  input: WorkspaceFindInput,
-  output: PiToolResult,
+  capability: "system.tool.workspace-tools.WorkspaceFind",
   async execute(input, context) {
     assertBundledRipgrepAvailable();
-    const canonicalInput = await canonicalizeOptionalPath(input, context);
+    const canonicalInput = await canonicalizeOptionalPath(
+      systemToolArguments<FindToolInput & Record<string, unknown>>(input),
+      context,
+    );
     const tool = createFindTool(context.workspaceRoot, {
       operations: createFindOperations(context),
     });
-    return tool.execute(toolCallId(context), canonicalInput, context.signal);
+    return projectPiWorkspaceToolResult(await tool.execute(toolCallId(context), canonicalInput, context.signal));
   },
 });
 
 export const WorkspaceListSystemTool = defineSystemTool({
-  extension: WorkspaceToolsExtension,
-  metadata: workspaceToolMetadata(PiListContract.description, WorkspaceListSearch),
-  name: "WorkspaceList",
-  input: WorkspaceListInput,
-  output: PiToolResult,
+  capability: "system.tool.workspace-tools.WorkspaceList",
   async execute(input, context) {
-    const canonicalInput = await canonicalizeOptionalPath(input, context);
+    const canonicalInput = await canonicalizeOptionalPath(
+      systemToolArguments<LsToolInput & Record<string, unknown>>(input),
+      context,
+    );
     const tool = createLsTool(context.workspaceRoot, {
       operations: createListOperations(context),
     });
-    return tool.execute(toolCallId(context), canonicalInput, context.signal);
+    return projectPiWorkspaceToolResult(await tool.execute(toolCallId(context), canonicalInput, context.signal));
   },
 });
 
@@ -233,64 +115,6 @@ export const PiWorkspaceSystemTools = Object.freeze([
   WorkspaceFindSystemTool,
   WorkspaceListSystemTool,
 ]);
-
-function workspaceToolMetadata(description: string, search: ToolSearchManifest): AgentSystemToolMetadata {
-  return {
-    description,
-    permissions: ["filesystem:workspace:read"],
-    execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
-    runtime: {
-      Lifecycle: "Immediate",
-      ProtocolVersion: AgentHostToolProtocolVersion,
-      ResultAssessment: ToolResultAssessmentPolicies.ProcessExit,
-      Scheduling: ToolSchedulingModes.Parallel,
-      Capabilities: { Cancellation: true },
-    },
-    resources: [WorkspaceReadResource],
-    search,
-  };
-}
-
-function workspaceToolSearch(input: {
-  commandAlias: string;
-  summary: string;
-  tags: string[];
-  capabilityId: string;
-  title: string;
-  description: string;
-  actions: string[];
-  targets: string[];
-  inputs: string[];
-  outputs: string[];
-  aliases: string[];
-}): ToolSearchManifest {
-  return {
-    Summary: input.summary,
-    Tags: [...new Set([...input.tags, input.commandAlias])],
-    Capabilities: [
-      {
-        Id: input.capabilityId,
-        Title: input.title,
-        Description: input.description,
-        Facets: {
-          Actions: input.actions,
-          Targets: input.targets,
-          Inputs: input.inputs,
-          Outputs: input.outputs,
-          Effects: ["none"],
-        },
-        Aliases: [input.commandAlias, ...input.aliases],
-        Risk: { SideEffect: "none", Permission: "workspace-read" },
-      },
-    ],
-    UseCases: [input.summary],
-    Avoid: ["不要用于修改文件、执行构建或运行任意命令。"],
-  };
-}
-
-function piInputSchema<TInput extends Record<string, unknown>>(schema: unknown): z.ZodType<TInput> {
-  return z.fromJSONSchema(schema as Parameters<typeof z.fromJSONSchema>[0]) as z.ZodType<TInput>;
-}
 
 async function canonicalizeOptionalPath<TInput extends { path?: string }>(
   input: TInput,
@@ -334,9 +158,9 @@ function createListOperations(context: AgentHostToolContext): LsOperations {
       return { isDirectory: () => result.value.kind === "directory" };
     },
     async readdir(absolutePath) {
-      const result = await context.executionEnv.listDir(absolutePath, context.signal);
+      const result = await context.executionEnv.readDirectoryNames(absolutePath, context.signal);
       if (!result.ok) throw result.error;
-      return result.value.map((entry) => entry.name);
+      return result.value;
     },
   };
 }
@@ -443,17 +267,9 @@ function toolCallId(context: AgentHostToolContext): string {
   return context.toolCallId ?? context.tool.name;
 }
 
-function createSystemToolInvocation(context: AgentHostToolContext): AgentHarnessToolInvocation {
-  const invocationId = toolCallId(context);
-  return {
-    invocationId,
-    operationId: context.requestId ?? invocationId,
-    turnId: context.sessionId ?? invocationId,
-    getMemo: async () => undefined,
-    setMemo: async () => undefined,
-  };
-}
-
-function createSystemToolContext(context: AgentHostToolContext): Context {
-  return context.signal ? withAbortSignal(context.signal, BACKGROUND_CONTEXT) : BACKGROUND_CONTEXT;
+/** Keep Senera's published workspace result contract; Pi's structuredContent duplicates content. */
+function projectPiWorkspaceToolResult(
+  result: AgentToolResult<unknown>,
+): Pick<AgentToolResult<unknown>, "content" | "details"> {
+  return { content: result.content, details: result.details };
 }

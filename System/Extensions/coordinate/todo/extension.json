@@ -4,35 +4,57 @@
   "id": "todo",
   "domain": "coordinate",
   "settingsSurface": "system-tools",
-  "version": "1.1.0",
-  "displayName": { "zh-CN": "任务清单", "en-US": "Task List" },
-  "description": { "zh-CN": "维护本轮任务清单。", "en-US": "Maintains the task list for this turn." },
+  "usageExamples": [
+    {
+      "title": {
+        "zh-CN": "跟踪复杂任务",
+        "en-US": "Track a task"
+      },
+      "prompt": {
+        "zh-CN": "先列出迁移步骤，完成一项更新一项。",
+        "en-US": "List the migration steps and update each as it is completed."
+      },
+      "outcome": {
+        "zh-CN": "将任务拆成清单，维护状态，让当前进展更清楚。",
+        "en-US": "Break work into a checklist and keep its status up to date."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### 让复杂任务的进度可见\n\n任务清单记录本轮要做什么、正在做什么、还有什么未完成。适合多步骤修改与调查；一句话就能完成的请求不必强行拆分。\n\n清单会随执行更新。遇到新发现可以调整步骤，完成后应与实际结果一致。它负责进度表达，不会代替工具执行，也不等同于定时任务。",
+    "en-US": "### Keep multi-step work visible\n\nA checklist shows what is planned, active and unfinished in the current task. Use it for substantial changes or investigations, without splitting trivial requests unnecessarily.\n\nUpdate steps as work proceeds and discoveries change the plan. A checklist tracks work; it does not execute tools or schedule future tasks."
+  },
+  "displayName": {
+    "zh-CN": "任务清单",
+    "en-US": "Task List"
+  },
+  "description": {
+    "zh-CN": "维护本轮任务清单。",
+    "en-US": "Maintains the task list for this turn."
+  },
   "priority": 2,
   "presentation": {
     "category": "todo",
     "icon": "list-checks",
-    "group": { "id": "todo", "title": { "zh-CN": "任务计划", "en-US": "Task plan" } },
-    "activity": { "action": { "zh-CN": "更新计划", "en-US": "Update plan" } }
+    "group": {
+      "id": "todo",
+      "title": {
+        "zh-CN": "任务计划",
+        "en-US": "Task plan"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "更新计划",
+        "en-US": "Update plan"
+      }
+    }
   },
   "contributions": [
     {
       "kind": "hostTool",
-      "contract": "tools/TodoAdd.tool.json",
-      "capability": "system.tool.todo.TodoAdd",
-      "childGrant": "internal",
-      "recommendedForSkills": []
-    },
-    {
-      "kind": "hostTool",
-      "contract": "tools/TodoUpdate.tool.json",
-      "capability": "system.tool.todo.TodoUpdate",
-      "childGrant": "internal",
-      "recommendedForSkills": []
-    },
-    {
-      "kind": "hostTool",
-      "contract": "tools/TodoRead.tool.json",
-      "capability": "system.tool.todo.TodoRead",
+      "contract": "tools/todo_write.tool.json",
+      "capability": "system.tool.todo.write",
       "childGrant": "internal",
       "recommendedForSkills": []
     }

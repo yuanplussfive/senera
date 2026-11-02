@@ -45,10 +45,11 @@ function verifyLegacyJsonMigration(): void {
   assert.equal(snapshot.value.ConfigVersion, CurrentAgentConfigVersion);
   assert.equal(snapshot.value.ActionPlanner?.MaxRepairAttempts, 7);
   assert.equal(snapshot.value.Defaults?.ActionPlanner?.MaxRepairAttempts, 2);
-  assert.equal(snapshot.value.ActionPlanner?.Client?.ModelProviderId, "legacy-model");
-  assert.equal(snapshot.value.Defaults?.ActionPlanner?.Client?.ModelProviderId, "legacy-model");
+  assert.equal("ModelProviderId" in (snapshot.value.ActionPlanner?.Client ?? {}), false);
+  assert.equal("ModelProviderId" in (snapshot.value.Defaults?.ActionPlanner?.Client ?? {}), false);
   assert.equal("Provider" in (snapshot.value.ActionPlanner?.FinalAnswerClient ?? {}), false);
-  assert.equal("Provider" in (snapshot.value.Defaults?.ActionPlanner?.PlanningClient ?? {}), false);
+  assert.equal("PlanningClient" in ((snapshot.value.ActionPlanner ?? {}) as Record<string, unknown>), false);
+  assert.equal("PlanningClient" in ((snapshot.value.Defaults?.ActionPlanner ?? {}) as Record<string, unknown>), false);
   assert.equal("Cli" in snapshot.value, false);
   assert.equal("AgentDelegation" in snapshot.value, false);
   assert.equal("Cli" in (snapshot.value.Defaults ?? {}), false);

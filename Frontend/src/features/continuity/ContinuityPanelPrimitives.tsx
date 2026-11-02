@@ -1,100 +1,121 @@
-import type { ReactNode, SVGProps } from "react";
-import type { FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
-import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { cn } from "../../lib/util";
-import { AppIcon, type AppIconName } from "../../shared/ui";
+import type { ReactNode } from "react";
+import type { ContinuitySnapshotData } from "../../api/eventTypes";
+import { resolveRuntimeTimeZone } from "../../config/runtimeConfig";
+import {
+  frontendFeatureMessage as frontendMessage,
+  type FrontendFeatureMessageKey as FrontendMessageKey,
+} from "../../i18n/frontendFeatureMessageCatalog";
+import { formatInteger } from "../../lib/util";
+import { InsightsSectionTitle } from "../observability/insightsPrimitives";
 
-type ContinuityIcon = AppIconName | ((props: Pick<SVGProps<SVGSVGElement>, "className" | "aria-hidden">) => ReactNode);
+export type ContinuityRecord = ContinuitySnapshotData["eventCandidates"][number];
+export type ContinuityRecordType = ContinuityRecord["type"];
 
-export function ContinuityGroup({
-  id,
+const CompactDateFormatters = new Map<string, Intl.DateTimeFormat>();
+
+const ContinuityTypeLabels: Record<ContinuityRecordType, FrontendMessageKey> = {
+  fact: "continuity.kind.fact",
+  preference: "continuity.kind.preference",
+  relationship: "continuity.kind.relationship",
+  context: "continuity.kind.context",
+};
+
+const MatchMethodLabels: Record<string, FrontendMessageKey | undefined> = {
+  memos: "continuity.recallAudit.memos",
+  keyword: "continuity.recallAudit.keyword",
+  semantic: "continuity.recallAudit.semanticChannel",
+  embedding: "continuity.recallAudit.semanticChannel",
+  hybrid: "continuity.recallAudit.hybrid",
+  "exact-reference": "continuity.recallAudit.exactReference",
+  relevance_assessment: "continuity.recallAudit.relevance",
+  task: "continuity.kind.context",
+  current_task: "continuity.kind.context",
+  global_preference: "continuity.recallAudit.globalPreference",
+  related_knowledge: "continuity.recallAudit.relatedKnowledge",
+  historical_task: "continuity.recallAudit.historicalTask",
+};
+
+/** Counts and budget belong to this injection snapshot, not a frontend quality model. */
+export function readContinuitySummary(memory: ContinuitySnapshotData) {
+  const selected =
+    memory.selection.events.selected +
+    (memory.selection.tasks?.selected ?? 0) +
+    (memory.selection.related?.selected ?? 0);
+  const matched =
+    memory.selection.events.matched + (memory.selection.tasks?.matched ?? 0) + (memory.selection.related?.matched ?? 0);
+  const usedTokens = memory.selection.usedTokens;
+  const maxTokens = memory.selection.maxTokens;
+  return {
+    selected,
+    matched,
+    usedTokens,
+    maxTokens,
+    usedRatio: maxTokens > 0 ? clampContinuityRatio(usedTokens / maxTokens) : 0,
+  };
+}
+
+export function ContinuityCard({
   title,
-  summary,
+  note,
+  count,
+  group,
   children,
-  icon: Icon,
 }: {
-  id: "identity" | "recall" | "conditions";
-  icon?: ContinuityIcon;
   title: FrontendMessageKey;
-  summary?: ReactNode;
+  note?: ReactNode;
+  count?: number;
+  group?: "frozen" | "task" | "related";
   children: ReactNode;
 }): JSX.Element {
   return (
-    <section className="border-b border-line-subtle px-5 py-5" data-continuity-group={id}>
-      <header className="mb-4 flex min-h-7 items-center gap-2.5 border-b border-line-subtle pb-3">
-        {Icon ? <ContinuityIconView icon={Icon} className="h-4 w-4 shrink-0 text-accent-content" /> : null}
-        <h3 className="min-w-0 flex-1 truncate text-[14px] font-semibold leading-5 text-content-primary">
-          {frontendMessage(title)}
-        </h3>
-        {summary ? (
-          <span className="shrink-0 text-[11px] tabular-nums leading-4 text-content-muted">{summary}</span>
-        ) : null}
-      </header>
-      <div className="space-y-6">{children}</div>
+    <section className="insights-section continuity-group" data-continuity-group={group}>
+      <InsightsSectionTitle
+        title={frontendMessage(title)}
+        note={note}
+        count={count}
+        countLabel={count === undefined ? undefined : frontendMessage("continuity.budget.records", { count })}
+      />
+      {children}
     </section>
   );
 }
 
-export function ContinuitySubsection({
-  title,
-  children,
-  icon: Icon,
-}: {
-  icon?: ContinuityIcon;
-  title: FrontendMessageKey;
-  children: ReactNode;
-}): JSX.Element {
-  return (
-    <div className="first:mt-0">
-      <div className="mb-2 flex min-h-6 items-center gap-2 text-[12px] font-semibold leading-5 text-content-primary">
-        {Icon ? <ContinuityIconView icon={Icon} className="h-3.5 w-3.5 shrink-0 text-umber-500" /> : null}
-        <h4 className="min-w-0 flex-1 truncate">{frontendMessage(title)}</h4>
-      </div>
-      {children}
-    </div>
-  );
+export function clampContinuityRatio(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(0, value));
 }
 
-export function ContinuityEmptyText({ children }: { children: ReactNode }): JSX.Element {
-  return <p className="text-[12px] leading-5 text-content-muted">{children}</p>;
+/** Only format producer values; do not normalize one score into a different metric. */
+export function formatContinuityScore(value: number | undefined): string {
+  return value === undefined ? "—" : String(Math.round(value * 1000) / 1000);
 }
 
-function ContinuityIconView({ icon, className }: { icon: ContinuityIcon; className: string }): JSX.Element {
-  if (typeof icon === "string") return <AppIcon icon={icon} className={className} aria-hidden="true" />;
-  const Icon = icon;
-  return <Icon className={className} aria-hidden="true" />;
+export function formatContinuityPercent(value: number | undefined): string {
+  return value === undefined ? "—" : `${formatContinuityScore(value * 100)}%`;
 }
 
-export function ContinuityDetail({
-  label,
-  value,
-  compact = false,
-}: {
-  label: FrontendMessageKey;
-  value: string;
-  compact?: boolean;
-}): JSX.Element {
-  return (
-    <p className={cn("text-[12px] leading-5 text-content-secondary", compact ? "mt-0.5" : "mt-1.5")}>
-      <span className="mr-1 text-content-muted">{frontendMessage(label)}:</span>
-      {value}
-    </p>
-  );
-}
-
-export function formatContinuityConfidence(value: number): string {
-  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
-}
-
-export function formatContinuityScalar(value: string | number | boolean): string {
-  return typeof value === "string" ? value : JSON.stringify(value);
-}
-
-export function formatContinuitySignalValue(valueJson: string): string {
-  try {
-    const value: unknown = JSON.parse(valueJson);
-    return typeof value === "string" ? value : JSON.stringify(value);
-  } catch {
-    return valueJson;
+export function formatContinuityDate(iso: string, locale: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const timeZone = resolveRuntimeTimeZone();
+  const key = `${locale}:${timeZone}`;
+  let formatter = CompactDateFormatters.get(key);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, { timeZone, month: "short", day: "numeric" });
+    CompactDateFormatters.set(key, formatter);
   }
+  return formatter.format(date);
+}
+
+export function formatContinuityInteger(value: number): string {
+  return formatInteger(Math.round(Number.isFinite(value) ? value : 0));
+}
+
+export function memoryTypeLabel(type: ContinuityRecordType): string {
+  return frontendMessage(ContinuityTypeLabels[type]);
+}
+
+export function matchMethodLabel(method: string): string | undefined {
+  const key = MatchMethodLabels[method];
+  return key ? frontendMessage(key) : undefined;
 }

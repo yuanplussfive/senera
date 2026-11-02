@@ -80,6 +80,7 @@ export class AgentSystemExtensionConfigurationReader {
             name: section.id,
             label: section.label,
             description: section.description,
+            ...(section.documentation ? { documentation: section.documentation } : {}),
             icon: section.icon,
             keyCount: fields.length,
             fields,
@@ -308,6 +309,7 @@ function assertConfigurationModelSelectionReference(
 
 function listConfigurationLeafPaths(schema: Record<string, unknown>, basePath: readonly string[] = []): string[][] {
   if (readSchemaType(schema) !== "object") return [[...basePath]];
+  if (schema.additionalProperties && typeof schema.additionalProperties === "object") return [[...basePath]];
   return Object.entries(readSchemaProperties(schema)).flatMap(([name, property]) =>
     listConfigurationLeafPaths(property, [...basePath, name]),
   );
@@ -320,7 +322,12 @@ function readConfigurationSchemaAtPath(
   let current = rootSchema;
   for (const part of pathParts) {
     if (readSchemaType(current) !== "object") return undefined;
-    const next = readSchemaProperties(current)[part];
+    const recordItem = current.additionalProperties;
+    const next =
+      readSchemaProperties(current)[part] ??
+      (recordItem && typeof recordItem === "object" && !Array.isArray(recordItem)
+        ? readSchemaProperties(recordItem as Record<string, unknown>)[part]
+        : undefined);
     if (!next) return undefined;
     current = next;
   }
@@ -355,7 +362,14 @@ function readSchemaType(schema: Record<string, unknown>): string {
 }
 
 function readSchemaProperties(schema: Record<string, unknown>): Record<string, Record<string, unknown>> {
-  const properties = asSchemaObject(readConfigurationValueSchema(schema).properties, "object properties");
+  const valueSchema = readConfigurationValueSchema(schema);
+  if (
+    valueSchema.properties === undefined &&
+    valueSchema.additionalProperties &&
+    typeof valueSchema.additionalProperties === "object"
+  )
+    return {};
+  const properties = asSchemaObject(valueSchema.properties, "object properties");
   return Object.fromEntries(
     Object.entries(properties).map(([name, value]) => [name, asSchemaObject(value, `property ${name}`)]),
   );

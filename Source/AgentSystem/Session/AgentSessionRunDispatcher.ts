@@ -59,6 +59,7 @@ export class AgentSessionRunDispatcher implements AgentRunDispatchPort {
       requestId: request.requestId,
       modelProviderId: request.modelProviderId,
       input: request.input,
+      attachments: request.attachments,
       approvalMode: request.approvalMode,
       disposition:
         request.contextMode === AgentRunContextModes.Fresh
@@ -66,6 +67,7 @@ export class AgentSessionRunDispatcher implements AgentRunDispatchPort {
           : undefined,
       systemPromptLayer: request.systemPromptLayer,
       allowedToolNames: request.allowedToolNames,
+      executionScope: request.executionScope,
       pinnedSkills: request.pinnedSkills,
       thinkingLevel: request.thinkingLevel,
       inheritProjectContext: request.inheritProjectContext,
@@ -125,8 +127,11 @@ export class AgentSessionRunDispatcher implements AgentRunDispatchPort {
     onEvent?: AgentRunDispatchRequest["onEvent"],
     requestId?: string,
     metadata?: AgentRunDispatchRequest["metadata"],
+    queueMode?: "steer" | "follow_up",
   ): Promise<boolean> {
-    return this.sessions.followUpActiveRun({ sessionId, input, onEvent, requestId, metadata });
+    return queueMode === "steer"
+      ? this.sessions.steerActiveRun({ sessionId, input, onEvent, requestId, metadata })
+      : this.sessions.followUpActiveRun({ sessionId, input, onEvent, requestId, metadata });
   }
 
   interrupt(sessionId: string, instruction: string): Promise<boolean> {

@@ -1,13 +1,15 @@
 import { memo, useCallback, useEffect, useId, useState } from "react";
-import type { TimelineChildRunMessage, TimelineStep } from "../../store/sessionStore";
+import type { TimelineStep } from "../../store/sessionStore";
 import { friendlyDecisionKind } from "../../store/sessionStore";
 import { cn, formatTime, formatDurationMs } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
+import { useFrontendLocale } from "../../i18n/useFrontendLocale";
 import { MotionIconSwap } from "../../shared/motion";
 import { MarkdownRenderer } from "../../shared/code/MarkdownRenderer";
 import {
   AppIcon,
+  IconButton,
   MetaLabel,
   Sheet,
   SheetContent,
@@ -18,7 +20,7 @@ import {
 } from "../../shared/ui";
 import { readStepKindLabel, readStepStatusLabel } from "./stepPresentation";
 import { DataView } from "./DataView";
-import { ChildRunOverview } from "./ChildRunOverview";
+import { ChildRunExecutionDetail } from "./ChildRunExecutionDetail";
 import { readWorkflowStepDurationMs } from "./workflowPresentationProjection";
 import { ToolStepInspector } from "./ToolStepInspector";
 import { readToolResultValue } from "./toolResultProjection";
@@ -26,9 +28,10 @@ import { readToolResultValue } from "./toolResultProjection";
 export interface NodeDetailDrawerProps {
   step: TimelineStep | null;
   onClose: () => void;
+  relatedSteps?: readonly TimelineStep[];
 }
 
-export function NodeDetailDrawer({ step, onClose }: NodeDetailDrawerProps): JSX.Element {
+export function NodeDetailDrawer({ step, onClose, relatedSteps }: NodeDetailDrawerProps): JSX.Element {
   const [contentReady, setContentReady] = useState(false);
   const stepId = step?.id;
 
@@ -41,6 +44,8 @@ export function NodeDetailDrawer({ step, onClose }: NodeDetailDrawerProps): JSX.
 
   return (
     <Sheet
+      // Keep the conversation interactive while inspecting execution details.
+      modal={false}
       open={!!step}
       onOpenChange={(open) => {
         if (!open) onClose();
@@ -57,12 +62,12 @@ export function NodeDetailDrawer({ step, onClose }: NodeDetailDrawerProps): JSX.
         {step ? (
           <>
             <Header step={step} onClose={onClose} />
-            <div className="flex-1 overflow-y-auto px-5 pb-8 pt-3">
+            <div key={step.id} className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-4 [scrollbar-gutter:stable]">
               {contentReady ? (
                 step.kind === "tool" && step.toolName ? (
                   <ToolStepInspector step={step} showHeader={false} />
                 ) : (
-                  <WorkflowStepDetail step={step} />
+                  <WorkflowStepDetail step={step} relatedSteps={relatedSteps} />
                 )
               ) : (
                 <DetailSkeleton />
@@ -93,38 +98,41 @@ function DetailSkeleton(): JSX.Element {
 
 function Header({ step, onClose }: { step: TimelineStep; onClose: () => void }): JSX.Element {
   return (
-    <div className="flex h-14 items-center gap-2 border-b border-ink-200/60 px-5">
+    <div className="flex h-16 shrink-0 items-center gap-2 border-b border-line-subtle px-5">
       <div className="min-w-0 flex-1">
-        <h2 className="truncate text-[15px] font-semibold text-ink-950">{readDrawerTitle(step)}</h2>
-        <div className="mt-0.5 text-[10.5px] text-ink-500">{readStepKindLabel(step.kind)}</div>
+        <h2 className="truncate text-[15px] font-semibold text-content-primary">{readDrawerTitle(step)}</h2>
+        <div className="mt-0.5 text-[11px] text-content-muted">{readStepKindLabel(step.kind)}</div>
       </div>
-      <button
-        type="button"
-        onClick={onClose}
-        className="ml-auto grid h-8 w-8 place-items-center rounded-md text-ink-500 transition hover:bg-ink-900/[0.05] hover:text-ink-800"
-        aria-label={frontendMessage("ui.close")}
-      >
+      <IconButton onClick={onClose} label={frontendMessage("ui.close")} size="sm" tone="muted">
         <AppIcon icon="close" size={16} />
-      </button>
+      </IconButton>
     </div>
   );
 }
 
 function readDrawerTitle(step: TimelineStep | null): string | undefined {
   if (!step) return undefined;
+  if (step.childRun) return step.scope?.agentName || frontendMessage("workflow.childRun.board.agentFallback");
   return step.kind === "tool" && step.toolName ? step.toolName : step.title;
 }
 
-export const WorkflowStepDetail = memo(function WorkflowStepDetail({ step }: { step: TimelineStep }): JSX.Element {
+const EmptyRelatedSteps: readonly TimelineStep[] = [];
+
+export const WorkflowStepDetail = memo(function WorkflowStepDetail({
+  step,
+  relatedSteps = EmptyRelatedSteps,
+}: {
+  step: TimelineStep;
+  relatedSteps?: readonly TimelineStep[];
+}): JSX.Element {
+  useFrontendLocale();
   return (
     <div className="flex flex-col gap-5">
-      <MetaStrip step={step} />
+      {!step.childRun ? <MetaStrip step={step} /> : null}
 
-      {step.childRun ? <ChildRunOverview childRun={step.childRun} /> : null}
+      {step.childRun ? <ChildRunExecutionDetail childRun={step.childRun} steps={relatedSteps} /> : null}
 
-      {step.childRun ? <ChildRunMessages messages={step.childRun.messages ?? []} /> : null}
-
-      {step.description ? (
+      {!step.childRun && step.description ? (
         <Section label={frontendMessage("workflow.node.section.description")}>
           <MarkdownRenderer contentClassName="text-[13.5px] leading-relaxed" compact lightweightCode>
             {step.description}
@@ -187,65 +195,6 @@ export const WorkflowStepDetail = memo(function WorkflowStepDetail({ step }: { s
     </div>
   );
 });
-
-const ChildRunMessageKindLabels: Record<TimelineChildRunMessage["kind"], Parameters<typeof frontendMessage>[0]> = {
-  decision: "workflow.childRun.message.decision",
-  follow_up: "workflow.childRun.message.followUp",
-  progress: "workflow.childRun.message.progress",
-  response: "workflow.childRun.message.response",
-  steering: "workflow.childRun.message.steering",
-};
-
-function ChildRunMessages({ messages }: { messages: readonly TimelineChildRunMessage[] }): JSX.Element {
-  const copyValue = messages
-    .map((message) => {
-      const direction =
-        message.direction === "child_to_parent"
-          ? frontendMessage("workflow.childRun.message.child")
-          : frontendMessage("workflow.childRun.message.parent");
-      return `${direction} · ${frontendMessage(ChildRunMessageKindLabels[message.kind])}\n${message.content}`;
-    })
-    .join("\n\n");
-
-  return (
-    <Section label={frontendMessage("workflow.node.section.childMessages")} copyValue={copyValue || undefined}>
-      {messages.length > 0 ? (
-        <div className="divide-y divide-line-subtle border-y border-line-subtle" data-child-run-messages>
-          {messages.map((message) => (
-            <article
-              key={message.id}
-              className={cn(
-                "border-l-2 px-3 py-3",
-                message.direction === "child_to_parent" ? "border-accent-content" : "border-umber-400",
-              )}
-            >
-              <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px]">
-                <span className="font-medium text-content-primary">
-                  {message.direction === "child_to_parent"
-                    ? frontendMessage("workflow.childRun.message.child")
-                    : frontendMessage("workflow.childRun.message.parent")}
-                </span>
-                <span className="text-content-muted">{frontendMessage(ChildRunMessageKindLabels[message.kind])}</span>
-              </div>
-              <MarkdownRenderer
-                className="px-0 py-0"
-                contentClassName="text-[13px] leading-relaxed"
-                compact
-                lightweightCode
-              >
-                {message.content}
-              </MarkdownRenderer>
-            </article>
-          ))}
-        </div>
-      ) : (
-        <div className="border-y border-line-subtle py-3 text-[12.5px] leading-5 text-content-secondary">
-          {frontendMessage("workflow.childRun.message.empty")}
-        </div>
-      )}
-    </Section>
-  );
-}
 
 function ToolOutputBlock({ stream, text }: { stream: "stdout" | "stderr"; text: string }): JSX.Element {
   return (

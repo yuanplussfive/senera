@@ -9,146 +9,189 @@ export interface AgentConfigRetirementMigrationOptions {
   readonly removedPaths: string[];
 }
 
-/**
- * Applies the additive retirement sequence introduced after the foundational
- * config shape migrations. Returning undefined leaves earlier migrations to
- * the main dispatcher.
- */
+type ScopedMigration = (
+  container: Record<string, unknown>,
+  prefix: string,
+  migratedPaths: string[],
+  removedPaths: string[],
+) => void;
+
+type Retirement = (container: Record<string, unknown>, prefix: string, removedPaths: string[]) => void;
+
+function retirement(apply: Retirement): ScopedMigration {
+  return (container, prefix, _migratedPaths, removedPaths) => apply(container, prefix, removedPaths);
+}
+
+const retirementSteps = new Map<number, { readonly toVersion: number; readonly apply: ScopedMigration }>([
+  [11, { toVersion: 12, apply: retirement(removeRetiredRuntimeUpdateConfiguration) }],
+  [12, { toVersion: 13, apply: migrateMemoryLearningToContinuityLearning }],
+  [13, { toVersion: 14, apply: retirement(removeRetiredContinuityLearningOptions) }],
+  [14, { toVersion: 15, apply: retirement(removeCharacterThresholdLearningGate) }],
+  [15, { toVersion: 16, apply: retirement(removeRoleRewriteConfiguration) }],
+  [16, { toVersion: 17, apply: removePhraseBasedTurnValueConfiguration }],
+  [17, { toVersion: 18, apply: retirement(removeRetiredGoalControllerConfiguration) }],
+  [18, { toVersion: 19, apply: retirement(removeRetiredGoalConfiguration) }],
+  [19, { toVersion: 20, apply: removeRetiredContinuityRecallRewrite }],
+  [20, { toVersion: 21, apply: retirement(removeRetiredTemporalSegmentIdleBoundary) }],
+  [21, { toVersion: 22, apply: retirement(removeRetiredVectorModels) }],
+  [22, { toVersion: 23, apply: retirement(removeRetiredVectorModelPool) }],
+  [23, { toVersion: 24, apply: retirement(removeRetiredArtifactsSummaryMaxChars) }],
+  [24, { toVersion: 25, apply: retirement(removeRetiredToolSearchSemanticThresholds) }],
+  [25, { toVersion: 26, apply: retirement(removeRetiredToolSearchDiscoveryLimits) }],
+  [26, { toVersion: 27, apply: retirement(removeRetiredToolSearchEmbeddingMetadata) }],
+  [27, { toVersion: 28, apply: removeRetiredPluginConfiguration }],
+  [28, { toVersion: 29, apply: retirement(removeRetiredWorkspaceObservationConfiguration) }],
+  [29, { toVersion: 30, apply: retirement(removeRetiredToolObservationBudget) }],
+  [30, { toVersion: 31, apply: migrateBrowserNetworkConfiguration }],
+  [31, { toVersion: 32, apply: retirement(removeRetiredToolLearningModelConfiguration) }],
+  [32, { toVersion: 33, apply: retirement(removeRetiredModelThinkingLevelMaps) }],
+  [33, { toVersion: 34, apply: retirement(removeRetiredTemporalMemoryConfiguration) }],
+  [34, { toVersion: 35, apply: retirement(removeRetiredMemoryCountBudgets) }],
+  [35, { toVersion: 36, apply: renameDigestSummaryTokenLimit }],
+  [36, { toVersion: 38, apply: retirement(removeRetiredPersonaConfiguration) }],
+  [38, { toVersion: 39, apply: retirement(removeRetiredPlannerModelSelection) }],
+  [39, { toVersion: 40, apply: retirement(removeRetiredOneBotDisplayName) }],
+  [40, { toVersion: 41, apply: retirement(removeRetiredResponseRewriting) }],
+  [41, { toVersion: 42, apply: retirement(removeRetiredOneBotTransportConfiguration) }],
+  [42, { toVersion: 43, apply: migrateFileDiaryConfiguration }],
+  [43, { toVersion: 44, apply: retirement(removeRetiredToolSearchTokenize) }],
+  [44, { toVersion: 45, apply: retirement(removeRetiredBrowserTimeoutLimits) }],
+]);
+
+function removeRetiredBrowserTimeoutLimits(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  if (!isRecord(container.Extensions)) return;
+  const browser = container.Extensions["agent-browser"];
+  if (!isRecord(browser) || !isRecord(browser.Configuration) || !isRecord(browser.Configuration.runtime)) return;
+  for (const field of ["maxOperationTimeoutMs", "maxWaitMs"] as const) {
+    if (removeProperty(browser.Configuration.runtime, field)) {
+      removedPaths.push(`${prefix}Extensions.agent-browser.Configuration.runtime.${field}`);
+    }
+  }
+}
+
+/** Stopword curation moved into versioned lexicon resources; no configuration remains. */
+function removeRetiredToolSearchTokenize(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  const toolSearch = container.ToolSearch;
+  if (!isRecord(toolSearch) || !removeProperty(toolSearch, "Tokenize")) return;
+  removedPaths.push(`${prefix}ToolSearch.Tokenize`);
+}
+
+function migrateFileDiaryConfiguration(
+  container: Record<string, unknown>,
+  prefix: string,
+  migratedPaths: string[],
+  removedPaths: string[],
+): void {
+  if (!isRecord(container.ContinuityLearning) || !isRecord(container.ContinuityLearning.MemOS)) return;
+  const memos = container.ContinuityLearning.MemOS;
+  for (const [previous, current] of [
+    ["DigestInputTokenBudget", "RelevanceInputTokenBudget"],
+    ["DigestSummaryTokenLimit", "FragmentSummaryTokenLimit"],
+  ] as const) {
+    if (!Object.hasOwn(memos, previous)) continue;
+    if (!Object.hasOwn(memos, current)) {
+      memos[current] = memos[previous];
+      migratedPaths.push(`${prefix}ContinuityLearning.MemOS.${current}`);
+    }
+    delete memos[previous];
+    removedPaths.push(`${prefix}ContinuityLearning.MemOS.${previous}`);
+  }
+}
+
+/** Returns undefined for versions owned by the foundational migration dispatcher. */
 export function migrateAgentConfigRetirementStep(options: AgentConfigRetirementMigrationOptions): number | undefined {
+  const step = retirementSteps.get(options.version);
+  if (!step) return undefined;
   const { config, migratedPaths, removedPaths } = options;
-  switch (options.version) {
-    case 11:
-      removeRetiredRuntimeUpdateConfiguration(config, "", removedPaths);
-      if (isRecord(config.Defaults))
-        removeRetiredRuntimeUpdateConfiguration(config.Defaults, "Defaults.", removedPaths);
-      return 12;
-    case 12:
-      migrateMemoryLearningToContinuityLearning(config, "", migratedPaths, removedPaths);
-      if (isRecord(config.Defaults)) {
-        migrateMemoryLearningToContinuityLearning(config.Defaults, "Defaults.", migratedPaths, removedPaths);
+  step.apply(config, "", migratedPaths, removedPaths);
+  if (isRecord(config.Defaults)) step.apply(config.Defaults, "Defaults.", migratedPaths, removedPaths);
+  return step.toVersion;
+}
+
+function removeRetiredOneBotTransportConfiguration(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  if (!isRecord(container.Extensions)) return;
+  const extension = container.Extensions["agent-channels"];
+  if (!isRecord(extension) || !isRecord(extension.Configuration)) return;
+  const onebot = extension.Configuration.onebot11;
+  if (!isRecord(onebot)) return;
+  for (const key of ["port", "accessToken", "selfId", "operatorId", "heartbeatIntervalMs"] as const) {
+    if (removeProperty(onebot, key)) {
+      removedPaths.push(`${prefix}Extensions.agent-channels.Configuration.onebot11.${key}`);
+    }
+  }
+}
+
+function removeRetiredResponseRewriting(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  if (isRecord(container.Prompt)) {
+    for (const key of ["PrefaceRewrite", "FinalResponseRewrite"] as const) {
+      if (removeProperty(container.Prompt, key)) removedPaths.push(`${prefix}Prompt.${key}`);
+    }
+  }
+  if (!isRecord(container.Extensions)) return;
+  if (removeProperty(container.Extensions, "resident-speech")) {
+    removedPaths.push(`${prefix}Extensions.resident-speech`);
+  }
+  const channels = container.Extensions["agent-channels"];
+  if (isRecord(channels) && isRecord(channels.Configuration)) {
+    if (removeProperty(channels.Configuration, "finalResponseRewrite")) {
+      removedPaths.push(`${prefix}Extensions.agent-channels.Configuration.finalResponseRewrite`);
+    }
+  }
+}
+
+function removeRetiredOneBotDisplayName(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  if (!isRecord(container.Extensions)) return;
+  const extension = container.Extensions["agent-channels"];
+  if (!isRecord(extension) || !isRecord(extension.Configuration)) return;
+  const onebot = extension.Configuration.onebot11;
+  if (isRecord(onebot) && removeProperty(onebot, "displayName")) {
+    removedPaths.push(`${prefix}Extensions.agent-channels.Configuration.onebot11.displayName`);
+  }
+}
+
+function removeRetiredPlannerModelSelection(
+  container: Record<string, unknown>,
+  prefix: string,
+  removedPaths: string[],
+): void {
+  const actionPlanner = container.ActionPlanner;
+  if (!isRecord(actionPlanner)) return;
+
+  const client = actionPlanner.Client;
+  if (isRecord(client)) {
+    for (const property of ["ModelProviderId", "Provider"] as const) {
+      if (removeProperty(client, property)) {
+        removedPaths.push(`${prefix}ActionPlanner.Client.${property}`);
       }
-      return 13;
-    case 13:
-      removeRetiredContinuityLearningOptions(config, "", removedPaths);
-      if (isRecord(config.Defaults)) removeRetiredContinuityLearningOptions(config.Defaults, "Defaults.", removedPaths);
-      return 14;
-    case 14:
-      removeCharacterThresholdLearningGate(config, "", removedPaths);
-      if (isRecord(config.Defaults)) removeCharacterThresholdLearningGate(config.Defaults, "Defaults.", removedPaths);
-      return 15;
-    case 15:
-      removeRoleRewriteConfiguration(config, "", removedPaths);
-      if (isRecord(config.Defaults)) removeRoleRewriteConfiguration(config.Defaults, "Defaults.", removedPaths);
-      return 16;
-    case 16:
-      removePhraseBasedTurnValueConfiguration(config, "", migratedPaths, removedPaths);
-      if (isRecord(config.Defaults)) {
-        removePhraseBasedTurnValueConfiguration(config.Defaults, "Defaults.", migratedPaths, removedPaths);
-      }
-      return 17;
-    case 17:
-      removeRetiredGoalControllerConfiguration(config, "", removedPaths);
-      if (isRecord(config.Defaults))
-        removeRetiredGoalControllerConfiguration(config.Defaults, "Defaults.", removedPaths);
-      return 18;
-    case 18:
-      removeRetiredGoalConfiguration(config, "", removedPaths);
-      if (isRecord(config.Defaults)) removeRetiredGoalConfiguration(config.Defaults, "Defaults.", removedPaths);
-      return 19;
-    case 19:
-      removeRetiredContinuityRecallRewrite(config, "", migratedPaths, removedPaths);
-      if (isRecord(config.Defaults)) {
-        removeRetiredContinuityRecallRewrite(config.Defaults, "Defaults.", migratedPaths, removedPaths);
-      }
-      return 20;
-    case 20:
-      removeRetiredTemporalSegmentIdleBoundary(config, "", removedPaths);
-      if (isRecord(config.Defaults))
-        removeRetiredTemporalSegmentIdleBoundary(config.Defaults, "Defaults.", removedPaths);
-      return 21;
-    case 21:
-      removeRetiredVectorModels(config, "", removedPaths);
-      if (isRecord(config.Defaults)) removeRetiredVectorModels(config.Defaults, "Defaults.", removedPaths);
-      return 22;
-    case 22:
-      removeRetiredVectorModelPool(config, "", removedPaths);
-      if (isRecord(config.Defaults)) removeRetiredVectorModelPool(config.Defaults, "Defaults.", removedPaths);
-      return 23;
-    case 23:
-      removeRetiredArtifactsSummaryMaxChars(config, "", removedPaths);
-      if (isRecord(config.Defaults)) removeRetiredArtifactsSummaryMaxChars(config.Defaults, "Defaults.", removedPaths);
-      return 24;
-    case 24:
-      removeRetiredToolSearchSemanticThresholds(config, "", removedPaths);
-      if (isRecord(config.Defaults))
-        removeRetiredToolSearchSemanticThresholds(config.Defaults, "Defaults.", removedPaths);
-      return 25;
-    case 25:
-      removeRetiredToolSearchDiscoveryLimits(config, "", removedPaths);
-      if (isRecord(config.Defaults)) removeRetiredToolSearchDiscoveryLimits(config.Defaults, "Defaults.", removedPaths);
-      return 26;
-    case 26:
-      removeRetiredToolSearchEmbeddingMetadata(config, "", removedPaths);
-      if (isRecord(config.Defaults))
-        removeRetiredToolSearchEmbeddingMetadata(config.Defaults, "Defaults.", removedPaths);
-      return 27;
-    case 27:
-      removeRetiredPluginConfiguration(config, "", migratedPaths, removedPaths);
-      if (isRecord(config.Defaults))
-        removeRetiredPluginConfiguration(config.Defaults, "Defaults.", migratedPaths, removedPaths);
-      return 28;
-    case 28:
-      removeRetiredWorkspaceObservationConfiguration(config, "", removedPaths);
-      if (isRecord(config.Defaults)) {
-        removeRetiredWorkspaceObservationConfiguration(config.Defaults, "Defaults.", removedPaths);
-      }
-      return 29;
-    case 29:
-      removeRetiredToolObservationBudget(config, "", removedPaths);
-      if (isRecord(config.Defaults)) {
-        removeRetiredToolObservationBudget(config.Defaults, "Defaults.", removedPaths);
-      }
-      return 30;
-    case 30:
-      migrateBrowserNetworkConfiguration(config, "", migratedPaths, removedPaths);
-      if (isRecord(config.Defaults)) {
-        migrateBrowserNetworkConfiguration(config.Defaults, "Defaults.", migratedPaths, removedPaths);
-      }
-      return 31;
-    case 31:
-      removeRetiredToolLearningModelConfiguration(config, "", removedPaths);
-      if (isRecord(config.Defaults)) {
-        removeRetiredToolLearningModelConfiguration(config.Defaults, "Defaults.", removedPaths);
-      }
-      return 32;
-    case 32:
-      removeRetiredModelThinkingLevelMaps(config, "", removedPaths);
-      if (isRecord(config.Defaults)) {
-        removeRetiredModelThinkingLevelMaps(config.Defaults, "Defaults.", removedPaths);
-      }
-      return 33;
-    case 33:
-      removeRetiredTemporalMemoryConfiguration(config, "", removedPaths);
-      if (isRecord(config.Defaults)) {
-        removeRetiredTemporalMemoryConfiguration(config.Defaults, "Defaults.", removedPaths);
-      }
-      return 34;
-    case 34:
-      removeRetiredMemoryCountBudgets(config, "", removedPaths);
-      if (isRecord(config.Defaults)) removeRetiredMemoryCountBudgets(config.Defaults, "Defaults.", removedPaths);
-      return 35;
-    case 35:
-      renameDigestSummaryTokenLimit(config, "", migratedPaths, removedPaths);
-      if (isRecord(config.Defaults)) {
-        renameDigestSummaryTokenLimit(config.Defaults, "Defaults.", migratedPaths, removedPaths);
-      }
-      return 36;
-    case 36:
-      removeRetiredPersonaConfiguration(config, "", removedPaths);
-      if (isRecord(config.Defaults)) removeRetiredPersonaConfiguration(config.Defaults, "Defaults.", removedPaths);
-      return 38;
-    default:
-      return undefined;
+    }
+    if (Object.keys(client).length === 0) {
+      delete actionPlanner.Client;
+      removedPaths.push(`${prefix}ActionPlanner.Client`);
+    }
+  }
+
+  if (removeProperty(actionPlanner, "PlanningClient")) {
+    removedPaths.push(`${prefix}ActionPlanner.PlanningClient`);
   }
 }
 

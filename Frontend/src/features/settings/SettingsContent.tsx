@@ -4,7 +4,7 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { JsonConfigSettingsView } from "../../shared/config/JsonConfigForm";
 import { motionTimings, MotionIconSwap, useMotionLevel } from "../../shared/motion";
-import { AppIcon, Button, ScrollArea, Spinner, Tooltip } from "../../shared/ui";
+import { AppIcon, Button, IconButton, ScrollArea, Spinner, Tooltip } from "../../shared/ui";
 import type { SettingsSystemConfigHandle } from "./SettingsContracts";
 import type { SettingsContentProps } from "./SettingsWorkbenchContracts";
 import { readSettingsDraftInteraction } from "./settingsInteractionModel";
@@ -62,7 +62,11 @@ export function SettingsContent({
     <div className="min-h-0 flex-1 overflow-hidden bg-surface-subtle" data-settings-content-frame>
       {isFullHeightWorkspace(activeSection.id) ? (
         <SettingsSectionTransition sectionId={activeSection.id} className="h-full min-h-0">
-          <Suspense fallback={<SettingsSectionLoading variant="split" />}>{content}</Suspense>
+          <Suspense
+            fallback={<SettingsSectionLoading variant={activeSection.id === "system-tools" ? "directory" : "split"} />}
+          >
+            {content}
+          </Suspense>
         </SettingsSectionTransition>
       ) : (
         <ScrollArea className="h-full min-h-0" viewportClassName={settingsViewportClassName(activeSection.id)}>
@@ -295,14 +299,17 @@ function DraftBackedSection({
               </span>
             </Tooltip>
             {interaction.status === "conflict" || (interaction.status === "invalid" && !interaction.saveDisabled) ? (
-              <Tooltip content={interaction.saveTitle} side="top">
-                <span className="inline-flex">
-                  <Button size="sm" disabled={interaction.saveDisabled} onClick={draftState.save}>
-                    <AppIcon icon="refresh" size={14} aria-hidden="true" />
-                    {frontendMessage("settings.action.retry")}
-                  </Button>
-                </span>
-              </Tooltip>
+              <IconButton
+                label={frontendMessage("settings.action.retry")}
+                tooltip={interaction.saveTitle}
+                tooltipSide="top"
+                tone="muted"
+                touchSafe
+                disabled={interaction.saveDisabled}
+                onClick={draftState.save}
+              >
+                <AppIcon icon="refresh" size={16} aria-hidden="true" />
+              </IconButton>
             ) : null}
           </div>
         </div>

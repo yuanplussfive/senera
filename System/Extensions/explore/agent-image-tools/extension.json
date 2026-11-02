@@ -4,26 +4,74 @@
   "id": "agent-image-tools",
   "domain": "explore",
   "settingsSurface": "system-tools",
-  "version": "1.0.0",
-  "displayName": { "zh-CN": "图像理解", "en-US": "Image Understanding" },
+  "usageExamples": [
+    {
+      "title": {
+        "zh-CN": "理解图片",
+        "en-US": "Understand an image"
+      },
+      "prompt": {
+        "zh-CN": "看一下这张截图，设置哪里有问题？",
+        "en-US": "Look at this screenshot. What is wrong with the settings?"
+      },
+      "outcome": {
+        "zh-CN": "读取图片内容，识别界面、文字与细节，围绕问题作答。",
+        "en-US": "Inspect image content, text, and visual details to answer your question."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### 理解与生成图片\n\nImageAnalyze 分析图片；ImageGenerate 生成图片或根据参考图编辑。两者使用独立选择的模型，共用资源读取、下载限制与保存链路。\n\n在模型设置中启用图像输出，并选择实际支持的图像生成协议。支持参考图或遮罩编辑时分别声明对应能力。需要多个图像模型时，使用 ImageModels 查询后传入模型 ID。生成结果保存为可预览和发送的资源。",
+    "en-US": "### Understand and create images\n\nImageAnalyze inspects images. ImageGenerate creates images or edits reference images. Each operation selects its own model while sharing resource access and publication.\n\nEnable image output and explicitly select the provider image protocol in model settings. Declare reference and mask editing only when supported. ImageModels lists configured image models. Generated images become previewable, sendable resources."
+  },
+  "displayName": {
+    "zh-CN": "图像",
+    "en-US": "Images"
+  },
   "description": {
-    "zh-CN": "使用宿主选择的视觉模型分析统一资源中的图像。",
-    "en-US": "Analyzes images from canonical Senera resources with a host-selected vision model."
+    "zh-CN": "理解、生成和编辑图片，复用已配置的模型与资源。",
+    "en-US": "Understand, generate, and edit images with configured models and shared resources."
   },
   "priority": 8,
   "presentation": {
     "category": "image",
     "icon": "image",
-    "group": { "id": "image", "title": { "zh-CN": "分析图像", "en-US": "Analyze images" } },
-    "activity": { "action": { "zh-CN": "分析图片", "en-US": "Analyze image" } }
+    "group": {
+      "id": "image",
+      "title": {
+        "zh-CN": "图像",
+        "en-US": "Images"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "处理图片",
+        "en-US": "Process image"
+      }
+    }
   },
-  "configuration": { "schema": "config.schema.json", "ui": "ui.schema.json" },
+  "configuration": {
+    "schema": "config.schema.json",
+    "ui": "ui.schema.json"
+  },
   "contributions": [
     {
       "kind": "hostTool",
       "contract": "tools/ImageAnalyze.tool.json",
       "capability": "system.tool.agent-image-tools.ImageAnalyze",
       "recommendedForSkills": ["image-understanding"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/ImageGenerate.tool.json",
+      "capability": "system.tool.agent-image-tools.ImageGenerate",
+      "recommendedForSkills": ["image-generation"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/ImageModels.tool.json",
+      "capability": "system.tool.agent-image-tools.ImageModels",
+      "recommendedForSkills": ["image-generation"]
     }
   ]
 }

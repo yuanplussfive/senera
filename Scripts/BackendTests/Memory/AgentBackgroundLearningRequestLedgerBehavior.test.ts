@@ -141,6 +141,36 @@ describe("background learning request ledger", () => {
     }
   });
 
+  test("persists direct session provenance and supports session-scoped audit queries", () => {
+    const fixture = createFixture();
+    try {
+      const ledger = new AgentBackgroundLearningRequestLedger(fixture.kernel);
+      ledger
+        .begin({
+          operationKey: "semantic:turn",
+          board: "semantic_memory",
+          stage: "semantic_extract",
+          sessionId: "session-a",
+          attempt: 1,
+        })
+        .complete();
+      ledger
+        .begin({
+          operationKey: "semantic:other",
+          board: "semantic_memory",
+          stage: "semantic_extract",
+          sessionId: "session-b",
+          attempt: 1,
+        })
+        .complete();
+      expect(ledger.list({ sessionId: "session-a" })).toEqual([
+        expect.objectContaining({ operationKey: "semantic:turn", sessionId: "session-a" }),
+      ]);
+    } finally {
+      fixture.kernel.close();
+    }
+  });
+
   test("keeps each retry visible and preserves usage metadata", () => {
     const fixture = createFixture();
     try {

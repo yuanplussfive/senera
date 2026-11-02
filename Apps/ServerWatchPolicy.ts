@@ -31,7 +31,11 @@ const IgnoredPathSegments = new Set([
   "temp",
 ]);
 
-const RuntimeRevisionManagedPaths = [path.join("System", "Skills")] as const;
+const IndependentlyManagedPaths = [
+  path.join("System", "Skills"),
+  // Gradle owns the native client and generated web assets; these never restart Node.
+  path.join("Apps", "Mobile", "android"),
+] as const;
 
 export function isDevServerWatchPathIgnored(workspaceRoot: string, absolutePath: string): boolean {
   const relative = path.relative(workspaceRoot, absolutePath);
@@ -39,7 +43,7 @@ export function isDevServerWatchPathIgnored(workspaceRoot: string, absolutePath:
     return false;
   }
   return (
-    RuntimeRevisionManagedPaths.some((managedPath) => isSamePathOrDescendant(relative, managedPath)) ||
+    IndependentlyManagedPaths.some((managedPath) => isSamePathOrDescendant(relative, managedPath)) ||
     relative.split(path.sep).some((segment) => IgnoredPathSegments.has(segment))
   );
 }

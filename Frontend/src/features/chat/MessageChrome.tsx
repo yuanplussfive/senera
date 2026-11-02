@@ -1,8 +1,9 @@
+import type { ReactNode } from "react";
 import type { ConversationIdentity, UserProfile } from "../../store/sessionStore";
 import { DEFAULT_ASSISTANT_PROFILE } from "../../store/session/userProfile";
 import { cn, formatTime } from "../../lib/util";
 import { AppIcon, LogoMark } from "../../shared/ui";
-import { ModelProviderIcon } from "./ModelProviderIcon";
+import { ModelProviderIcon } from "../../shared/models/ModelProviderIcon";
 import { useProfileAvatar } from "../session/ProfileAvatar";
 
 export interface MessageMetaProps {
@@ -32,6 +33,30 @@ export function MessageMeta({ title, timestamp }: MessageMetaProps): JSX.Element
         timestamp={timestamp}
         className="opacity-0 transition-opacity group-hover/msg:opacity-100 group-focus-within/msg:opacity-100"
       />
+    </div>
+  );
+}
+
+/** One reveal surface keeps metrics, timestamp, and actions on the same row. */
+export function MessageFooter({
+  children,
+  visible,
+  align = "left",
+}: {
+  children: ReactNode;
+  visible: boolean;
+  align?: "left" | "right";
+}): JSX.Element {
+  return (
+    <div
+      className={cn(
+        "pointer-events-none mt-3 flex min-h-6 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 group-focus-within/msg:pointer-events-auto group-focus-within/msg:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 empty:hidden",
+        visible && "pointer-events-auto opacity-100",
+        align === "right" && "justify-end",
+      )}
+      data-message-footer
+    >
+      {children}
     </div>
   );
 }

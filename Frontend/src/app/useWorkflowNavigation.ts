@@ -8,10 +8,12 @@ export interface UseWorkflowNavigationOptions {
   activeSessionId: string | null;
   hasPersistentWorkflowPanel: boolean;
   setWorkflowDrawerOpen: Dispatch<SetStateAction<boolean>>;
+  onSelectAgents?: (childRunId: string) => void;
 }
 
 export interface WorkflowNavigationHandle {
   viewMessageWorkflow: (message: ChatMessage) => void;
+  viewChildRun: (childRunId: string) => void;
 }
 
 export type WorkflowNavigationLookupResult =
@@ -45,8 +47,13 @@ export function useWorkflowNavigation({
   activeSessionId,
   hasPersistentWorkflowPanel,
   setWorkflowDrawerOpen,
+  onSelectAgents,
 }: UseWorkflowNavigationOptions): WorkflowNavigationHandle {
   const setViewedRun = useStore((state) => state.setViewedRun);
+  const revealWorkflow = useCallback(() => {
+    if (!hasPersistentWorkflowPanel) setWorkflowDrawerOpen(true);
+    else useStore.getState().setRightPanelCollapsed(false);
+  }, [hasPersistentWorkflowPanel, setWorkflowDrawerOpen]);
 
   const viewMessageWorkflow = useCallback(
     (message: ChatMessage): void => {
@@ -69,16 +76,23 @@ export function useWorkflowNavigation({
       }
 
       setViewedRun(result.sessionId, result.requestId);
-      if (!hasPersistentWorkflowPanel) {
-        setWorkflowDrawerOpen(true);
-        return;
-      }
-      if (state.rightPanelCollapsed) {
-        state.toggleRightPanel();
-      }
+      revealWorkflow();
     },
-    [activeSessionId, hasPersistentWorkflowPanel, setViewedRun, setWorkflowDrawerOpen],
+    [activeSessionId, setViewedRun, revealWorkflow],
   );
 
-  return { viewMessageWorkflow };
+  const viewChildRun = useCallback(
+    (childRunId: string): void => {
+      if (!activeSessionId) return;
+      const session = useStore.getState().sessions[activeSessionId];
+      const run = session?.runs.find((candidate) => candidate.steps.some((step) => step.childRun?.id === childRunId));
+      if (!run) return;
+      setViewedRun(activeSessionId, run.requestId);
+      onSelectAgents?.(childRunId);
+      revealWorkflow();
+    },
+    [activeSessionId, setViewedRun, onSelectAgents, revealWorkflow],
+  );
+
+  return { viewMessageWorkflow, viewChildRun };
 }

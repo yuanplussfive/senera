@@ -68,6 +68,7 @@ const modelProvider: ResolvedAgentModelProviderConfig = {
   RetryMaxDelayMs: 10_000,
   RetryAfterMaxDelayMs: 60_000,
   Headers: {},
+  Capabilities: { Chat: true },
 };
 
 const registry = new AgentExtensionRegistry();

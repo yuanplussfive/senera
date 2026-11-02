@@ -13,25 +13,11 @@ import {
 } from "../api/eventTypes";
 import type { SocketStatus } from "../api/useAgentSocket";
 
-const MaxTerminalBufferCharacters = 256 * 1024;
-const TerminalTruncationMarker = "\r\n... earlier terminal output omitted ...\r\n";
-
-export interface ExecutionResourceOutputBuffer {
-  cursor: number;
-  generation: number;
-  chunks: readonly ExecutionResourceOutputChunk[];
-  text: string;
-  truncated: boolean;
-}
-
-export interface ExecutionResourceOutputChunk {
-  cursor: number;
-  text: string;
-}
+import { ExecutionResourceOutputStore } from "./executionResourceOutputStore";
 
 export interface UseExecutionResourceCommandsResult {
   resources: ExecutionResourceSnapshotData[];
-  outputs: Readonly<Record<string, ExecutionResourceOutputBuffer>>;
+  outputStore: ExecutionResourceOutputStore;
   handleEvent: (event: EventEnvelope) => boolean;
   startTerminal: (options?: { cwd?: string; columns?: number; rows?: number }) => boolean;
   refresh: () => boolean;
@@ -46,13 +32,15 @@ export function useExecutionResourceCommands(input: {
   activeSessionId: string | null;
   send: (request: WsRequest) => boolean;
   status: SocketStatus;
+  ensureInteractiveTerminal?: boolean;
 }): UseExecutionResourceCommandsResult {
-  const { activeSessionId, send, status } = input;
+  const { activeSessionId, send, status, ensureInteractiveTerminal = false } = input;
   const [resources, setResources] = useState<ExecutionResourceSnapshotData[]>([]);
-  const [outputs, setOutputs] = useState<Record<string, ExecutionResourceOutputBuffer>>({});
+  const [resourceListSessionId, setResourceListSessionId] = useState<string | null>(null);
+  const terminalEnsuredRef = useRef(false);
+  const terminalStartPendingRef = useRef(false);
+  const [outputStore] = useState(() => new ExecutionResourceOutputStore());
   const [projectionSessionId, setProjectionSessionId] = useState(activeSessionId);
-  const outputsRef = useRef(outputs);
-  outputsRef.current = outputs;
   const resourcesRef = useRef(resources);
   resourcesRef.current = resources;
   const sessionRef = useRef(activeSessionId);
@@ -62,17 +50,6 @@ export function useExecutionResourceCommands(input: {
   const closedResourceIdsRef = useRef(new Set<string>());
   const recoveringResourceIdsRef = useRef(new Set<string>());
   const recoveryTargetCursorsRef = useRef(new Map<string, number>());
-
-  const updateOutputs = useCallback(
-    (
-      update: (current: Record<string, ExecutionResourceOutputBuffer>) => Record<string, ExecutionResourceOutputBuffer>,
-    ): void => {
-      const next = update(outputsRef.current);
-      outputsRef.current = next;
-      setOutputs(next);
-    },
-    [],
-  );
 
   const sendForSession = useCallback(
     (create: (sessionId: string) => WsRequest): boolean => {
@@ -87,12 +64,16 @@ export function useExecutionResourceCommands(input: {
     [sendForSession],
   );
   const startTerminal = useCallback(
-    (options: { cwd?: string; columns?: number; rows?: number } = {}) =>
-      sendForSession((sessionId) => ({
+    (options: { cwd?: string; columns?: number; rows?: number } = {}) => {
+      if (terminalStartPendingRef.current) return false;
+      const sent = sendForSession((sessionId) => ({
         type: "execution.resource.start_terminal",
         sessionId,
         ...options,
-      })),
+      }));
+      terminalStartPendingRef.current = sent;
+      return sent;
+    },
     [sendForSession],
   );
 
@@ -103,27 +84,71 @@ export function useExecutionResourceCommands(input: {
     recoveringResourceIdsRef.current.clear();
     recoveryTargetCursorsRef.current.clear();
     resourcesRef.current = [];
-    outputsRef.current = {};
+    outputStore.clear();
     setResources([]);
-    setOutputs({});
     setProjectionSessionId(activeSessionId);
-  }, [activeSessionId]);
+    setResourceListSessionId(null);
+    terminalEnsuredRef.current = false;
+    terminalStartPendingRef.current = false;
+  }, [activeSessionId, outputStore]);
 
   useEffect(() => {
     if (status === "open" && activeSessionId) refresh();
+    else {
+      setResourceListSessionId(null);
+      terminalEnsuredRef.current = false;
+      terminalStartPendingRef.current = false;
+    }
   }, [activeSessionId, refresh, status]);
+
+  useEffect(() => {
+    if (!ensureInteractiveTerminal) {
+      terminalEnsuredRef.current = false;
+      return;
+    }
+    if (
+      !activeSessionId ||
+      status !== "open" ||
+      resourceListSessionId !== activeSessionId ||
+      terminalEnsuredRef.current
+    )
+      return;
+    terminalEnsuredRef.current = true;
+    const hasInteractiveTerminal = resources.some(
+      (resource) =>
+        resource.kind === "terminal" &&
+        (resource.state === "starting" || resource.state === "running") &&
+        resource.terminal?.capabilities.includes("interactive-input"),
+    );
+    if (!hasInteractiveTerminal) startTerminal();
+  }, [activeSessionId, ensureInteractiveTerminal, resourceListSessionId, resources, startTerminal, status]);
 
   const mergeSnapshot = useCallback(
     (snapshot: ExecutionResourceSnapshotData): void => {
       if (closedResourceIdsRef.current.has(snapshot.resourceId)) return;
       setResources((current) => upsertResource(current, snapshot, closingResourceIdsRef.current));
       if (snapshot.events.length === 0) return;
-      updateOutputs((current) => ({
-        ...current,
-        [snapshot.resourceId]: mergeResourceEvents(current[snapshot.resourceId], snapshot),
-      }));
+      outputStore.merge(snapshot);
     },
-    [updateOutputs],
+    [outputStore],
+  );
+
+  const requestOutputRecovery = useCallback(
+    (resourceId: string, targetCursor: number): void => {
+      const sessionId = sessionRef.current;
+      if (!sessionId) return;
+      recoveryTargetCursorsRef.current.set(
+        resourceId,
+        Math.max(recoveryTargetCursorsRef.current.get(resourceId) ?? 0, targetCursor),
+      );
+      if (recoveringResourceIdsRef.current.has(resourceId)) return;
+      if (
+        send({ type: "execution.resource.inspect", sessionId, resourceId, cursor: outputStore.cursorOf(resourceId) })
+      ) {
+        recoveringResourceIdsRef.current.add(resourceId);
+      } else recoveryTargetCursorsRef.current.delete(resourceId);
+    },
+    [outputStore, send],
   );
 
   const handleEvent = useCallback(
@@ -140,7 +165,9 @@ export function useExecutionResourceCommands(input: {
       }
       if (event.kind === EventKinds.ExecutionResourceSnapshot) {
         const data = event.data as ExecutionResourceSnapshotEventData;
+        if (data.operation === "start_terminal") terminalStartPendingRef.current = false;
         if (data.operation === "list" || data.operation === "close") {
+          if (data.operation === "list") setResourceListSessionId(sessionId);
           const returnedIds = new Set(data.resources.map((resource) => resource.resourceId));
           for (const resourceId of closingResourceIdsRef.current) {
             if (!returnedIds.has(resourceId)) {
@@ -156,9 +183,7 @@ export function useExecutionResourceCommands(input: {
             visibleResources.map((resource) => markResourceClosing(resource, closingResourceIdsRef.current)),
           );
           const retainedIds = new Set(visibleResources.map((resource) => resource.resourceId));
-          updateOutputs((current) =>
-            Object.fromEntries(Object.entries(current).filter(([resourceId]) => retainedIds.has(resourceId))),
-          );
+          outputStore.retain(retainedIds);
           for (const resourceId of recoveringResourceIdsRef.current) {
             if (!retainedIds.has(resourceId)) {
               recoveringResourceIdsRef.current.delete(resourceId);
@@ -170,7 +195,7 @@ export function useExecutionResourceCommands(input: {
               type: "execution.resource.inspect",
               sessionId,
               resourceId: resource.resourceId,
-              cursor: outputsRef.current[resource.resourceId]?.cursor ?? 0,
+              cursor: outputStore.cursorOf(resource.resourceId),
             });
           }
         } else {
@@ -181,7 +206,7 @@ export function useExecutionResourceCommands(input: {
               recoveringResourceIdsRef.current.delete(resourceId);
               const targetCursor = recoveryTargetCursorsRef.current.get(resourceId) ?? 0;
               recoveryTargetCursorsRef.current.delete(resourceId);
-              const recoveredCursor = outputsRef.current[resourceId]?.cursor ?? 0;
+              const recoveredCursor = outputStore.cursorOf(resourceId);
               if (targetCursor > recoveredCursor) {
                 const requested = send({
                   type: "execution.resource.inspect",
@@ -202,32 +227,14 @@ export function useExecutionResourceCommands(input: {
       if (event.kind === EventKinds.ExecutionResourceOutput) {
         const data = event.data as ExecutionResourceOutputData;
         if (closedResourceIdsRef.current.has(data.resourceId)) return true;
-        const currentCursor = outputsRef.current[data.resourceId]?.cursor ?? 0;
+        const currentCursor = outputStore.cursorOf(data.resourceId);
         const cursorStart = data.cursorStart ?? data.cursor;
         if (data.cursor <= currentCursor) return true;
         if (cursorStart > currentCursor + 1 || cursorStart <= currentCursor) {
-          recoveryTargetCursorsRef.current.set(
-            data.resourceId,
-            Math.max(recoveryTargetCursorsRef.current.get(data.resourceId) ?? 0, data.cursor),
-          );
-          if (recoveringResourceIdsRef.current.has(data.resourceId)) return true;
-          const recoveryRequested = send({
-            type: "execution.resource.inspect",
-            sessionId,
-            resourceId: data.resourceId,
-            cursor: currentCursor,
-          });
-          if (recoveryRequested) {
-            recoveringResourceIdsRef.current.add(data.resourceId);
-          } else {
-            recoveryTargetCursorsRef.current.delete(data.resourceId);
-          }
+          requestOutputRecovery(data.resourceId, data.cursor);
           return true;
         }
-        updateOutputs((current) => ({
-          ...current,
-          [data.resourceId]: appendOutput(current[data.resourceId], data.cursor, data.text, data.truncated === true),
-        }));
+        outputStore.append(data.resourceId, data.cursor, data.text, data.truncated === true);
         return true;
       }
       if (event.kind === EventKinds.ExecutionResourceResized) {
@@ -255,13 +262,17 @@ export function useExecutionResourceCommands(input: {
         recoveringResourceIdsRef.current.delete(data.resourceId);
         recoveryTargetCursorsRef.current.delete(data.resourceId);
         setResources((current) => current.filter((resource) => resource.resourceId !== data.resourceId));
-        updateOutputs((current) => removeOutput(current, data.resourceId));
+        outputStore.remove(data.resourceId);
         return true;
       }
       if (event.kind === EventKinds.ExecutionResourceState) {
         const data = event.data as ExecutionResourceStateData;
         if (closedResourceIdsRef.current.has(data.resourceId)) return true;
-        updateOutputs((current) => advanceOutputCursor(current, data.resourceId, data.cursor));
+        // State shares the output journal's cursor sequence. A state update
+        // cannot acknowledge missing output, including a shell's first prompt.
+        const cursor = outputStore.cursorOf(data.resourceId);
+        if (data.cursor > cursor + 1) requestOutputRecovery(data.resourceId, data.cursor);
+        else outputStore.advance(data.resourceId, data.cursor);
         setResources((current) =>
           current.map((resource) =>
             resource.resourceId === data.resourceId
@@ -280,6 +291,10 @@ export function useExecutionResourceCommands(input: {
       }
       if (event.kind === EventKinds.RequestInvalid) {
         const data = event.data as { details?: { requestType?: unknown; resourceId?: unknown } };
+        if (data.details?.requestType === "execution.resource.start_terminal") {
+          terminalStartPendingRef.current = false;
+          return false;
+        }
         if (data.details?.requestType === "execution.resource.inspect" && typeof data.details.resourceId === "string") {
           recoveringResourceIdsRef.current.delete(data.details.resourceId);
           recoveryTargetCursorsRef.current.delete(data.details.resourceId);
@@ -304,7 +319,7 @@ export function useExecutionResourceCommands(input: {
       }
       return false;
     },
-    [mergeSnapshot, refresh, send, updateOutputs],
+    [mergeSnapshot, outputStore, refresh, requestOutputRecovery, send],
   );
   const write = useCallback(
     (resourceId: string, value: string) =>
@@ -374,7 +389,7 @@ export function useExecutionResourceCommands(input: {
     const projectionIsCurrent = projectionSessionId === activeSessionId;
     return {
       resources: projectionIsCurrent ? resources : [],
-      outputs: projectionIsCurrent ? outputs : {},
+      outputStore,
       handleEvent,
       startTerminal,
       refresh,
@@ -388,7 +403,7 @@ export function useExecutionResourceCommands(input: {
     activeSessionId,
     close,
     handleEvent,
-    outputs,
+    outputStore,
     projectionSessionId,
     refresh,
     resize,
@@ -398,15 +413,6 @@ export function useExecutionResourceCommands(input: {
     stopAll,
     write,
   ]);
-}
-
-function removeOutput(
-  outputs: Record<string, ExecutionResourceOutputBuffer>,
-  resourceId: string,
-): Record<string, ExecutionResourceOutputBuffer> {
-  if (!(resourceId in outputs)) return outputs;
-  const { [resourceId]: _removed, ...remaining } = outputs;
-  return remaining;
 }
 
 function upsertResource(
@@ -425,92 +431,4 @@ function markResourceClosing(
   closingResourceIds: ReadonlySet<string>,
 ): ExecutionResourceSnapshotData {
   return closingResourceIds.has(resource.resourceId) ? { ...resource, state: "stopping" } : resource;
-}
-
-function mergeResourceEvents(
-  current: ExecutionResourceOutputBuffer | undefined,
-  snapshot: ExecutionResourceSnapshotData,
-): ExecutionResourceOutputBuffer {
-  if (current && snapshot.cursor <= current.cursor) return current;
-  const requiresReplay = snapshot.truncated && (!current || current.cursor < snapshot.oldestCursor - 1);
-  let next = requiresReplay
-    ? createOutputBuffer({
-        cursor: snapshot.oldestCursor - 1,
-        generation: (current?.generation ?? 0) + 1,
-        text: TerminalTruncationMarker,
-        truncated: true,
-      })
-    : (current ?? createOutputBuffer());
-  for (const event of snapshot.events) {
-    if (event.kind === "output" && event.text)
-      next = appendOutput(next, event.cursor, event.text, event.truncated === true);
-    else next = { ...next, cursor: Math.max(next.cursor, event.cursor) };
-  }
-  return next;
-}
-
-function appendOutput(
-  current: ExecutionResourceOutputBuffer | undefined,
-  cursor: number,
-  text: string,
-  chunkTruncated = false,
-): ExecutionResourceOutputBuffer {
-  const previous = current ?? createOutputBuffer();
-  if (cursor <= previous.cursor) return previous;
-  const combined = `${previous.text}${text}`;
-  const chunks = appendBoundedOutputChunk(previous.chunks, { cursor, text });
-  if (combined.length <= MaxTerminalBufferCharacters) {
-    return {
-      cursor,
-      generation: previous.generation,
-      chunks,
-      text: combined,
-      truncated: previous.truncated || chunkTruncated,
-    };
-  }
-  const tailLength = MaxTerminalBufferCharacters - TerminalTruncationMarker.length;
-  return {
-    cursor,
-    generation: previous.generation,
-    chunks,
-    text: `${TerminalTruncationMarker}${combined.slice(-tailLength)}`,
-    truncated: true,
-  };
-}
-
-function createOutputBuffer(
-  initial: Partial<Pick<ExecutionResourceOutputBuffer, "cursor" | "generation" | "text" | "truncated">> = {},
-): ExecutionResourceOutputBuffer {
-  return {
-    cursor: initial.cursor ?? 0,
-    generation: initial.generation ?? 0,
-    chunks: [],
-    text: initial.text ?? "",
-    truncated: initial.truncated ?? false,
-  };
-}
-
-function appendBoundedOutputChunk(
-  current: readonly ExecutionResourceOutputChunk[],
-  chunk: ExecutionResourceOutputChunk,
-): readonly ExecutionResourceOutputChunk[] {
-  const chunks = [...current, chunk];
-  let characterCount = chunks.reduce((total, entry) => total + entry.text.length, 0);
-  while (characterCount > MaxTerminalBufferCharacters && chunks.length > 1) {
-    characterCount -= chunks.shift()?.text.length ?? 0;
-  }
-  return chunks;
-}
-
-function advanceOutputCursor(
-  outputs: Record<string, ExecutionResourceOutputBuffer>,
-  resourceId: string,
-  cursor: number,
-): Record<string, ExecutionResourceOutputBuffer> {
-  const current = outputs[resourceId];
-  if (cursor <= (current?.cursor ?? 0)) return outputs;
-  return {
-    ...outputs,
-    [resourceId]: current ? { ...current, cursor } : { ...createOutputBuffer(), cursor },
-  };
 }

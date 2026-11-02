@@ -15,47 +15,50 @@ import type {
   AgentExecutionResourceLimits,
   AgentExecutionResourceOwner,
 } from "../../../Source/AgentSystem/ExecutionResources/AgentExecutionResourceTypes.js";
-import {
-  createShellCommandHostTool,
-  ShellCommandArgumentsSchema,
-} from "../../../Source/AgentSystem/ToolRuntime/AgentShellCommandRuntime.js";
+import { createShellCommandHostTool } from "../../../Source/AgentSystem/ToolRuntime/AgentShellCommandRuntime.js";
 import { createAgentExecutionResourceHostHandlers } from "../../../Source/AgentSystem/ToolRuntime/AgentExecutionResourceRuntime.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
 import { AgentExecutionErrorCodes } from "../../../Source/AgentSystem/Xml/AgentXmlStatus.js";
 import type { SeneraOutputSpool, SeneraOutputStream } from "../../../Source/AgentSystem/Execution/SeneraOutputSpool.js";
 import type { AgentWorkspaceObservationPort } from "../../../Source/AgentSystem/Artifacts/AgentWorkspaceChangeObserver.js";
+import {
+  loadSystemToolContractByName,
+  materializeSystemToolArguments,
+} from "../SystemTools/SystemToolContractTestSupport.js";
 
 describe("Shell command runtime", () => {
   it("accepts zero as a numeric no-time-limit request only", () => {
+    const contract = loadSystemToolContractByName("ShellCommandTool");
     expect(
-      ShellCommandArgumentsSchema.safeParse({
+      materializeSystemToolArguments(contract, {
         ...shellCommand("node server.js"),
         timeoutMs: 0,
         workspaceEffect: "read",
-      }).success,
+      }).ok,
     ).toBe(true);
     expect(
-      ShellCommandArgumentsSchema.safeParse({
+      materializeSystemToolArguments(contract, {
         ...shellCommand("node server.js"),
         timeoutMs: null,
         workspaceEffect: "read",
-      }).success,
+      }).ok,
     ).toBe(false);
   });
 
   it("requires the shell command fields and workspace effect at the top level", () => {
+    const contract = loadSystemToolContractByName("ShellCommandTool");
     expect(
-      ShellCommandArgumentsSchema.safeParse({
+      materializeSystemToolArguments(contract, {
         command: shellCommand("echo nested"),
         workspaceEffect: "read",
-      }).success,
+      }).ok,
     ).toBe(false);
     expect(
-      ShellCommandArgumentsSchema.safeParse({
+      materializeSystemToolArguments(contract, {
         ...shellCommand("echo flat"),
         workspaceEffect: "read",
-      }).success,
+      }).ok,
     ).toBe(true);
   });
 
@@ -232,6 +235,11 @@ describe("Shell command runtime", () => {
         state: "running",
         updates: expect.arrayContaining([expect.objectContaining({ kind: "output", text: "server ready" })]),
       });
+      expect(fixture.broker.list(fixture.owner)).toEqual([
+        expect.objectContaining({
+          presentation: { purpose: "background-process", title: "python -m http.server" },
+        }),
+      ]);
       expect(spawn).toHaveBeenCalledWith(
         "python -m http.server",
         [],
@@ -513,7 +521,6 @@ function shellTool(): RegisteredTool {
     handler: { kind: "HostCapability", capability: "shell.run" },
     runtime: {
       Lifecycle: "OneShot",
-      ProtocolVersion: 2,
       ResultAssessment: "Unassessed",
       Capabilities: { OutputStreaming: true, Cancellation: true },
     },

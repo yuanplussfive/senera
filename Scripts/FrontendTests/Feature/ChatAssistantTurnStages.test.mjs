@@ -4,9 +4,129 @@ const { projectAssistantTurns, readAssistantTurnActionMessage } =
   await import("../../../Frontend/src/features/chat/assistantTurnProjection.ts");
 const { projectAssistantTurnStages } =
   await import("../../../Frontend/src/features/chat/assistantTurnStageProjection.ts");
+const { projectModelThinking } = await import("../../../Frontend/src/features/chat/ModelThinkingDisclosure.tsx");
+const { projectAssistantTurnPresentation } =
+  await import("../../../Frontend/src/features/chat/assistantTurnPresentationProjection.ts");
 const { splitStageChildRuns } = await import("../../../Frontend/src/features/workflow/feedModel.ts");
 const { createApproval, createMessage, createRun, stageMarker, stageTool } =
   await import("./chatCoreComponentFixtures.mjs");
+
+test.each(["completed", "failed", "cancelled"])(
+  "compact %s turns retain thinking in the process disclosure",
+  (status) => {
+    const requestId = "compact-thinking";
+    const answer = createMessage({ requestId, kind: "AssistantFinal", content: "完成。" });
+    const blocks = [
+      { id: "thinking", step: 1, messageIndex: 0, contentIndex: 0, content: "检查实现。", status: "complete" },
+    ];
+    const run = createRun({
+      requestId,
+      status,
+      thinkingBlocks: blocks,
+      steps: status === "completed" ? [stageMarker(requestId, answer, "answer", "final_answer", answer.createdAt)] : [],
+    });
+    const turn = {
+      __assistantTurn: true,
+      key: requestId,
+      requestId,
+      createdAt: run.startedAt,
+      run,
+      messages: status === "completed" ? [answer] : [],
+      streaming: false,
+    };
+    const presentation = projectAssistantTurnPresentation(turn);
+    expect(presentation.showTerminalPresentation).toBe(true);
+    expect(presentation.showTerminalDisclosure).toBe(true);
+    const displayedThinking = [
+      ...presentation.terminalThinkingBlocks,
+      ...presentation.terminalProcessStages.flatMap((stage) =>
+        (stage.responseItems ?? []).flatMap((item) => (item.kind === "thinking" ? item.blocks : [])),
+      ),
+    ];
+    expect(displayedThinking).toEqual(blocks);
+  },
+);
+
+test("thinking with model response coordinates is rendered once in its original stage", () => {
+  const requestId = "located-thinking";
+  const answer = createMessage({ requestId, kind: "AssistantFinal", content: "完成。" });
+  const run = createRun({
+    requestId,
+    status: "completed",
+    thinkingBlocks: [
+      { id: "thinking", step: 1, messageIndex: 0, contentIndex: 0, content: "检查实现。", status: "complete" },
+    ],
+    steps: [
+      {
+        ...stageMarker(requestId, answer, "answer", "final_answer", answer.createdAt),
+        agentStep: 1,
+        modelMessageIndex: 0,
+        modelContentIndex: 1,
+        eventSequence: 2,
+      },
+    ],
+  });
+  const presentation = projectAssistantTurnPresentation({
+    __assistantTurn: true,
+    key: requestId,
+    requestId,
+    createdAt: run.startedAt,
+    run,
+    messages: [answer],
+    streaming: false,
+  });
+  expect(presentation.terminalThinkingBlocks).toEqual([]);
+  expect(
+    presentation.terminalProcessStages.flatMap((stage) => stage.responseItems ?? []).map((item) => item.kind),
+  ).toEqual(["thinking"]);
+});
+
+test("tools-only channel turns retain their row and execution when streaming completes", () => {
+  const requestId = "channel-tools-only";
+  const user = createMessage({ role: "user", requestId, content: "你们两个呢" });
+  const hostNotice = createMessage({
+    id: "host-notice",
+    role: "user",
+    requestId: "host-request",
+    content: "<senera_host_message>internal delivery</senera_host_message>",
+    metadata: { hostInput: { kind: "agent_completion", sourceId: "child", deliveryId: "delivery" } },
+  });
+  const messages = [user, hostNotice];
+  const active = createRun({
+    requestId,
+    steps: [stageTool("send", "ChannelSendMessage", user.createdAt)],
+  });
+  const live = projectAssistantTurns(messages, [active], active);
+  const completed = { ...active, status: "completed", endedAt: "2026-01-01T00:01:00.000Z" };
+  const settled = projectAssistantTurns(messages, [completed]);
+
+  expect(settled).toHaveLength(2);
+  expect(settled[0]).toBe(user);
+  expect(settled[1]).toMatchObject({ key: live[1].key, run: completed, streaming: false, messages: [] });
+  expect(projectAssistantTurnStages(settled[1])).toEqual([
+    expect.objectContaining({
+      kind: "execution",
+      current: false,
+      run: expect.objectContaining({ steps: active.steps }),
+    }),
+  ]);
+
+  const followUp = createMessage({ id: "next-user", requestId: "next-request", role: "user", content: "继续" });
+  const hydrated = projectAssistantTurns(structuredClone([user, hostNotice, followUp]), structuredClone([completed]));
+  expect(hydrated.map((item) => item.requestId)).toEqual([requestId, requestId, "next-request"]);
+  const final = createMessage({ id: "final", requestId, kind: "AssistantFinal", content: "收到" });
+  const answered = projectAssistantTurns([user, final], [completed]);
+  expect(answered).toHaveLength(2);
+  expect(answered[1].messages).toEqual([final]);
+  const hostAnswer = createMessage({
+    role: "assistant",
+    requestId: hostNotice.requestId,
+    content: "子代理已完成，结果如下。",
+  });
+  const hostTurn = projectAssistantTurns([hostNotice, hostAnswer], []);
+  expect(hostTurn).toHaveLength(1);
+  expect(hostTurn[0].messages).toEqual([hostAnswer]);
+});
 test("assistant turn stages group consecutive tool batches until the next assistant message", () => {
   const requestId = "request-batches-without-prefaces";
   const startedAt = "2026-01-01T00:00:00.000Z";
@@ -187,6 +307,30 @@ test("model thinking messages remain in the same assistant turn regardless of me
   expect(stages).toHaveLength(2);
   expect(stages.map((stage) => stage.message)).toEqual([preface, answer]);
   expect(stages.every((stage) => !("thinkingBlocks" in stage))).toBe(true);
+});
+
+test("model thinking keeps the projector's canonical block order without a view-side sort", async () => {
+  const { findOrCreateModelThinkingBlock } = await import("../../../Frontend/src/store/session/modelThinkingBlocks.ts");
+  const blocks = [];
+  const later = findOrCreateModelThinkingBlock(blocks, {
+    step: 4,
+    messageIndex: 1,
+    contentIndex: 0,
+    eventSequence: 20,
+  });
+  later.content = "后面的思考";
+  later.status = "complete";
+  const earlier = findOrCreateModelThinkingBlock(blocks, {
+    step: 4,
+    messageIndex: 0,
+    contentIndex: 0,
+    eventSequence: 10,
+  });
+  earlier.content = "前面的思考";
+  earlier.status = "complete";
+
+  expect(blocks.map((block) => block.messageIndex)).toEqual([0, 1]);
+  expect(projectModelThinking(blocks).blocks.map((block) => block.content)).toEqual(["前面的思考", "后面的思考"]);
 });
 
 test("assistant stages preserve thinking, tool execution, later thinking, and final answer order", () => {
@@ -558,7 +702,7 @@ test("delegated execution stays in its parent response stage and inside the chil
   const split = splitStageChildRuns(spawnStage.run.steps);
   expect(split.childRuns).toHaveLength(1);
   expect(split.childRuns[0]?.childRun.id).toBe(childRunId);
-  expect(split.childRuns[0]?.childToolSteps.map((step) => step.id)).toEqual(["child-tool-1"]);
+  expect(split.childRuns[0]?.childRun.id).toBe(childRunId);
   expect(split.rootToolSteps.map((step) => step.id)).toEqual(["spawn-call-1"]);
 });
 

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { createOpaqueId } from "../Core/AgentIds.js";
-import { AgentEventKinds, type AgentEventSink } from "../Events/AgentEvent.js";
+import { AgentEventKinds, emitAgentEvent, type AgentEventSink } from "../Events/AgentEvent.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import type { SeneraProcessExecutionProfile } from "../Execution/SeneraExecutionProfile.js";
 import { normalizeSeneraTerminalDimensions, type SeneraTerminalDimensions } from "../Execution/SeneraTerminalTypes.js";
@@ -21,6 +21,7 @@ import {
   type AgentExecutionResourceOwner,
   type AgentExecutionResourcePresentation,
   AgentExecutionResourceRetentionPolicies,
+  AgentExecutionResourcePurposes,
   type AgentExecutionResourceRetentionPolicy,
   type AgentExecutionResourceSignal,
   type AgentExecutionResourceSnapshot,
@@ -43,6 +44,8 @@ export interface AgentExecutionResourceCleanupFailure {
 }
 
 export interface AgentExecutionProcessStartRequest {
+  /** Releases process-scoped host services when termination is confirmed. */
+  onSettled?: () => void;
   command: string;
   args: readonly string[];
   displayCommand?: string;
@@ -80,6 +83,9 @@ export class AgentExecutionResourceBroker {
   private closeInFlight: Promise<void> | undefined;
   private eventSink: AgentEventSink | undefined;
   private readonly cleanupFailures = new Map<string, AgentExecutionResourceCleanupFailure>();
+  private readonly lifecycleObservers = new Set<
+    (owner: AgentExecutionResourceOwner, snapshot: AgentExecutionResourceSnapshot) => void
+  >();
 
   constructor(private readonly options: AgentExecutionResourceBrokerOptions) {
     this.workspaceRoot = path.resolve(options.workspaceRoot);
@@ -92,20 +98,46 @@ export class AgentExecutionResourceBroker {
     this.eventSink = eventSink;
   }
 
+  /** Agent request-owned processes and terminals share one durable job lifecycle. */
+  observeJobs(
+    observer: (owner: AgentExecutionResourceOwner, snapshot: AgentExecutionResourceSnapshot) => void,
+  ): () => void {
+    this.lifecycleObservers.add(observer);
+    return () => {
+      this.lifecycleObservers.delete(observer);
+    };
+  }
+
+  get maximumWaitMs(): number {
+    return this.limits.maxWaitMs;
+  }
+
   async startProcess(request: AgentExecutionProcessStartRequest): Promise<AgentExecutionResourceSnapshot> {
     const executionEnv = this.requireExecutionEnv(request.executionEnv);
-    return this.startResource(request, async () => {
-      const child = await executionEnv.spawnPersistentProcess(request.command, request.args, {
-        cwd: request.cwd,
-        env: request.env,
-        windowsHide: true,
-        signal: request.signal,
-        maxDurationMs: request.maxDurationMs,
-        profile: request.profile,
-        shellCommand: request.shellCommand,
-      });
-      return new AgentPipeProcessTransport(child);
-    });
+    return this.startResource(
+      {
+        ...request,
+        presentation: request.presentation ?? {
+          purpose:
+            request.retention === AgentExecutionResourceRetentionPolicies.UntilExit
+              ? AgentExecutionResourcePurposes.BackgroundProcess
+              : AgentExecutionResourcePurposes.CommandTask,
+          title: request.displayCommand ?? request.command,
+        },
+      },
+      async () => {
+        const child = await executionEnv.spawnPersistentProcess(request.command, request.args, {
+          cwd: request.cwd,
+          env: request.env,
+          windowsHide: true,
+          signal: request.signal,
+          maxDurationMs: request.maxDurationMs,
+          profile: request.profile,
+          shellCommand: request.shellCommand,
+        });
+        return new AgentPipeProcessTransport(child);
+      },
+    );
   }
 
   async startTerminal(request: AgentExecutionTerminalStartRequest): Promise<AgentExecutionResourceSnapshot> {
@@ -320,7 +352,10 @@ export class AgentExecutionResourceBroker {
         owner: request.owner,
         correlation: {
           ...request.correlation,
-          onEvent: (event) => (this.eventSink ?? request.correlation.onEvent)?.(event),
+          onEvent: (event) => {
+            if (event.kind === AgentEventKinds.ExecutionResourceState) this.observeJobSnapshot(event.data.resourceId);
+            return (this.eventSink ?? request.correlation.onEvent)?.(event);
+          },
         },
         transport,
         command: request.displayCommand ?? [request.command, ...request.args].join(" "),
@@ -330,9 +365,11 @@ export class AgentExecutionResourceBroker {
         limits,
         maxDurationMs: request.maxDurationMs,
         outputSpool: request.outputSpool,
+        onSettled: request.onSettled,
         now: this.now,
       });
       this.resources.set(resource.id, resource);
+      this.observeJobSnapshot(resource.id);
       const snapshot = resource.inspect();
       this.project(
         {
@@ -461,6 +498,9 @@ export class AgentExecutionResourceBroker {
       );
     }
     if (this.resources.get(resource.id) !== resource) return;
+    // Retain the final job snapshot before removing the live buffer, even if
+    // presentation events are still waiting behind a slow consumer.
+    this.observeJobSnapshot(resource.id);
     this.resources.delete(resource.id);
     this.cleanupFailures.delete(resource.id);
     this.projectResourceRemoved(resource, reason);
@@ -509,7 +549,18 @@ export class AgentExecutionResourceBroker {
   private project(event: AgentExecutionResourceDomainEvent, fallback?: AgentEventSink): void {
     const sink = this.eventSink ?? fallback;
     if (!sink) return;
-    void Promise.resolve(sink(event)).catch(() => undefined);
+    void emitAgentEvent(sink, event).catch(() => undefined);
+  }
+
+  private observeJobSnapshot(id: string): void {
+    const resource = this.resources.get(id);
+    if (
+      !resource?.owner.requestId ||
+      (resource.kind !== "terminal" && resource.retention !== AgentExecutionResourceRetentionPolicies.UntilExit)
+    )
+      return;
+    const snapshot = resource.inspect();
+    for (const observer of this.lifecycleObservers) observer(resource.owner, snapshot);
   }
 }
 

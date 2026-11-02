@@ -1,7 +1,10 @@
 {
   "manifest_version": "0.3",
   "name": "zavora-computer-use",
-  "display_name": { "zh-CN": "Zavora 桌面控制", "en-US": "Zavora Computer Use" },
+  "display_name": {
+    "zh-CN": "Zavora 桌面控制",
+    "en-US": "Zavora Computer Use"
+  },
   "version": "7.1.0",
   "description": {
     "zh-CN": "完整接入 Zavora 的跨平台桌面控制能力，包括屏幕、输入、窗口、应用、界面自动化、文件、脚本和任务管理。",
@@ -20,7 +23,27 @@
   },
   "_meta": {
     "ai.senera/presentation": {
-      "icon": "computer-desktop"
+      "icon": "computer-desktop",
+      "usageExamples": [
+        {
+          "title": {
+            "zh-CN": "操作桌面应用",
+            "en-US": "Use desktop apps"
+          },
+          "prompt": {
+            "zh-CN": "查看桌面上打开的窗口，帮我找到需要的应用。",
+            "en-US": "Inspect the open desktop windows and find the application I need."
+          },
+          "outcome": {
+            "zh-CN": "查看桌面并按你的请求操作应用，需要对应运行环境与授权。",
+            "en-US": "Inspect the desktop and interact with applications as requested, subject to runtime support and permissions."
+          }
+        }
+      ],
+      "documentation": {
+        "zh-CN": "### 操作当前桌面\n\n通过截图识别界面，再执行鼠标与键盘操作，可用于操作没有专用接口的桌面应用。操作依赖实际可见的桌面状态。\n\n### 使用前\n\n确认插件运行环境可访问需要操作的桌面，保持目标应用可见。先说明目标与操作范围；涉及发消息、提交表单或删除内容时，明确告知允许执行的动作。",
+        "en-US": "### Work with the current desktop\n\nRead screenshots and use mouse and keyboard actions to operate desktop apps without dedicated interfaces. Actions depend on the actual visible desktop.\n\n### Before use\n\nThe plugin runtime must have access to the target desktop, with the application visible. Describe the goal and allowed scope. Explicitly authorize actions such as sending messages, submitting forms or deleting content."
+      }
     },
     "ai.senera/execution": {
       "targets": ["local"],

@@ -1,4 +1,6 @@
 import path from "node:path";
+import { AgentModelPlanningRequirements } from "../Core/AgentModelCapabilityContract.js";
+import { assertAgentModelRequirements } from "../ModelEndpoints/AgentModelRequirements.js";
 import process from "node:process";
 import {
   resolveActionPlannerConfig,
@@ -46,12 +48,12 @@ import { AgentSessionApprovalLeaseStore } from "../Safety/AgentSessionApprovalLe
 import { createAgentToolApprovalPolicy } from "../Safety/AgentToolApprovalPolicyFactory.js";
 import type { AgentSandboxRuntimeProvider } from "../Sandbox/AgentSandboxRuntimeTypes.js";
 import { AgentSkillActivationService } from "../Skills/AgentSkillActivation.js";
+import { createDefaultHostCapabilityRegistry } from "../AgentDefaultHostCapabilities.js";
+import { registerAgentSystemToolHandlers } from "../SystemTools/AgentSystemToolCatalog.js";
 import {
-  createDefaultHostCapabilityRegistry,
-  listDefaultAgentHostCapabilityNames,
-} from "../AgentDefaultHostCapabilities.js";
-import { registerAgentSystemToolHandlers, systemToolCapability } from "../SystemTools/AgentSystemToolCatalog.js";
-import { createAgentSystemTools } from "../SystemTools/AgentSystemTools.js";
+  createAgentSystemTools,
+  listAgentSystemExtensionHostCapabilityUniverse,
+} from "../SystemTools/AgentSystemTools.js";
 import { AgentSystemExtensionCatalog } from "../SystemTools/AgentSystemToolSource.js";
 import { AgentBrowserConfigurationSchema } from "../Browser/AgentBrowserConfiguration.js";
 import { AgentBrowserRuntime } from "../Browser/AgentBrowserRuntime.js";
@@ -63,6 +65,7 @@ import { AgentToolResourceClaimProjector } from "../ToolRuntime/AgentToolResourc
 import type { AgentToolResourceLeaseCoordinator } from "../ToolRuntime/AgentToolResourceScheduler.js";
 import { AgentToolSearchRuntime } from "../ToolSearch/AgentToolSearchRuntime.js";
 import { AgentStateCardRuntime } from "../StateCard/AgentStateCardRuntime.js";
+import type { AgentStateCardHistoryTurn } from "../StateCard/AgentStateCardTypes.js";
 import { AgentLocalEmbeddingClient, AgentLocalEmbeddingModelName } from "../ToolSearch/AgentLocalEmbeddingClient.js";
 import { AgentCapabilityEmbeddingFileStore } from "../ToolSearch/AgentCapabilityEmbeddingCache.js";
 import type { AgentToolSearchScenarioSource } from "../ToolSearch/AgentToolSearchScenarioSource.js";
@@ -77,6 +80,7 @@ import type { AgentMcpSamplingHandler } from "../Mcp/AgentMcpSamplingRuntime.js"
 import { createAgentMcpSamplingHandler } from "../Mcp/AgentMcpSamplingRuntime.js";
 import type { AgentWorkspaceRuntimeServices } from "./AgentWorkspaceRuntime.js";
 import { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
+import { AgentImageNormalizationService } from "../Images/AgentImageNormalizationService.js";
 import { AgentResourceResolver } from "../Resources/AgentResourceResolver.js";
 import { createAgentPiPlanningModelAdapter } from "./AgentPiPlanningModelAdapter.js";
 import type { AgentOrchestrationHostRuntime } from "../Orchestration/AgentOrchestrationHostTools.js";
@@ -90,8 +94,6 @@ import { AgentWorkflowPromptProjector } from "../Prompt/AgentWorkflowPromptProje
 import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceBudget.js";
 import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
-import { AgentResidentSpeechRuntime } from "../ResidentSpeech/AgentResidentSpeechRuntime.js";
-import { AgentResidentSpeechCapabilities } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
 import type { AgentPluginHost } from "../Plugins/AgentPluginHost.js";
 import type { AgentMcpHostCapabilitySnapshot } from "../McpPackages/AgentMcpHostRequirements.js";
 import type { AgentBackgroundLearningRequestLedger } from "../Memory/AgentBackgroundLearningRequestLedger.js";
@@ -102,8 +104,10 @@ import type {
 } from "../McpPackages/AgentMcpPackageTypes.js";
 import type { AgentActivationCatalogEntryData } from "../Activation/AgentActivationTypes.js";
 import { readAgentMarkdownPromptPreset } from "../Prompt/AgentMarkdownPromptPreset.js";
+import type { AgentChannelToolPort } from "../Channels/AgentChannelToolPort.js";
 
 export interface AgentSystemRuntimeCompositionOptions {
+  activeAgent?: import("../Core/AgentDirectoryContract.js").WorkspaceAgent;
   mcpServices?: () => readonly AgentMcpServiceDiscoveryEntry[];
   mcpActivationEntries?: () => readonly AgentMcpActivationCatalogEntry[];
   systemActivationEntries?: () => readonly AgentActivationCatalogEntryData[];
@@ -139,6 +143,12 @@ export interface AgentSystemRuntimeCompositionOptions {
   continuityLifecycle?: AgentContinuityLifecyclePort;
   continuityRecall?: AgentContinuityRecallService;
   continuityMemOS?: AgentContinuityMemOSRuntime;
+  /**
+   * Host-owned conversation projection used to resolve references in a new
+   * turn. It includes cancelled user messages but only completed-turn
+   * enrichment, keeping conversational facts distinct from learned evidence.
+   */
+  stateCardHistory?: (sessionId: string, excludedRequestId?: string) => readonly AgentStateCardHistoryTurn[];
   executionLedger?: AgentExecutionLedgerService;
   todos?: AgentTodoService;
   inferenceBudget?: AgentInferenceBudgetPort;
@@ -158,6 +168,8 @@ export interface AgentSystemRuntimeCompositionOptions {
   beforeToolSearch?: (query: string, signal?: AbortSignal, serviceIds?: readonly string[]) => void | Promise<void>;
   /** Host capabilities used to preflight MCP packages before launch. */
   mcpHostCapabilities?: AgentMcpHostCapabilitySnapshot;
+  /** Host-owned, interaction-scoped channel operations. */
+  channelTools?: AgentChannelToolPort;
 }
 
 export function composeAgentSystemRuntime(options: AgentSystemRuntimeCompositionOptions) {
@@ -173,6 +185,10 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
   const registry = new AgentExtensionRegistry();
   const modelProviderCatalog = resolveModelProviderCatalog(options.config);
   const modelProviderConfig = resolveModelProviderConfig(options.config, options.modelProviderId);
+  assertAgentModelRequirements(
+    modelProviderConfig,
+    AgentModelPlanningRequirements[modelProviderConfig.ToolPlanningMode],
+  );
   const resourcesRoot = path.resolve(options.resourcesPath ?? options.workspaceRoot);
   const approvalRuntime = options.approvalRuntime ?? new AgentApprovalRuntime();
   const interactionInput = options.interactionInput ?? new AgentInteractionInputRuntime();
@@ -193,6 +209,12 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
     throw new Error("An available sandbox runtime requires an explicit Docker provider and Worker client.");
   }
   const executionResourceLimits = resolveAgentExecutionResourceLimits(options.config);
+  const executionResources =
+    options.executionResources ??
+    new AgentExecutionResourceBroker({
+      workspaceRoot: options.workspaceRoot,
+      limits: executionResourceLimits,
+    });
   const mcpClientPool =
     options.workspaceRuntime?.mcpClientPool ??
     new AgentMcpToolClientPool({
@@ -211,6 +233,7 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
   const uploadStore =
     options.workspaceRuntime?.uploadStore ??
     new AgentUploadStore({ workspaceRoot: options.workspaceRoot, config: resolveUploadsConfig(options.config) });
+  const imageNormalization = options.workspaceRuntime?.imageNormalization ?? new AgentImageNormalizationService();
   const resourceResolver = new AgentResourceResolver({
     artifactManifestIndex: options.workspaceRuntime?.artifactManifestIndex,
     workspaceRoot: options.workspaceRoot,
@@ -251,79 +274,17 @@ export function createAgentRuntimeInfrastructure(options: AgentSystemRuntimeComp
     model: modelProviderConfig.Model,
     resolveModel: (configuredModelId) =>
       modelProviderCatalog.providers.find((provider) => provider.Id === configuredModelId)?.Model ?? configuredModelId,
-    selfService: options.selfService,
-    approvalRuntime,
+    todos: options.todos,
+    imageNormalization,
+    channelTools: options.channelTools,
   });
-  const systemExtensions = new AgentSystemExtensionCatalog();
-  systemExtensions.registerRoot(registry, path.join(resourcesRoot, "System", "Extensions"), {
-    capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...systemTools.map(systemToolCapability)]),
-    configurations: options.config.Extensions,
-  });
-  options.pluginHost?.applyTools(registry);
-  const skillDiagnostics = registerAgentSkillCatalog(registry, {
-    systemRoot: path.join(resourcesRoot, "System", "Skills"),
-    workspaceRoot: resolveAgentWorkspaceLayout(options.workspaceRoot).skillRoot,
-    systemToolBindings: systemExtensions.skillToolBindings(),
-  });
-  for (const diagnostic of skillDiagnostics) {
-    options.logger?.warn("resources.skills.invalid", { diagnostic });
-  }
-  new AgentPromptAssetCatalog().registerRoot(registry, path.join(resourcesRoot, "System", "Prompts"));
-  const residentSpeech = AgentResidentSpeechCapabilities.some((capability) => registry.getSidecarTool(capability))
-    ? new AgentResidentSpeechRuntime({ registry, modelProvider: modelProviderConfig })
-    : undefined;
-
-  return {
-    registry,
-    schemaValidator: new AgentSchemaValidator(),
-    promptRenderer: new AgentPromptRenderer(),
-    conversationPolicy: new AgentConversationPolicy(),
-    conversationProjector: new AgentConversationProjector(),
-    approvalRuntime,
-    interactionInput,
-    piSessionRegistry,
-    authorizationPolicyClient,
-    executionEnv: executionEnvironments.system,
-    toolExecutionEnv: executionEnvironments.tool,
-    resourceCapabilities,
-    resourceClaims,
-    sandboxGuestWorkspaceRoot,
-    executionResources:
-      options.executionResources ??
-      new AgentExecutionResourceBroker({
-        workspaceRoot: options.workspaceRoot,
-        limits: executionResourceLimits,
-      }),
-    mcpClientPool,
-    browserRuntime,
-    uploadStore,
-    resourceResolver,
-    mcpSampling,
-    mcpInputs: options.mcpInputs,
-    ownsInteractionInput: !options.interactionInput,
-    ownsExecutionResources: !options.executionResources,
-    ownsMcpClientPool: !options.workspaceRuntime,
-    modelProviderConfig,
-    systemTools,
-    systemMcpContributions: systemExtensions.listMcpContributions(),
-    residentSpeech,
-    agentLoopConfig: resolveAgentLoopConfig(options.config),
-    toolSearchConfig: resolveToolSearchConfig(options.config),
-    stateCardConfig: resolveStateCardConfig(options.config),
-    promptConfig: resolveAgentPromptConfig(options.config),
-    artifactsConfig: resolveArtifactsConfig(options.config),
-    actionPlannerConfig: resolveActionPlannerConfig(options.config, options.modelProviderId),
-    xmlPolicy: createXmlProtocolPolicy(options.config),
-  };
-}
-
-export function createAgentRuntimeAgentServices(
-  options: AgentSystemRuntimeCompositionOptions,
-  infrastructure: AgentRuntimeInfrastructure,
-) {
-  const availableExecutionTargets = () =>
-    projectSeneraProcessBackendsToToolTargets(infrastructure.toolExecutionEnv.capabilities.processBackends);
-  const embedding = infrastructure.toolSearchConfig.Embedding.Enabled
+  const agentLoopConfig = resolveAgentLoopConfig(options.config);
+  const toolSearchConfig = resolveToolSearchConfig(options.config);
+  const stateCardConfig = resolveStateCardConfig(options.config);
+  const promptConfig = resolveAgentPromptConfig(options.config);
+  const artifactsConfig = resolveArtifactsConfig(options.config);
+  const actionPlannerConfig = resolveActionPlannerConfig(options.config, options.modelProviderId);
+  const embedding = toolSearchConfig.Embedding.Enabled
     ? (() => {
         const workspaceEmbedding = options.workspaceRuntime?.embedding;
         const client = workspaceEmbedding?.client ?? new AgentLocalEmbeddingClient();
@@ -344,32 +305,35 @@ export function createAgentRuntimeAgentServices(
       })()
     : undefined;
   const semanticBudgets = resolveContinuityLearningConfig(options.config).MemOS;
-  const stateCardRuntime = new AgentStateCardRuntime(
-    infrastructure.modelProviderConfig,
-    infrastructure.stateCardConfig,
-    {
-      maxRepairAttempts: infrastructure.actionPlannerConfig.MaxRepairAttempts,
-      learningRequests: options.learningRequests,
-      logger: options.learningLogger,
-      historyTurns: semanticBudgets.FragmentHistoryTurns,
-      assistantPreviewTokens: semanticBudgets.AssistantPreviewTokens,
-      ...(options.continuityMemOS
+  const stateCardRuntime = new AgentStateCardRuntime(modelProviderConfig, stateCardConfig, {
+    maxRepairAttempts: actionPlannerConfig.MaxRepairAttempts,
+    learningRequests: options.learningRequests,
+    logger: options.learningLogger,
+    historyTurns: semanticBudgets.FragmentHistoryTurns,
+    assistantPreviewTokens: semanticBudgets.AssistantPreviewTokens,
+    ...(options.continuityMemOS
+      ? { readTasks: options.continuityMemOS.readStateCardTasks.bind(options.continuityMemOS) }
+      : {}),
+    ...(options.stateCardHistory
+      ? { readHistory: options.stateCardHistory }
+      : options.continuityMemOS
         ? { readHistory: options.continuityMemOS.readStateCardHistory.bind(options.continuityMemOS) }
         : {}),
-    },
-  );
+  });
+  const availableExecutionTargets = () =>
+    projectSeneraProcessBackendsToToolTargets(executionEnvironments.tool.capabilities.processBackends);
   const toolSearch = new AgentToolSearchRuntime(
-    infrastructure.registry,
-    infrastructure.toolSearchConfig,
+    registry,
+    toolSearchConfig,
     options.workspaceRoot,
-    infrastructure.modelProviderConfig,
+    modelProviderConfig,
     {
       logger: options.logger,
       scenarioSource: options.toolSearchScenarioSource,
       embedding,
       embeddingCacheStore: embedding?.cacheStore,
       closeEmbedding: embedding?.closeEmbedding,
-      resourceDiscovery: infrastructure.resourceCapabilities,
+      resourceDiscovery: resourceCapabilities,
       availableExecutionTargets,
       stateCardRuntime,
       memos: options.continuityMemOS,
@@ -377,6 +341,90 @@ export function createAgentRuntimeAgentServices(
       mcpServices: options.mcpServices,
     },
   );
+  const hostCapabilities = createDefaultHostCapabilityRegistry({
+    selfService: options.selfService,
+    approvalRuntime,
+    artifactManifestIndex: options.workspaceRuntime?.artifactManifestIndex,
+    toolSearch,
+    executionResources,
+    orchestration: options.orchestration,
+    continuityRecall: options.continuityRecall,
+    continuityWrite: options.continuityMemOS !== undefined,
+  });
+  options.orchestration?.delegation.bindResourceClaims(resourceClaims);
+  registerAgentSystemToolHandlers(hostCapabilities, systemTools);
+  const systemHostCapabilities = hostCapabilities.capabilities();
+  const systemCapabilityUniverse = listAgentSystemExtensionHostCapabilityUniverse(
+    options.config,
+    options.modelProviderId,
+  );
+  const systemExtensions = new AgentSystemExtensionCatalog();
+  systemExtensions.registerRoot(registry, path.join(resourcesRoot, "System", "Extensions"), {
+    capabilities: systemHostCapabilities,
+    capabilityUniverse: systemCapabilityUniverse,
+    requiredHostCapabilities: systemHostCapabilities,
+    configurations: options.config.Extensions,
+  });
+  options.pluginHost?.applyTools(registry);
+  const skillDiagnostics = registerAgentSkillCatalog(registry, {
+    systemRoot: path.join(resourcesRoot, "System", "Skills"),
+    workspaceRoot: resolveAgentWorkspaceLayout(options.workspaceRoot).skillRoot,
+    systemToolBindings: systemExtensions.skillToolBindings(),
+  });
+  for (const diagnostic of skillDiagnostics) {
+    options.logger?.warn("resources.skills.invalid", { diagnostic });
+  }
+  new AgentPromptAssetCatalog().registerRoot(registry, path.join(resourcesRoot, "System", "Prompts"));
+
+  return {
+    registry,
+    schemaValidator: new AgentSchemaValidator(),
+    promptRenderer: new AgentPromptRenderer(),
+    conversationPolicy: new AgentConversationPolicy(),
+    conversationProjector: new AgentConversationProjector(),
+    approvalRuntime,
+    interactionInput,
+    piSessionRegistry,
+    authorizationPolicyClient,
+    executionEnv: executionEnvironments.system,
+    toolExecutionEnv: executionEnvironments.tool,
+    resourceCapabilities,
+    resourceClaims,
+    sandboxGuestWorkspaceRoot,
+    executionResources,
+    mcpClientPool,
+    browserRuntime,
+    uploadStore,
+    imageNormalization,
+    resourceResolver,
+    mcpSampling,
+    mcpInputs: options.mcpInputs,
+    ownsInteractionInput: !options.interactionInput,
+    ownsExecutionResources: !options.executionResources,
+    ownsMcpClientPool: !options.workspaceRuntime,
+    ownsImageNormalization: !options.workspaceRuntime?.imageNormalization,
+    modelProviderConfig,
+    systemTools,
+    hostCapabilities,
+    toolSearch,
+    systemMcpContributions: systemExtensions.listMcpContributions(),
+    agentLoopConfig,
+    toolSearchConfig,
+    stateCardConfig,
+    promptConfig,
+    artifactsConfig,
+    actionPlannerConfig,
+    xmlPolicy: createXmlProtocolPolicy(options.config),
+  };
+}
+
+export function createAgentRuntimeAgentServices(
+  options: AgentSystemRuntimeCompositionOptions,
+  infrastructure: AgentRuntimeInfrastructure,
+) {
+  const availableExecutionTargets = () =>
+    projectSeneraProcessBackendsToToolTargets(infrastructure.toolExecutionEnv.capabilities.processBackends);
+  const toolSearch = infrastructure.toolSearch;
   const skillActivation = new AgentSkillActivationService(infrastructure.registry, toolSearch);
   const promptContextBuilder = new AgentPromptContextBuilder(
     infrastructure.registry,
@@ -396,7 +444,13 @@ export function createAgentRuntimeAgentServices(
   const promptPresetMaxBytes = resolveServerConfig(options.config).RequestMaxBytes;
   let lastPromptPresetDiagnostic: string | undefined;
   const personaProvider = () => {
-    const result = readAgentMarkdownPromptPreset(options.workspaceRoot, promptPresetMaxBytes);
+    const agent = options.activeAgent;
+    const result = readAgentMarkdownPromptPreset(
+      options.workspaceRoot,
+      promptPresetMaxBytes,
+      agent ? (agent.presetPath ? { activePath: agent.presetPath, enabled: agent.presetEnabled } : null) : undefined,
+    );
+    if (agent && result.error) throw new Error(`Agent ${agent.name}: ${result.error}`);
     const diagnostic = result.error ? `${result.path ?? ""}\u0000${result.error}` : undefined;
     if (diagnostic !== lastPromptPresetDiagnostic) {
       if (result.error) {
@@ -435,15 +489,6 @@ export function createAgentRuntimeAgentServices(
     semanticAuditMode: toolExecutionConfig.SemanticAudit.Mode,
     toolPlanningMode: infrastructure.modelProviderConfig.ToolPlanningMode,
   });
-  const hostCapabilities = createDefaultHostCapabilityRegistry({
-    artifactManifestIndex: options.workspaceRuntime?.artifactManifestIndex,
-    toolSearch,
-    executionResources: infrastructure.executionResources,
-    orchestration: options.orchestration,
-    continuityRecall: options.continuityRecall,
-  });
-  options.orchestration?.delegation.bindResourceClaims(infrastructure.resourceClaims);
-  registerAgentSystemToolHandlers(hostCapabilities, infrastructure.systemTools);
   const toolCallExecutor = new AgentToolCallExecutor({
     registry: infrastructure.registry,
     config: options.config,
@@ -452,7 +497,7 @@ export function createAgentRuntimeAgentServices(
     executionEnv: infrastructure.toolExecutionEnv,
     toolSearch,
     executionResources: infrastructure.executionResources,
-    hostCapabilities,
+    hostCapabilities: infrastructure.hostCapabilities,
     configPath: options.configPath,
     interactionInput: infrastructure.interactionInput,
     modelProviderId: options.modelProviderId,
@@ -466,30 +511,30 @@ export function createAgentRuntimeAgentServices(
     identityDisplayValues: options.identityDisplayValues,
   });
   const piSubstrate = new AgentPiSubstrate({
+    toolSearch,
     workspaceLayout: options.workspaceRuntime?.layout,
     workspaceRoot: options.workspaceRoot,
     config: options.config,
     modelProvider: infrastructure.modelProviderConfig,
     planningCompilerFactory: createAgentPiPlanningModelAdapter(options.config, infrastructure.modelProviderConfig),
-    residentSpeech: infrastructure.residentSpeech,
     registry: infrastructure.registry,
     toolCallExecutor,
     workspaceChangeObserver: options.workspaceRuntime?.workspaceChangeObserver,
     artifactRecorder,
     executionEnv: infrastructure.executionEnv,
     resourceCapabilities: infrastructure.resourceCapabilities,
+    resourceAccessScope: (sessionId) => options.orchestration?.delegation.resourceAccessScope(sessionId),
     resourceClaims: infrastructure.resourceClaims,
     resourceCoordinator: options.resourceCoordinator,
     resourcesPath: options.resourcesPath,
     toolPermissionGate,
     diagnostics: options.piDiagnostics,
     uploadStore: infrastructure.uploadStore,
-    resourceResolver: infrastructure.resourceResolver,
     beforeCompaction: options.continuityLifecycle
       ? (sessionId) => options.continuityLifecycle!.beforeCompaction(sessionId)
       : undefined,
     afterCompaction: options.continuityLifecycle
-      ? (sessionId) => options.continuityLifecycle!.afterCompaction?.(sessionId)
+      ? (sessionId, boundaryKey) => options.continuityLifecycle!.afterCompaction?.(sessionId, boundaryKey)
       : undefined,
     onSessionContextInvalidated: options.continuityLifecycle
       ? (sessionId) => options.continuityLifecycle!.invalidateSessionContext?.(sessionId)

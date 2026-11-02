@@ -1,18 +1,16 @@
 import { constants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { isMissingFileError, writeFileAtomic } from "../Core/AgentFs.js";
+import { isMissingFileError } from "../Core/AgentFs.js";
 import { relativePathWithin } from "../Core/AgentPath.js";
 import {
   AgentPromptPresetDirectoryPath,
   AgentPromptPresetFileExtension,
-  AgentPromptPresetManifestVersion,
   normalizeAgentPromptPresetPath,
-  parseAgentPromptPresetManifest,
-  type AgentPromptPresetManifest,
 } from "../Core/AgentPromptPresetContract.js";
 import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
-import { stringifyAgentCanonicalJson } from "../Core/AgentCanonicalJson.js";
+import type { AgentDirectory } from "../Profile/AgentDirectory.js";
+import { workspaceAgentInput } from "../Core/AgentDirectoryContract.js";
 import type {
   AgentSelfPromptPresetEntry,
   AgentSelfPromptPresetMutationResult,
@@ -23,12 +21,13 @@ import type {
 
 /**
  * Workspace-owned Markdown preset access for the self-service command surface.
- * The pointer is host state, while the document remains ordinary workspace
- * content. No caller receives the state file path as an editable resource.
+ * Documents are shared workspace content. Selection and activation belong to
+ * each Agent and commit through the same directory service as Agent management.
  */
 export function createAgentSelfPromptPresetsPort(
   workspaceRoot: string,
   maxBytes: number,
+  directory: AgentDirectory,
 ): NonNullable<AgentSelfServicePort["promptPresets"]> {
   if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
     throw new RangeError("Prompt preset size limit must be a positive safe integer.");
@@ -36,26 +35,28 @@ export function createAgentSelfPromptPresetsPort(
 
   const layout = resolveAgentWorkspaceLayout(workspaceRoot);
   return {
-    status: () => projectStatus(layout, maxBytes),
+    status: (agentId) => projectStatus(layout, directory, agentId),
     read: (requestedPath) => readPreset(layout, requestedPath, maxBytes),
-    enable: (requestedPath) => setEnabled(layout, requestedPath, maxBytes),
-    disable: () => setDisabled(layout, maxBytes),
+    enable: (requestedPath, agentId) => setEnabled(layout, requestedPath, maxBytes, directory, agentId),
+    disable: (agentId) => setDisabled(directory, agentId),
   };
 }
 
 async function projectStatus(
   layout: ReturnType<typeof resolveAgentWorkspaceLayout>,
-  maxBytes: number,
+  directory: AgentDirectory,
+  agentId?: string,
 ): Promise<AgentSelfPromptPresetStatus> {
-  const state = await readManifest(layout, maxBytes);
-  const activePath = state.manifest?.activePath;
-  const enabled = state.manifest?.enabled === true;
+  const agent = directory.get(agentId);
+  const activePath = agent.presetPath ?? undefined;
+  const enabled = agent.presetEnabled;
   const scan = await listPresetFiles(layout, activePath, enabled);
-  const errors = [...(state.error ? [state.error] : []), ...scan.errors];
+  const errors = [...scan.errors];
   if (enabled && activePath && !scan.files.some((preset) => preset.active)) {
     errors.push("当前启用的 Markdown 预设不存在或不是普通文件。");
   }
   return {
+    agentId: agent.id,
     root: path.relative(layout.root, layout.promptPresetRoot).split(path.sep).join("/"),
     valid: errors.length === 0,
     enabled,
@@ -163,61 +164,39 @@ async function setEnabled(
   layout: ReturnType<typeof resolveAgentWorkspaceLayout>,
   requestedPath: string,
   maxBytes: number,
+  directory: AgentDirectory,
+  agentId?: string,
 ): Promise<AgentSelfPromptPresetMutationResult> {
   const read = await readPreset(layout, requestedPath, maxBytes);
   if (read.status !== "found") return read;
-  const manifest: AgentPromptPresetManifest = {
-    version: AgentPromptPresetManifestVersion,
-    activePath: read.path,
-    enabled: true,
-  };
   try {
-    await writeManifest(layout, manifest);
-    return { status: "enabled", enabled: true, activePath: read.path };
+    const agent = directory.get(agentId);
+    directory.execute({
+      type: "agent.update",
+      revision: directory.snapshot().revision,
+      id: agent.id,
+      agent: { ...workspaceAgentInput(agent), presetPath: read.path, presetEnabled: true },
+    });
+    return { status: "enabled", agentId: agent.id, enabled: true, activePath: read.path };
   } catch (error) {
     return { status: "failed", error: errorMessage(error) };
   }
 }
 
-async function setDisabled(
-  layout: ReturnType<typeof resolveAgentWorkspaceLayout>,
-  maxBytes: number,
-): Promise<AgentSelfPromptPresetMutationResult> {
-  const state = await readManifest(layout, maxBytes);
-  if (state.error) return { status: "invalid", error: state.error };
-  if (!state.manifest) return { status: "missing", error: "当前没有已选择的提示词预设。" };
+async function setDisabled(directory: AgentDirectory, agentId?: string): Promise<AgentSelfPromptPresetMutationResult> {
   try {
-    await writeManifest(layout, { ...state.manifest, enabled: false });
-    return { status: "disabled", enabled: false, activePath: state.manifest.activePath };
+    const agent = directory.get(agentId);
+    if (!agent.presetPath) return { status: "missing", error: "该 Agent 没有已选择的提示词预设。" };
+    directory.execute({
+      type: "agent.update",
+      revision: directory.snapshot().revision,
+      id: agent.id,
+      agent: { ...workspaceAgentInput(agent), presetEnabled: false },
+    });
+    return { status: "disabled", agentId: agent.id, enabled: false, activePath: agent.presetPath };
   } catch (error) {
     return { status: "failed", error: errorMessage(error) };
   }
-}
-
-async function readManifest(
-  layout: ReturnType<typeof resolveAgentWorkspaceLayout>,
-  maxBytes: number,
-): Promise<{ readonly manifest?: AgentPromptPresetManifest; readonly error?: string }> {
-  try {
-    const raw = JSON.parse(
-      (await readRegularFile(layout.promptPresetStateFile, "Prompt preset state", maxBytes)).toString("utf8"),
-    );
-    const manifest = parseAgentPromptPresetManifest(raw);
-    return manifest ? { manifest } : { error: "提示词预设状态文件不符合当前合同。" };
-  } catch (error) {
-    if (isMissingFileError(error)) return {};
-    return { error: errorMessage(error) };
-  }
-}
-
-async function writeManifest(
-  layout: ReturnType<typeof resolveAgentWorkspaceLayout>,
-  manifest: AgentPromptPresetManifest,
-): Promise<void> {
-  await writeFileAtomic(layout.promptPresetStateFile, `${stringifyAgentCanonicalJson(manifest)}\n`, {
-    directoryMode: 0o700,
-    mode: 0o600,
-  });
 }
 
 function resolvePresetPath(

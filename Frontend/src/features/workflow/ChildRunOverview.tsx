@@ -1,111 +1,108 @@
 import type { TimelineChildRunState } from "../../store/sessionStore";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn, formatTime } from "../../lib/util";
-import { ExecutionStatusTones } from "../../shared/ui";
+import { ActivityStatusIcon } from "../../shared/ui";
+import { childRunStatus, isChildRunActive } from "./childRunPresentation";
+import "./childRuns.css";
 
-const ActiveChildRunStatuses = new Set<TimelineChildRunState["status"]>([
-  "queued",
-  "running",
-  "wrapping_up",
-  "cancelling",
-  "awaiting_supervisor",
-]);
-
-export function isChildRunActive(status: TimelineChildRunState["status"]): boolean {
-  return ActiveChildRunStatuses.has(status);
-}
-
-interface ChildRunOverviewProps {
-  childRun: TimelineChildRunState;
-}
-
-export const ChildRunStatusPresentation = {
-  queued: { label: "workflow.step.status.pending", ...ExecutionStatusTones.pending },
-  running: { label: "workflow.run.status.running", ...ExecutionStatusTones.running },
-  wrapping_up: { label: "workflow.childRun.status.wrappingUp", ...ExecutionStatusTones.running },
-  cancelling: { label: "workflow.run.status.cancelling", ...ExecutionStatusTones.cancelling },
-  awaiting_supervisor: { label: "workflow.childRun.status.awaitingSupervisor", ...ExecutionStatusTones.cancelling },
-  completed: { label: "workflow.run.status.completed", ...ExecutionStatusTones.completed },
-  partial_completed: { label: "workflow.childRun.status.partialCompleted", ...ExecutionStatusTones.completed },
-  interrupted: { label: "workflow.childRun.status.interrupted", ...ExecutionStatusTones.running },
-  timed_out: { label: "workflow.childRun.status.timedOut", ...ExecutionStatusTones.failed },
-  failed: { label: "workflow.run.status.failed", ...ExecutionStatusTones.failed },
-  cancelled: { label: "workflow.run.status.cancelled", ...ExecutionStatusTones.cancelled },
-} as const satisfies Record<
-  TimelineChildRunState["status"],
-  {
-    label: Parameters<typeof frontendMessage>[0];
-    text: string;
-    dot: string;
-  }
->;
-
-export function ChildRunOverview({ childRun }: ChildRunOverviewProps): JSX.Element {
-  const presentation = ChildRunStatusPresentation[childRun.status];
-  const activeTools = childRun.activeTools ?? [];
-  const latestUpdate = [...childRun.messages]
-    .reverse()
-    .find((message) => message.direction === "child_to_parent" && message.content.trim());
-
+export function ChildRunMetrics({ childRun }: { childRun: TimelineChildRunState }): JSX.Element {
+  const tools = childRun.toolCalls;
+  const todo = childRun.todo;
   return (
-    <section className="space-y-3" data-child-run-overview>
-      <div
-        className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-y border-line-subtle py-2.5"
-        role="status"
-        aria-live="polite"
-      >
-        <div className={cn("flex min-w-0 items-center gap-2 text-[12.5px] font-medium", presentation.text)}>
-          <span className={cn("h-2 w-2 shrink-0 rounded-full", presentation.dot)} aria-hidden="true" />
-          <span>{frontendMessage(presentation.label)}</span>
-        </div>
+    <>
+      {tools && tools.planned > 0 ? (
+        <span>
+          {frontendMessage("workflow.childRun.board.tools", {
+            completed: tools.completed + tools.failed,
+            total: tools.planned,
+          })}
+        </span>
+      ) : null}
+      {tools && tools.failed > 0 ? (
+        <span className="text-brick-600">{frontendMessage("workflow.feed.failedCount", { count: tools.failed })}</span>
+      ) : null}
+      {todo?.planObserved && todo.counts.total > 0 ? (
+        <span>
+          {frontendMessage("workflow.childRun.card.todoProgress", {
+            completed: todo.counts.completed,
+            total: todo.counts.total,
+          })}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+export function ChildRunOverview({ childRun }: { childRun: TimelineChildRunState }): JSX.Element {
+  const presentation = childRunStatus(childRun.status);
+  const activeTools = childRun.activeTools ?? [];
+  return (
+    <section className="child-run-overview" data-child-run-overview>
+      <div className="flex min-w-0 items-center gap-2" role="status">
+        <ActivityStatusIcon status={presentation.activity} size={15} motion="spin" />
+        <span className={cn("text-[12px] font-medium", presentation.text)}>{frontendMessage(presentation.label)}</span>
         {childRun.lastActivityAt ? (
-          <span className="text-[11px] text-content-muted">
-            {frontendMessage("workflow.childRun.lastActivity", { time: formatTime(childRun.lastActivityAt) })}
-          </span>
+          <time
+            className="ml-auto shrink-0 text-[11px] tabular-nums text-content-muted"
+            dateTime={childRun.lastActivityAt}
+          >
+            {formatTime(childRun.lastActivityAt)}
+          </time>
         ) : null}
       </div>
-
-      <div className="space-y-2.5">
-        <div className="text-[10.5px] font-medium text-content-muted">
-          {frontendMessage("workflow.childRun.currentActivity")}
-        </div>
-        {activeTools.length > 0 ? (
-          <div className="border-l-2 border-accent-400 pl-3" data-child-run-active-tools>
-            <div className="text-[11.5px] text-content-secondary">
-              {activeTools.length === 1
-                ? frontendMessage("workflow.childRun.usingTool")
-                : frontendMessage("workflow.childRun.parallelTools", { count: activeTools.length })}
-            </div>
-            <div className="mt-1 break-words text-[12px] text-content-primary">{activeTools.join(" · ")}</div>
-          </div>
-        ) : (
-          <div className="text-[11.5px] text-content-secondary">
-            {frontendMessage(
-              childRun.status === "queued"
-                ? "workflow.childRun.waitingToStart"
-                : childRun.status === "cancelling"
-                  ? "workflow.childRun.stoppingActivity"
-                  : "workflow.childRun.processing",
-            )}
-          </div>
-        )}
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] tabular-nums text-content-muted">
+        <ChildRunMetrics childRun={childRun} />
+        {childRun.checkpointAvailable ? <span>{frontendMessage("workflow.childRun.board.checkpoint")}</span> : null}
       </div>
-
-      {latestUpdate ? (
-        <div className="border-t border-line-subtle pt-3">
-          <div className="mb-1 text-[10.5px] font-medium text-content-muted">
-            {frontendMessage("workflow.childRun.latestUpdate")}
-          </div>
-          <p className="line-clamp-3 whitespace-pre-wrap break-words text-[11.5px] leading-5 text-content-primary">
-            {latestUpdate.content}
-          </p>
-        </div>
+      {childRun.taskLabel ? (
+        <p className="whitespace-pre-wrap break-words text-[13px] leading-6 text-content-primary">
+          {childRun.taskLabel}
+        </p>
       ) : null}
-
+      {isChildRunActive(childRun.status) && activeTools.length > 0 ? (
+        <p
+          className="truncate text-[11px] text-content-secondary"
+          title={activeTools.join(" · ")}
+          data-child-run-active-tools
+        >
+          {frontendMessage("workflow.childRun.usingTool")} · {activeTools.join(" · ")}
+        </p>
+      ) : null}
+      {childRun.todo?.items?.length ? (
+        <ul className="child-run-todos">
+          {childRun.todo.items.map((item, index) => (
+            <li key={index} data-status={item.status}>
+              <ActivityStatusIcon
+                size={13}
+                motion="none"
+                status={
+                  item.status === "in_progress"
+                    ? "running"
+                    : item.status === "completed"
+                      ? "completed"
+                      : item.status === "cancelled"
+                        ? "cancelled"
+                        : "pending"
+                }
+                aria-label={frontendMessage(
+                  item.status === "in_progress"
+                    ? "workflow.childRun.todo.status.inProgress"
+                    : item.status === "completed"
+                      ? "workflow.childRun.todo.status.completed"
+                      : item.status === "cancelled"
+                        ? "workflow.childRun.todo.status.cancelled"
+                        : "workflow.childRun.todo.status.pending",
+                )}
+              />
+              <span>{item.content}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {childRun.cancellation ? (
-        <div className="flex items-center justify-between gap-3 border-t border-line-subtle pt-3 text-[11.5px]">
-          <span className="text-content-muted">{frontendMessage("workflow.childRun.stopProgress")}</span>
-          <span className="text-right text-content-primary">{cancellationLabel(childRun.cancellation.stage)}</span>
+        <div className="flex justify-between gap-3 text-[11px] text-content-secondary">
+          <span>{frontendMessage("workflow.childRun.stopProgress")}</span>
+          <span>{cancellationLabel(childRun.cancellation.stage)}</span>
         </div>
       ) : null}
     </section>

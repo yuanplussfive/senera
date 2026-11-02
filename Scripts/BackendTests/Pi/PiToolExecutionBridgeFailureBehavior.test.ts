@@ -67,36 +67,58 @@ describe("Pi tool execution bridge failures", () => {
     });
   });
 
-  test("reports media projection failure without finalizing the observation reservation twice", async () => {
+  test("withholds an unrecorded inline image instead of delivering it as native model content", async () => {
+    const data = Buffer.from([137, 80, 78, 71]).toString("base64");
     const executed = toolResult({
-      callId: "call-media-missing",
+      callId: "call-image",
       name: "ImageTool",
-      artifact: {
-        artifactId: "artifact-media",
-        artifactUri: "senera://artifact/art_3123456789abcdef01234567",
-        artifactPath: "E:/workspace/.senera/artifacts/media",
-        relativePath: "media.json",
-        manifestPath: "E:/workspace/.senera/artifacts/media/manifest.json",
-        files: {},
-        summary: "Generated image",
-        assets: [
-          {
-            id: "image-1",
-            resourceUri: "senera://resource/missing-image",
-            fileName: "image.png",
-            mediaType: "image/png",
-            relativePath: "image.png",
-            workspacePath: "E:/workspace/.senera/artifacts/media/image.png",
-            byteLength: 12,
-            sha256: "missing",
-          },
+      result: {
+        content: [
+          { type: "text", text: "image.png" },
+          { type: "image", data, mimeType: "image/png" },
         ],
-        evidence: [],
-        delta: [],
       },
     });
     const bridge = new AgentPiToolExecutionBridge({
-      modelSupportsImages: true,
+      executeToolCall: async () => ({ kind: "ToolResults", value: [executed] }),
+      recordToolArtifacts: async () => [executed],
+    });
+    const context = createToolContext("ImageTool", "call-image");
+
+    const result = await bridge.execute({
+      tool: registeredTool("ImageTool"),
+      params: {},
+      toolCallId: "call-image",
+      context,
+    });
+
+    expect(result.content).toHaveLength(1);
+    const observation = parseObservation(result);
+    expect(JSON.stringify(observation)).not.toContain(data);
+    expect(observation).toMatchObject({
+      detail: {
+        result: {
+          content: [
+            { type: "text", text: "image.png" },
+            {
+              type: "media_unavailable",
+              reason: "unpublished_inline_image",
+              message: expect.stringContaining("no image bytes were sent to the model"),
+            },
+          ],
+        },
+        notice: expect.stringContaining("not published as a durable resource"),
+      },
+    });
+  });
+
+  test("removes malformed declared inline image payloads without leaking their source data", async () => {
+    const executed = toolResult({
+      callId: "call-media-missing",
+      name: "ImageTool",
+      result: { content: [{ type: "image", data: "not base64", mimeType: "image/png" }] },
+    });
+    const bridge = new AgentPiToolExecutionBridge({
       executeToolCall: async () => ({ kind: "ToolResults", value: [executed] }),
       recordToolArtifacts: async () => [executed],
     });
@@ -111,12 +133,20 @@ describe("Pi tool execution bridge failures", () => {
 
     expect(parseObservation(result)).toMatchObject({
       status: "success",
-      detail: { notice: expect.stringContaining("media_projection_failed") },
+      detail: {
+        result: {
+          content: [
+            {
+              type: "media_unavailable",
+              reason: "unpublished_inline_image",
+            },
+          ],
+        },
+        notice: expect.stringContaining("not published as a durable resource"),
+      },
     });
-    expect(result.details.senera).toMatchObject({
-      status: AgentPiToolResultStatuses.Success,
-      mediaProjection: { code: "media_projection_failed" },
-    });
+    expect(result.content).toHaveLength(1);
+    expect(result.details.senera).toMatchObject({ status: AgentPiToolResultStatuses.Success });
     expect(context.tokenBudget.snapshot().pendingToolReservations).toBe(0);
   });
 
@@ -291,7 +321,6 @@ function registeredTool(name: string): RegisteredTool {
     handler: { kind: "HostCapability", capability: name },
     runtime: {
       Lifecycle: "Immediate",
-      ProtocolVersion: 2,
       ResultAssessment: "ProcessExit",
       Capabilities: { Cancellation: true },
     },

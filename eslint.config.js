@@ -27,6 +27,7 @@ const NodeFiles = [
   "Scripts/**/*.{js,mjs,cjs,ts}",
   "Source/**/*.{js,mjs,cjs,ts}",
   "System/**/*.{js,mjs,cjs,ts}",
+  "docs/**/*.mjs",
 ];
 
 const FrontendFiles = ["Frontend/src/**/*.{ts,tsx}"];
@@ -53,7 +54,9 @@ export default tseslint.config(
   {
     ignores: [
       "**/node_modules/**",
-      ".cache/**",
+      // Imported Vue client retains its upstream conventions within its workspace.
+      "Frontend/qq/client/**",
+      "**/.cache/**",
       ".senera*/**",
       ".trae-html-share-packages/**",
       ".uploads/**",
@@ -61,7 +64,9 @@ export default tseslint.config(
       "Dist/**",
       "Frontend/.ladle/build/**",
       "Frontend/dist/**",
-      "Release/**",
+      "Release*/**",
+      "Apps/Mobile/android/**/build/**",
+      "Apps/Mobile/android/app/src/main/assets/public/**",
       "Source/AgentSystem/BamlClient/baml_client/**",
       "Plugins/**/Schemas/**/*.js",
       "senera-assessment/**",
@@ -174,6 +179,15 @@ export default tseslint.config(
     languageOptions: {
       globals: {
         ...globals.browser,
+      },
+    },
+  },
+  {
+    files: ["Apps/Mobile/android/app/src/main/assets/*.js"],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        seneraNative: "readonly",
       },
     },
   },

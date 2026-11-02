@@ -1,7 +1,10 @@
 import path from "node:path";
+import { existsSync } from "node:fs";
 import { z } from "zod";
 import { sha256Hex } from "../Core/AgentHash.js";
 import { isPathWithin, toPosixPath } from "../Core/AgentPath.js";
+import { allocateAgentResourceId, AgentResourceIdAllocation } from "../Resources/AgentResourceIdAllocator.js";
+import { createAgentResourceUri, parseAgentResourceId } from "../Resources/AgentResourceUri.js";
 export { toPosixPath } from "../Core/AgentPath.js";
 
 export const DefaultAgentArtifactRootDir = ".senera/artifacts/runs";
@@ -10,6 +13,10 @@ const ArtifactUriAuthority = "artifact";
 const LegacyArtifactUriPrefix = "urn:senera:artifact:";
 const SafeSegmentPattern = /^[a-z0-9][a-z0-9._-]*$/;
 const ArtifactIdPattern = /^art_[a-f0-9]{24}$/;
+const ShortArtifactIdPattern = new RegExp(
+  `^[${AgentResourceIdAllocation.alphabet}]{${AgentResourceIdAllocation.length}}$`,
+  "u",
+);
 
 export const AgentArtifactFileNames = {
   manifest: "manifest.json",
@@ -104,7 +111,7 @@ export function createAgentArtifactLocator(input: AgentArtifactLocatorInput): Ag
   const argsHash = safeHashSegment(input.argsHash);
   const resultHash = safeHashSegment(input.resultHash);
   const payloadHash = input.payloadHash ? safeHashSegment(input.payloadHash) : undefined;
-  const artifactId = stableArtifactId({
+  const publicationId = stableArtifactId({
     sessionId: sessionId ?? null,
     requestId,
     step: input.step,
@@ -115,15 +122,16 @@ export function createAgentArtifactLocator(input: AgentArtifactLocatorInput): Ag
     resultHash,
     ...(payloadHash ? { payloadHash } : {}),
   });
+  const resourceId = allocateAgentResourceId(workspaceRoot, `artifact:${publicationId}`);
+  const directoryFor = (id: string) =>
+    path.join(rootDir, requestId, "steps", stepSegment, "calls", `${callSegment}-${toolSegment}-${id}`);
+  // A retry of an immutable historical publication must reopen that bundle,
+  // rather than publish the same execution under a second directory.
+  const artifactId = existsSync(path.join(workspaceRoot, directoryFor(publicationId), AgentArtifactFileNames.manifest))
+    ? publicationId
+    : resourceId;
   const relativeDir = toPosixPath(
-    path.join(
-      rootDir,
-      requestId,
-      "steps",
-      stepSegment,
-      "calls",
-      `${callSegment}-${toolSegment}-${artifactId.slice(4, 16)}`,
-    ),
+    path.join(rootDir, requestId, "steps", stepSegment, "calls", `${callSegment}-${toolSegment}-${artifactId}`),
   );
   const absoluteDir = assertInsideRoot(
     workspaceRoot,
@@ -156,6 +164,8 @@ export function createAgentArtifactLocator(input: AgentArtifactLocatorInput): Ag
 }
 
 export function parseAgentArtifactUri(value: string): string | undefined {
+  const resourceId = parseAgentResourceId(value);
+  if (resourceId && ShortArtifactIdPattern.test(resourceId)) return resourceId;
   const canonical = parseCanonicalArtifactUri(value);
   if (canonical) {
     return canonical;
@@ -166,6 +176,7 @@ export function parseAgentArtifactUri(value: string): string | undefined {
 
 export function createAgentArtifactUri(artifactId: string): string {
   assertArtifactId(artifactId);
+  if (ShortArtifactIdPattern.test(artifactId)) return createAgentResourceUri(artifactId);
   return new URL(artifactId, `${ArtifactUriProtocol}//${ArtifactUriAuthority}/`).toString();
 }
 
@@ -265,7 +276,7 @@ function assertArtifactId(value: string): void {
 }
 
 function isArtifactId(value: string): boolean {
-  return ArtifactIdPattern.test(value);
+  return ArtifactIdPattern.test(value) || ShortArtifactIdPattern.test(value);
 }
 
 function hashText(value: string): string {

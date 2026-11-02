@@ -39,17 +39,21 @@ describe("delegation prompt context", () => {
       terminal: 2,
       pendingResults: 1,
     });
-    expect(projected.runs.map((run) => run.runId)).toEqual(["active", "completed"]);
+    expect(projected.runs.map((run) => run.agentId)).toEqual(["active-session", "completed-session"]);
     expect(projected.runs[0]).toMatchObject({
-      runId: "active",
+      agentId: "active-session",
       status: AgentChildRunStatuses.Running,
       resultAvailable: false,
       resultDelivered: false,
       task: expect.stringContaining("[truncated originalChars=4000"),
-      progress: expect.objectContaining({ artifactCount: 1, activeTools: ["WorkspaceRead"] }),
+      progress: expect.objectContaining({
+        lastActivityAt: "2026-09-11T08:00:00.000+08:00",
+        artifactCount: 1,
+        activeTools: ["WorkspaceRead"],
+      }),
     });
     expect(projected.runs[1]).toMatchObject({
-      runId: "completed",
+      agentId: "completed-session",
       resultAvailable: true,
       resultDelivered: false,
     });

@@ -5,6 +5,8 @@ import { AgentResourceMaterializer } from "../Resources/AgentResourceMaterialize
 import { projectAgentModelText } from "../Text/AgentModelPayloadProjection.js";
 import { isAgentBase64 } from "../Core/AgentBase64.js";
 import type { AgentResourceSource } from "../Resources/AgentResourceSource.js";
+import { isDeepStrictEqual } from "node:util";
+import { parseJsonTextOrUndefined } from "../Core/AgentJsonParsing.js";
 
 export interface AgentMcpToolResultProjection {
   readonly result: unknown;
@@ -17,6 +19,7 @@ interface AgentMcpToolFeedbackOptions {
   readonly validationResult?: unknown;
   readonly publishedResources?: readonly AgentPublishedResource[];
   readonly evidenceSource?: unknown;
+  readonly resultContentIndexes?: ReadonlySet<number>;
 }
 
 interface AgentModelResourceReference {
@@ -24,7 +27,6 @@ interface AgentModelResourceReference {
   readonly name: string;
   readonly mime: string;
   readonly size: number;
-  readonly sha256?: string;
 }
 
 /**
@@ -45,24 +47,24 @@ function projectAgentMcpToolFeedback(
   const envelope = agentUnknownRecordOrEmpty(value);
   const evidenceEnvelope = agentUnknownRecordOrEmpty(options.evidenceSource ?? value);
   const hasStructuredContent = envelope.structuredContent !== undefined;
-  const content = projectMcpContent(envelope.content, { captureEvidence: hasStructuredContent });
-  const evidenceContent = projectMcpContent(evidenceEnvelope.content, { captureEvidence: hasStructuredContent });
+  const evidenceContent = projectMcpContent(evidenceEnvelope.content, {
+    evidenceOrigin: hasStructuredContent ? "supplement" : "result",
+    resultContentIndexes: options.resultContentIndexes,
+  });
   const structuredContent = envelope.structuredContent;
   const resources = projectPublishedResources(options.publishedResources);
   // structuredContent remains provider-shaped. Only materialized resource
   // identities are mapped to local paths; domain fields are not inferred.
   const result = hasStructuredContent
     ? projectStructuredContentResources(structuredContent, resources)
-    : projectMcpContentResult(content, resources);
+    : projectMcpContentResult(projectMcpContent(envelope.content), resources);
+  const evidence = [
+    ...evidenceContent.evidence,
+    ...(options.publishedResources ?? []).map((resource) => publishedResourceEvidence(resource)),
+  ];
   const artifactPayload: AgentToolArtifactPayload = {
     rawResponse: options.rawResponse ?? envelope,
-    ...(() => {
-      const evidence = [
-        ...evidenceContent.evidence,
-        ...(options.publishedResources ?? []).map((resource) => publishedResourceEvidence(resource)),
-      ];
-      return evidence.length > 0 ? { evidence } : {};
-    })(),
+    ...(evidence.length > 0 ? { evidence } : {}),
   };
 
   return {
@@ -70,7 +72,7 @@ function projectAgentMcpToolFeedback(
     ...(hasStructuredContent
       ? { validationResult: "validationResult" in options ? options.validationResult : structuredContent }
       : {}),
-    ...(artifactPayload ? { artifactPayload } : {}),
+    artifactPayload,
   };
 }
 
@@ -88,15 +90,24 @@ export async function projectAgentMcpToolFeedbackWithResources(
   const envelope = agentUnknownRecordOrEmpty(value);
   const originalStructuredContent = envelope.structuredContent;
   const content = Array.isArray(envelope.content) ? envelope.content : [];
-  const publishedByIndex = new Map<number, AgentPublishedResource>();
+  const resultContentIndexes = new Set<number>();
   const publishedResources: AgentPublishedResource[] = [];
   const canonicalContent: unknown[] = [];
   const modelContent: unknown[] = [];
   for (const [index, item] of content.entries()) {
     const record = agentUnknownRecordOrEmpty(item);
+    // Compare provider values before media materialization rewrites either
+    // representation. Provenance must not depend on generated resource paths.
+    if (
+      originalStructuredContent !== undefined &&
+      record.type === "text" &&
+      typeof record.text === "string" &&
+      isDeepStrictEqual(parseJsonTextOrUndefined(record.text), originalStructuredContent)
+    ) {
+      resultContentIndexes.add(index);
+    }
     const published = await publishMcpBinaryContent(record, materializer, options.signal);
     if (published) {
-      publishedByIndex.set(index, published);
       publishedResources.push(published);
       canonicalContent.push(canonicalMcpResourceBlock(record, published));
       continue;
@@ -124,10 +135,11 @@ export async function projectAgentMcpToolFeedbackWithResources(
       : {}),
   };
   const projected = projectAgentMcpToolFeedback(modelEnvelope, {
-    rawResponse: sanitizeMcpEnvelope(canonicalEnvelope, publishedByIndex),
+    rawResponse: canonicalEnvelope,
     ...(originalStructuredContent === undefined ? {} : { validationResult: originalStructuredContent }),
     publishedResources,
     evidenceSource: canonicalEnvelope,
+    resultContentIndexes,
   });
   return projected;
 }
@@ -135,7 +147,9 @@ export async function projectAgentMcpToolFeedbackWithResources(
 export function extractAgentMcpText(value: unknown): string {
   const envelope = agentUnknownRecordOrEmpty(value);
   const content = projectMcpContent(envelope.content);
-  const contentText = content.text.join("\n");
+  const contentText = content.blocks
+    .flatMap((block) => (typeof block.text === "string" ? [block.text] : []))
+    .join("\n");
   if (contentText) return contentText;
 
   const structured = agentUnknownRecordOrEmpty(envelope.structuredContent);
@@ -144,14 +158,17 @@ export function extractAgentMcpText(value: unknown): string {
 }
 
 interface ProjectedMcpContent {
-  readonly text: string[];
-  readonly blocks: unknown[];
+  readonly blocks: Record<string, unknown>[];
   readonly evidence: AgentToolEvidenceCandidate[];
 }
 
-function projectMcpContent(value: unknown, options: { captureEvidence?: boolean } = {}): ProjectedMcpContent {
+interface McpContentProjectionOptions {
+  readonly evidenceOrigin?: AgentToolEvidenceCandidate["origin"];
+  readonly resultContentIndexes?: ReadonlySet<number>;
+}
+
+function projectMcpContent(value: unknown, options: McpContentProjectionOptions = {}): ProjectedMcpContent {
   const projected: ProjectedMcpContent = {
-    text: [],
     blocks: [],
     evidence: [],
   };
@@ -163,10 +180,10 @@ function projectMcpContent(value: unknown, options: { captureEvidence?: boolean 
     if (type === "text" && typeof record.text === "string") {
       const text = projectAgentModelText(record.text).text.trim();
       if (text) {
-        projected.text.push(text);
         projected.blocks.push({ type: "text", text, ...projectAnnotations(record.annotations) });
-        if (options.captureEvidence) {
-          projected.evidence.push(mcpContentEvidence(index, text, "text"));
+        if (options.evidenceOrigin) {
+          const origin = options.resultContentIndexes?.has(index) ? "result" : options.evidenceOrigin;
+          projected.evidence.push(mcpContentEvidence(index, text, "text", origin));
         }
       }
       continue;
@@ -187,7 +204,7 @@ function projectResourceContent(
   value: unknown,
   index: number,
   projected: ProjectedMcpContent,
-  options: { captureEvidence?: boolean },
+  options: McpContentProjectionOptions,
   annotations: unknown,
 ): void {
   const resource = agentUnknownRecordOrEmpty(value);
@@ -197,7 +214,6 @@ function projectResourceContent(
     const text = projectAgentModelText(resource.text).text.trim();
     if (text) {
       const name = typeof resource.name === "string" ? resource.name.trim() : "";
-      projected.text.push(text);
       projected.blocks.push({
         type: "resource",
         uri: uri || undefined,
@@ -206,8 +222,8 @@ function projectResourceContent(
         text,
         ...projectAnnotations(annotations),
       });
-      if (options.captureEvidence) {
-        projected.evidence.push(mcpContentEvidence(index, text, "resource"));
+      if (options.evidenceOrigin) {
+        projected.evidence.push(mcpContentEvidence(index, text, "resource", options.evidenceOrigin));
       }
     }
     return;
@@ -302,20 +318,6 @@ function canonicalMcpResourceBlock(record: Record<string, unknown>, published: A
   };
 }
 
-function sanitizeMcpEnvelope(value: unknown, publishedByIndex: ReadonlyMap<number, AgentPublishedResource>): unknown {
-  const envelope = agentUnknownRecordOrEmpty(value);
-  if (!Array.isArray(envelope.content) || publishedByIndex.size === 0) return value;
-  return {
-    ...envelope,
-    content: envelope.content.map((item, index) => {
-      const published = publishedByIndex.get(index);
-      if (!published) return item;
-      const record = agentUnknownRecordOrEmpty(item);
-      return canonicalMcpResourceBlock(record, published);
-    }),
-  };
-}
-
 function readBinaryContent(record: Record<string, unknown>): { data: string; mimeType: string } | undefined {
   const data = typeof record.data === "string" ? record.data.trim() : "";
   const mimeType = typeof record.mimeType === "string" ? record.mimeType.trim() : "";
@@ -333,9 +335,10 @@ function mcpContentEvidence(
   index: number,
   display: string,
   contentType: string,
-  assetId?: string,
+  origin: AgentToolEvidenceCandidate["origin"] = "supplement",
 ): AgentToolEvidenceCandidate {
   return {
+    origin,
     key: `content:${index}`,
     kind: "mcp-content",
     locator: `$.content[${index}]`,
@@ -346,7 +349,6 @@ function mcpContentEvidence(
     metadata: {
       automatic: true,
       contentType,
-      ...(assetId ? { assetId } : {}),
     },
   };
 }
@@ -420,10 +422,7 @@ function projectMcpContentResult(
   content: ProjectedMcpContent,
   resources: readonly AgentModelResourceReference[],
 ): unknown {
-  const text = content.text.join("\n\n").trim();
-  if (content.blocks.length === 0 && resources.length === 0) return { text };
   return {
-    ...(text ? { text } : {}),
     ...(content.blocks.length > 0 ? { content: content.blocks } : {}),
     ...(resources.length > 0 ? { resources } : {}),
   };
@@ -456,13 +455,13 @@ function projectPublishedResources(
       name: resource.name,
       mime: resource.mime,
       size: resource.size,
-      ...(resource.sha256 ? { sha256: resource.sha256 } : {}),
     });
   }
   return [...unique.values()];
 }
 
 function projectPublishedResourcePaths(value: unknown, resources: readonly AgentPublishedResource[]): unknown {
+  if (resources.length === 0) return value;
   const paths = new Map(resources.map((resource) => [resource.resourceUri, resource.localPath] as const));
   return replaceResourceUris(value, paths, new WeakMap<object, unknown>());
 }
@@ -487,7 +486,9 @@ function replaceResourceUris(
     return projected;
   }
   if (!isAgentUnknownRecord(value)) return value;
-  const projected: Record<string, unknown> = {};
+  // Spreading creates own data properties, including a JSON key named
+  // __proto__, before recursive replacement assigns their projected values.
+  const projected = { ...value };
   clones.set(value, projected);
   for (const [key, entry] of Object.entries(value)) projected[key] = replaceResourceUris(entry, paths, clones);
   return projected;

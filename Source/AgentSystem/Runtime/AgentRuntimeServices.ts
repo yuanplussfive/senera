@@ -20,6 +20,7 @@ import {
 import type { AgentWorkflowPromptProjector } from "../Prompt/AgentWorkflowPromptProjector.js";
 import type { AgentPersonaContext } from "../Prompt/AgentPersonaContext.js";
 import type { AgentExplicitActivationReference } from "../Activation/AgentActivationTypes.js";
+import type { AgentStateCardTopicRelation } from "../StateCard/AgentStateCardTypes.js";
 
 export interface AgentRetrievalService {
   createToolExposure: AgentToolSearchRuntime["createToolExposure"];
@@ -44,9 +45,17 @@ export interface AgentRetrievalService {
   reusableCapabilities?(
     options: Parameters<AgentToolSearchRuntime["reusableCapabilities"]>[0],
   ): ReturnType<AgentToolSearchRuntime["reusableCapabilities"]>;
-  getReusableEvidence?(
-    options: Parameters<AgentToolSearchRuntime["getReusableEvidence"]>[0],
-  ): ReturnType<AgentToolSearchRuntime["getReusableEvidence"]>;
+}
+
+export interface AgentContinuityMemoryInput {
+  readonly interaction?: import("../Interaction/AgentInteractionContext.js").AgentInteractionContext;
+  readonly sessionId?: string;
+  readonly userInput?: string;
+  readonly topicRelation?: AgentStateCardTopicRelation;
+  readonly resumeRequestId?: string;
+  readonly requestId?: string;
+  readonly signal?: AbortSignal;
+  readonly historicalTokenBudget?: import("../Continuity/AgentContinuityPromptBudget.js").AgentContinuityHistoricalTokenBudget;
 }
 
 export interface AgentPromptContextService {
@@ -65,22 +74,14 @@ export interface AgentPromptContextService {
   ): ReturnType<AgentPromptContextBuilder["buildRootCommand"]>;
   promptPersona(): AgentPersonaContext;
   toolCatalog(): ReturnType<AgentToolCatalogProjector["list"]>;
-  /** Current state plus the query-relevant memory delta for the active Pi turn. */
-  liveContinuityMemory(input?: {
-    sessionId?: string;
-    userInput?: string;
-    requestId?: string;
-    signal?: AbortSignal;
-    historicalTokenBudget?: import("../Continuity/AgentContinuityPromptBudget.js").AgentContinuityHistoricalTokenBudget;
-  }): Promise<AgentContinuityMemoryPromptContext>;
-  /** Records memory that was actually delivered after a successful Pi turn. */
-  commitLiveContextDelivery?(input: {
-    sessionId?: string;
-    memory: AgentContinuityMemoryPromptContext;
-    deliveredAt?: string;
-  }): number;
-  /** Clears delivery receipts after compaction, rewind, reset, or fork. */
-  invalidateSessionContext?(sessionId: string): number;
+  /** Computes a budgeted automatic-memory candidate without changing session state. */
+  previewContinuityMemory(input?: AgentContinuityMemoryInput): Promise<AgentContinuityMemoryPromptContext>;
+  /** Commits the final budgeted automatic-memory selection for the active session. */
+  liveContinuityMemory(input?: AgentContinuityMemoryInput): Promise<AgentContinuityMemoryPromptContext>;
+  /** Titles only; diary bodies are read deliberately through the shared self-service command. */
+  /** Clears a session's frozen automatic-memory snapshot after a history rewrite. */
+  invalidateSessionContext?(sessionId: string, boundaryKey?: string): number;
+  acknowledgeMemoryDelivery?(sessionId: string, requestId: string): void;
   promptWorkflow(sessionId?: string): AgentWorkflowPromptContext;
   interactionToolNames?(
     interaction?: import("../Interaction/AgentInteractionContext.js").AgentInteractionContext,
@@ -135,7 +136,6 @@ export function createDefaultAgentRuntimeServices(dependencies: AgentRuntimeServ
       resolveStateCard: (options) => dependencies.toolSearch.resolveStateCard(options),
       recordCompletedTurnScenario: (observation) => dependencies.toolSearch.recordCompletedTurnScenario(observation),
       reusableCapabilities: (options) => dependencies.toolSearch.reusableCapabilities(options),
-      getReusableEvidence: (options) => dependencies.toolSearch.getReusableEvidence(options),
     },
     promptContext: {
       activateSkills: (options) => dependencies.skillActivation.activate(options),
@@ -145,12 +145,18 @@ export function createDefaultAgentRuntimeServices(dependencies: AgentRuntimeServ
       buildRootCommand: (options) => dependencies.promptContextBuilder.buildRootCommand(options),
       promptPersona: () => dependencies.personaProvider(),
       toolCatalog: () => dependencies.toolCatalog.list(),
+      previewContinuityMemory: async (input) => {
+        if (!dependencies.continuityMemory) return EmptyAgentContinuityMemoryPromptContext;
+        return await dependencies.continuityMemory.promptContext(input);
+      },
       liveContinuityMemory: async (input) => {
         if (!dependencies.continuityMemory) return EmptyAgentContinuityMemoryPromptContext;
         return await dependencies.continuityMemory.liveContext(input);
       },
-      commitLiveContextDelivery: (input) => dependencies.continuityMemory?.commitLiveContextDelivery(input) ?? 0,
-      invalidateSessionContext: (sessionId) => dependencies.continuityMemory?.invalidateSessionContext(sessionId) ?? 0,
+      invalidateSessionContext: (sessionId, boundaryKey) =>
+        dependencies.continuityMemory?.invalidateSessionContext(sessionId, boundaryKey) ?? 0,
+      acknowledgeMemoryDelivery: (sessionId, requestId) =>
+        dependencies.continuityMemory?.acknowledgeMemoryDelivery(sessionId, requestId),
       promptWorkflow: (sessionId) => dependencies.workflow?.promptContext(sessionId) ?? EmptyAgentWorkflowPromptContext,
       interactionToolNames: (interaction) => dependencies.promptContextBuilder.interactionToolNames(interaction),
     },

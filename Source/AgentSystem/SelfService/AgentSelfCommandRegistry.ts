@@ -38,7 +38,16 @@ export interface AgentSelfCommandSpec {
   readonly sensitive?: boolean;
   /** Human-facing aliases for the CLI action, e.g. `config rollback`. */
   readonly actionAliases?: readonly string[];
+  /** Model calls in this command family are bound to the calling session's Agent. */
+  readonly modelBinding?: AgentSelfCommandModelBinding;
 }
+
+export const AgentSelfCommandModelBindings = {
+  ActiveSessionAgent: "active_session_agent",
+} as const;
+
+export type AgentSelfCommandModelBinding =
+  (typeof AgentSelfCommandModelBindings)[keyof typeof AgentSelfCommandModelBindings];
 
 export interface AgentSelfCommandCapability {
   readonly id: string;
@@ -46,6 +55,7 @@ export interface AgentSelfCommandCapability {
   readonly description: string;
   readonly args: readonly AgentSelfCommandArgumentCapability[];
   readonly actionAliases?: readonly string[];
+  readonly modelBinding?: AgentSelfCommandModelBinding;
   readonly sensitive: boolean;
   readonly source: "builtin" | "plugin";
   readonly ownerId?: string;
@@ -57,8 +67,41 @@ export type AgentSelfCommandArgumentCapability = Pick<
 >;
 
 const CliValueArgSpecs = ["--workspace", "--state-root", "--data-root", "--upgrade"] as const;
+const SessionAgentArg: AgentSelfCommandArgSpec = {
+  key: "agentId",
+  name: "AGENT_ID",
+  kind: "optional-string",
+  description: "目标 Agent 的六位引用或内部 ID；模型工具固定绑定当前会话 Agent，CLI/API 可明确指定。",
+};
 
 export const AgentSelfCommandRegistry: readonly AgentSelfCommandSpec[] = [
+  {
+    command: "diary",
+    action: "list",
+    usage: "senera diary list [PERIOD] [AGENT_ID]",
+    description: "列出当前 Agent 最近一周的日记标题；可按 YYYY-MM 或 YYYY-MM-DD 查询日记和月记。",
+    modelBinding: AgentSelfCommandModelBindings.ActiveSessionAgent,
+    args: [
+      {
+        key: "period",
+        name: "PERIOD",
+        kind: "optional-string",
+        description: "日历日期 YYYY-MM-DD 或月份 YYYY-MM；省略时展示最近一周",
+      },
+      SessionAgentArg,
+    ],
+  },
+  {
+    command: "diary",
+    action: "read",
+    usage: "senera diary read PERIOD [AGENT_ID]",
+    description: "按标题索引选定日期，读取该 Agent 的完整 Markdown 日记或月记。",
+    modelBinding: AgentSelfCommandModelBindings.ActiveSessionAgent,
+    args: [
+      { key: "period", name: "PERIOD", kind: "string", description: "日记 YYYY-MM-DD 或月记 YYYY-MM" },
+      SessionAgentArg,
+    ],
+  },
   {
     command: "config",
     action: "get",
@@ -145,16 +188,18 @@ export const AgentSelfCommandRegistry: readonly AgentSelfCommandSpec[] = [
   {
     command: "preset",
     action: "list",
-    usage: "senera preset list",
+    usage: "senera preset list [AGENT_ID]",
     description: "列出当前工作区 prompts/ 下的 Markdown 预设。",
-    args: [],
+    modelBinding: AgentSelfCommandModelBindings.ActiveSessionAgent,
+    args: [SessionAgentArg],
   },
   {
     command: "preset",
     action: "status",
-    usage: "senera preset status",
-    description: "读取预设文件清单和当前启用状态。",
-    args: [],
+    usage: "senera preset status [AGENT_ID]",
+    description: "读取预设文件清单和目标 Agent 的预设启用状态。",
+    modelBinding: AgentSelfCommandModelBindings.ActiveSessionAgent,
+    args: [SessionAgentArg],
   },
   {
     command: "preset",
@@ -166,16 +211,18 @@ export const AgentSelfCommandRegistry: readonly AgentSelfCommandSpec[] = [
   {
     command: "preset",
     action: "enable",
-    usage: "senera preset enable PATH",
-    description: "启用一个工作区 Markdown 预设。",
-    args: [{ key: "path", name: "PATH", kind: "string", description: "prompts/ 下的 Markdown 路径" }],
+    usage: "senera preset enable PATH [AGENT_ID]",
+    description: "为目标 Agent 选择并启用一个工作区 Markdown 预设。",
+    modelBinding: AgentSelfCommandModelBindings.ActiveSessionAgent,
+    args: [{ key: "path", name: "PATH", kind: "string", description: "prompts/ 下的 Markdown 路径" }, SessionAgentArg],
   },
   {
     command: "preset",
     action: "disable",
-    usage: "senera preset disable",
-    description: "停用当前提示词预设，不删除文件。",
-    args: [],
+    usage: "senera preset disable [AGENT_ID]",
+    description: "停用目标 Agent 的提示词预设，保留选择和文件。",
+    modelBinding: AgentSelfCommandModelBindings.ActiveSessionAgent,
+    args: [SessionAgentArg],
   },
   {
     command: "channels",
@@ -292,10 +339,20 @@ export const AgentSelfCommandRegistry: readonly AgentSelfCommandSpec[] = [
     command: "logs",
     action: "range",
     usage: "senera logs range FROM TO [STREAM] [LEVEL] [KIND] [SCOPE] [LIMIT]",
-    description: "按带时区的 RFC3339 时间范围读取结构化日志。",
+    description: "按上海时区自然日或带时区的 RFC3339 时间范围读取结构化日志。",
     args: [
-      { key: "from", name: "FROM", kind: "string", description: "开始时间，例如 2026-10-16T20:00:00+08:00" },
-      { key: "to", name: "TO", kind: "string", description: "结束时间，例如 2026-10-16T21:00:00+08:00" },
+      {
+        key: "from",
+        name: "FROM",
+        kind: "string",
+        description: "开始时间（含），YYYY-MM-DD 按上海时区自然日解析，例如 2026-10-16 或 2026-10-16T20:00:00+08:00",
+      },
+      {
+        key: "to",
+        name: "TO",
+        kind: "string",
+        description: "结束时间（含），YYYY-MM-DD 覆盖当天整日，例如 2026-10-16 或 2026-10-16T21:00:00+08:00",
+      },
       { key: "stream", name: "STREAM", kind: "optional-string", description: "日志流，例如 background/memos" },
       { key: "level", name: "LEVEL", kind: "optional-string", description: "日志级别" },
       { key: "kind", name: "KIND", kind: "optional-string", description: "事件类型" },
@@ -590,9 +647,12 @@ export const AgentSelfCommandRegistry: readonly AgentSelfCommandSpec[] = [
   },
   {
     command: "capabilities",
-    usage: "senera capabilities",
+    usage: "senera capabilities [DOMAIN] [ACTION]",
     description: "返回当前实际可用的自服务命令、参数和治理规则。",
-    args: [],
+    args: [
+      { key: "domain", name: "DOMAIN", kind: "optional-string", description: "只查看此领域的命令" },
+      { key: "operation", name: "ACTION", kind: "optional-string", description: "只查看此操作的参数与输入 schema" },
+    ],
   },
 ];
 
@@ -615,37 +675,58 @@ export function listAgentSelfBuiltinCommandSpecs(): readonly AgentSelfCommandSpe
   return AgentSelfCommandRegistry;
 }
 
-export function projectAgentSelfCommandCapabilities(): readonly AgentSelfCommandCapability[] {
-  return listAgentSelfCommandSpecs().map((spec) => {
-    const plugin = findAgentSelfPluginCommand(spec.command, spec.action);
-    return {
-      id: agentSelfCommandId(spec.command, spec.action),
-      usage: spec.usage,
-      description: spec.description,
-      args: spec.args.map((argument) => ({
-        key: argument.key,
-        name: argument.name,
-        kind: argument.kind,
-        description: argument.description,
-        ...(argument.minimum !== undefined ? { minimum: argument.minimum } : {}),
-        ...(argument.maximum !== undefined ? { maximum: argument.maximum } : {}),
-        ...(argument.choices ? { choices: argument.choices } : {}),
-        ...(argument.appliesWhen ? { appliesWhen: argument.appliesWhen } : {}),
-      })),
-      ...(spec.actionAliases ? { actionAliases: spec.actionAliases } : {}),
-      sensitive: spec.sensitive === true,
-      source: plugin ? "plugin" : "builtin",
-      ...(plugin?.ownerId ? { ownerId: plugin.ownerId } : {}),
-    };
-  });
+export function projectAgentSelfCommandCapabilities(
+  domain?: string,
+  action?: string,
+): readonly AgentSelfCommandCapability[] {
+  return listAgentSelfCommandSpecs()
+    .filter(
+      (spec) =>
+        (!domain || spec.command === domain) &&
+        (!action || spec.action === action || spec.actionAliases?.includes(action)),
+    )
+    .map((spec) => {
+      const plugin = findAgentSelfPluginCommand(spec.command, spec.action);
+      return {
+        id: agentSelfCommandId(spec.command, spec.action),
+        usage: spec.usage,
+        description: spec.description,
+        args: spec.args.map((argument) => ({
+          key: argument.key,
+          name: argument.name,
+          kind: argument.kind,
+          description: argument.description,
+          ...(argument.minimum !== undefined ? { minimum: argument.minimum } : {}),
+          ...(argument.maximum !== undefined ? { maximum: argument.maximum } : {}),
+          ...(argument.choices ? { choices: argument.choices } : {}),
+          ...(argument.appliesWhen ? { appliesWhen: argument.appliesWhen } : {}),
+        })),
+        ...(spec.actionAliases ? { actionAliases: spec.actionAliases } : {}),
+        ...(spec.modelBinding ? { modelBinding: spec.modelBinding } : {}),
+        sensitive: spec.sensitive === true,
+        source: plugin ? "plugin" : "builtin",
+        ...(plugin?.ownerId ? { ownerId: plugin.ownerId } : {}),
+      };
+    });
 }
 
-export function renderAgentSelfCliHelp(): string {
+export function renderAgentSelfCliHelp(domain?: string, action?: string): string {
   const families = groupAgentSelfCommandSpecs();
+  if (domain && !projectAgentSelfCommandCapabilities(domain, action).length) {
+    throw new Error(
+      `Unknown built-in command. Inspect the live host with: senera capabilities ${domain}${action ? ` ${action}` : ""} --json`,
+    );
+  }
   const lines: string[] = ["Usage: senera <command> [args] [options]", ""];
   for (const [family, specs] of families) {
+    if (domain && family !== `senera ${domain}`) continue;
+    if (!domain) {
+      lines.push(`  ${family}  (${specs.length})`);
+      continue;
+    }
     lines.push(family);
     for (const spec of specs) {
+      if (action && spec.action !== action && !spec.actionAliases?.includes(action)) continue;
       const sensitive = spec.sensitive ? "  (敏感路径: 需审批)" : "";
       lines.push(`  ${spec.usage.padEnd(42)}${spec.description}${sensitive}`);
     }
@@ -655,12 +736,14 @@ export function renderAgentSelfCliHelp(): string {
     "Options:",
     "  --workspace PATH   工作区根目录",
     "  --json             结构化 JSON 输出",
-    "  --yes / --no       非交互式审批决议",
+    "  --input -          从标准输入读取一条 JSON 命令，避免 JSON 和多行文本的 Shell 转义",
+    "  --yes / --no       人工 CLI 的非交互式审批决议；模型进程使用会话审批",
+    "  <domain> --help    查看单个领域；capabilities DOMAIN ACTION --json 查看运行时精确合同",
     "",
     "敏感配置路径（访问控制、端点、凭证、监听地址）的修改需要审批：",
     "交互终端以 [Y/n] 提示，或用 --json --yes/--no 显式决议。",
     "",
-    "自服务命令通过 .senera/runtime.json 发现运行中的服务，经 HTTP 调用。",
+    "模型进程由宿主提供会话连接与审批；人工 CLI 通过 .senera/runtime.json 发现运行中的服务。",
     "请先启动 Senera；离线时命令以明确错误退出，不触碰任何文件。",
   );
   return lines.join("\n");
@@ -683,6 +766,14 @@ export function findAgentSelfCommandSpec(
   );
   if (staticAlias) return staticAlias;
   return findAgentSelfPluginCommand(command, action)?.spec;
+}
+
+/** Returns the declarative model binding for one command, if it has one. */
+export function resolveAgentSelfCommandModelBinding(input: {
+  readonly command: string;
+  readonly action?: string;
+}): AgentSelfCommandModelBinding | undefined {
+  return findAgentSelfCommandSpec(input.command, input.action)?.modelBinding;
 }
 
 export interface AgentSelfPluginCommandEntry {

@@ -1,4 +1,5 @@
 import { Ajv } from "ajv";
+import { AgentToolModelOutputJsonSchemaKeyword } from "../ToolContracts/AgentToolModelOutput.js";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { resolveToolExecutionConfig } from "../Defaults/AgentRuntimeDefaults.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
@@ -8,7 +9,7 @@ import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import type { AgentMcpSamplingHandler } from "../Mcp/AgentMcpSamplingRuntime.js";
 import type { AgentMcpToolClientPool } from "../Mcp/AgentMcpToolClientPool.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import { createAgentMcpPackageEndpoint } from "./AgentMcpPackageRuntime.js";
+import { createAgentMcpPackageEndpoint, createAgentMcpModelConnectionResolver } from "./AgentMcpPackageRuntime.js";
 import type {
   AgentMcpPackage,
   AgentMcpPackageServer,
@@ -276,6 +277,7 @@ export class AgentMcpPackageDiscovery {
       server,
       this.options.inputs,
       this.executionEnv.workspaceRoot,
+      createAgentMcpModelConnectionResolver(this.config),
     );
     return { execution: policy, endpoint };
   }
@@ -344,8 +346,8 @@ export function validateAgentMcpToolDeclarations(
   server: AgentMcpPackageServer,
 ): void {
   const schemaOptions = { allErrors: true, strict: true, validateFormats: false } as const;
-  const draft07Schemas = new Ajv(schemaOptions);
-  const draft202012Schemas = new Ajv2020(schemaOptions);
+  const draft07Schemas = new Ajv(schemaOptions).addKeyword(AgentToolModelOutputJsonSchemaKeyword);
+  const draft202012Schemas = new Ajv2020(schemaOptions).addKeyword(AgentToolModelOutputJsonSchemaKeyword);
   const names = new Set<string>();
   for (const declaration of declarations) {
     if (!declaration.name.trim()) throw new Error(`MCP server ${server.name} returned a tool without a name.`);

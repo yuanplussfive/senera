@@ -18,6 +18,7 @@ export interface StepTrace {
   toolName?: string;
   toolOrigin?: AgentToolEventOrigin;
   callId?: string;
+  parentToolCallId?: string;
   batchId?: string;
   purpose?: string;
   status: "done" | "failed";
@@ -37,6 +38,8 @@ export interface StepTrace {
   toolErrorMessage?: string;
   errorMessage?: string;
   retryCode?: string;
+  /** Explicitly marks a UI-only terminal fallback when durable run data is unavailable. */
+  historyFallback?: "missing_reply";
 }
 
 const MAX_PREVIEW_CHARS = 240;

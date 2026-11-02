@@ -27,6 +27,7 @@ import type { AgentInteractionContext } from "../Interaction/AgentInteractionCon
 import type { AgentExplicitActivationSet } from "../Activation/AgentActivationTypes.js";
 
 export interface AgentSessionMessageRequest {
+  readonly agentId?: string;
   readonly sessionId: string;
   readonly requestId?: string;
   readonly modelProviderId?: string;
@@ -41,6 +42,8 @@ export interface AgentSessionMessageRequest {
   readonly preparation?: AgentTurnPreparationSnapshot;
   readonly systemPromptLayer?: AgentSystemPromptLayer;
   readonly allowedToolNames?: readonly string[];
+  /** A distinct turn with its own tool ceiling; never steer it into another policy. */
+  readonly executionScope?: "session" | "turn";
   readonly pinnedSkills?: readonly AgentPinnedSkillReference[];
   readonly thinkingLevel?: ModelThinkingLevel;
   readonly inheritProjectContext?: boolean;
@@ -49,8 +52,6 @@ export interface AgentSessionMessageRequest {
   /** Runtime surface/platform context visible only to the model wire prompt. */
   readonly interaction?: AgentInteractionContext;
   readonly admissionGuard?: () => boolean;
-  /** Internal recovery flag for a durable completion wake only. */
-  readonly reclaimRunningCommand?: boolean;
 }
 
 export type AgentSessionMessageAcceptanceKind = "accepted" | "queued" | "busy" | "missing" | "superseded";
@@ -61,6 +62,9 @@ export interface AgentSessionMessageAcceptance {
 }
 
 export interface AgentSessionMessageCoordinatorOptions {
+  readonly resolveInteraction?: (interaction: AgentInteractionContext | undefined) => AgentInteractionContext;
+  readonly resolveAgentId?: (id?: string) => string;
+  readonly agentModelProviderId?: (id: string) => string | undefined;
   readonly store: AgentSessionStore;
   readonly admissions: AgentSessionAdmissionCoordinator;
   readonly events: AgentSessionEventFactory;
@@ -75,8 +79,8 @@ export class AgentSessionMessageCoordinator {
   /**
    * Runs one message submission to its settled boundary and reports how it was
    * admitted. `queued` means the message joined the active run's turn (no
-   * terminal event will reference the request); `busy` means the submission was
-   * dropped because the session stayed unavailable across the enqueue retry.
+   * terminal event will reference the request). Without an explicit queue mode,
+   * `busy` means the caller must retain the message and retry.
    */
   async submit(request: AgentSessionMessageRequest): Promise<AgentSessionMessageAcceptance> {
     const acceptance = await this.accept(request);
@@ -92,10 +96,25 @@ export class AgentSessionMessageCoordinator {
     let completion: Promise<void> | undefined;
     let kind: AgentSessionMessageAcceptanceKind = "missing";
     await this.options.ready();
+    // Validate before opening a CreateIfMissing session. A delayed channel
+    // upload must not resurrect a session that was cleared while it was read.
+    if (request.admissionGuard && !request.admissionGuard()) return { kind: "superseded" };
+    if (this.options.resolveInteraction)
+      request = { ...request, interaction: this.options.resolveInteraction(request.interaction) };
     if (request.queueMode && request.activations?.explicit.length) {
       throw new Error("Explicit @ activations require a fresh turn and cannot be applied to a queued message.");
     }
     let lookup = this.options.store.get(request.sessionId);
+    const existingAgentId = lookup.kind === "found" ? lookup.session.metadata?.agentId : undefined;
+    const parent =
+      request.sessionOwnership?.type === "child_run"
+        ? this.options.store.get(request.sessionOwnership.parentSessionId)
+        : undefined;
+    const parentAgentId = parent?.kind === "found" ? parent.session.metadata?.agentId : undefined;
+    const agentId = this.options.resolveAgentId?.(existingAgentId ?? request.agentId ?? parentAgentId);
+    if (request.agentId && existingAgentId && request.agentId !== existingAgentId) {
+      throw new Error("A conversation cannot change its Agent. Start a new conversation instead.");
+    }
     let opened: ReturnType<AgentSessionStore["open"]> | undefined;
     if (lookup.kind === "missing" && request.disposition === AgentSessionMessageDispositions.CreateIfMissing) {
       opened = this.options.store.open(request.sessionId, request.sessionOwnership);
@@ -103,6 +122,10 @@ export class AgentSessionMessageCoordinator {
     }
 
     if (lookup.kind === "found") {
+      if (agentId && !lookup.session.metadata?.agentId) {
+        lookup.session.metadata = { ...lookup.session.metadata, agentId };
+        this.options.store.persistMetadata(lookup.session);
+      }
       this.applyRequestChannelMetadata(lookup.session, request.metadata);
     }
 
@@ -119,7 +142,10 @@ export class AgentSessionMessageCoordinator {
     await matchByKind(lookup, {
       missing: async ({ sessionId }) => {
         kind = "missing";
-        await emitAgentEvent(request.onEvent, this.options.events.notFound(sessionId, AgentSessionOperations.Message));
+        await emitAgentEvent(
+          request.onEvent,
+          this.options.events.notFound(sessionId, AgentSessionOperations.Message, request.requestId),
+        );
       },
       found: async ({ session }) => {
         await this.options.recoverHistory(session.id);
@@ -131,7 +157,7 @@ export class AgentSessionMessageCoordinator {
         await matchByKind(gate, {
           available: ({ current }) => {
             kind = "accepted";
-            completion = this.options.runs.runTurn(current, this.applySessionModelPreference(current, request));
+            completion = this.startTurn(current, request);
           },
           busy: async ({ current }) => {
             kind = "busy";
@@ -155,12 +181,15 @@ export class AgentSessionMessageCoordinator {
               const refreshed = this.options.runs.assertAvailable(current);
               if (refreshed.kind === "available") {
                 kind = "accepted";
-                completion = this.options.runs.runTurn(
-                  refreshed.current,
-                  this.applySessionModelPreference(refreshed.current, request),
-                );
+                completion = this.startTurn(refreshed.current, request);
                 return;
               }
+              // Cancellation/settlement can outlive the live Pi handle. Own
+              // this new input independently so stopping the old task cannot
+              // cancel a message received after it began shutting down.
+              await this.options.runs.deferMessage({ ...request, sessionId: current.id });
+              kind = "queued";
+              return;
             }
 
             await emitAgentEvent(
@@ -172,6 +201,15 @@ export class AgentSessionMessageCoordinator {
       },
     });
     return { kind, completion };
+  }
+
+  private startTurn(session: AgentSession, request: AgentSessionMessageRequest): Promise<void> {
+    const queued = request.requestId ? this.options.store.loadQueuedInput(session.id, request.requestId) : undefined;
+    if (queued) this.options.store.saveQueuedInput({ ...queued, parentRequestId: queued.requestId });
+    return this.options.runs.startTurn(session, {
+      ...this.applySessionModelPreference(session, request),
+      ...(queued ? { reuseUserEntryFromRequestId: queued.requestId } : {}),
+    });
   }
 
   private applyRequestChannelMetadata(session: AgentSession, metadata?: AgentConversationEntryMetadata): void {
@@ -196,8 +234,12 @@ export class AgentSessionMessageCoordinator {
       };
     }
     const preferred = session.metadata?.sessionModel?.modelProviderId;
-    return preferred
-      ? { ...request, modelProviderId: preferred, modelSelectionSource: "session_preference" }
+    if (preferred) return { ...request, modelProviderId: preferred, modelSelectionSource: "session_preference" };
+    const agentModel = session.metadata?.agentId
+      ? this.options.agentModelProviderId?.(session.metadata.agentId)
+      : undefined;
+    return agentModel
+      ? { ...request, modelProviderId: agentModel, modelSelectionSource: "agent" }
       : { ...request, modelSelectionSource: "default" };
   }
 }

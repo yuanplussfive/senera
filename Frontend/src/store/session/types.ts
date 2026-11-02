@@ -11,7 +11,6 @@ import type {
   ConversationEntryDto,
   ConversationEntryMetadata,
   EventEnvelope,
-  ExecutionSnapshotData,
   InteractionInputAction,
   InteractionInputContent,
   InteractionInputRequestedData,
@@ -35,6 +34,7 @@ import type {
   TodoSnapshotData,
   UploadAttachmentData,
   UserProfileData,
+  FeedbackRecordedData,
 } from "../../api/eventTypes";
 import type { ExecutionApprovalMode } from "../../api/executionApprovalMode";
 import type { MotionLevel } from "../../shared/motion/types";
@@ -56,6 +56,12 @@ export interface ChatMessage {
   requestId?: string;
   attachments?: UploadAttachmentData[];
   metadata?: ConversationEntryMetadata;
+  /** Transient transport state until the host confirms a queued user message. */
+  queueAdmission?: {
+    mode: NonNullable<ConversationEntryMetadata["queue"]>["mode"];
+    status: "pending" | "rejected";
+    message?: string;
+  };
   failure?: import("../../api/eventTypes").RunFailedData;
 }
 
@@ -148,6 +154,11 @@ export interface TimelineStep {
   toolPreview?: string;
   toolPresentation?: import("../../api/eventTypes").ToolResultPresentation;
   toolResult?: unknown;
+  /**
+   * A completed history request confirmed that this call did or did not retain
+   * a result event. This describes persistence, never an inferred outcome.
+   */
+  toolResultAvailability?: "available" | "unavailable";
   toolErrorMessage?: string;
   toolOutput?: TimelineToolOutput;
   toolProgress?: TimelineToolProgress;
@@ -155,7 +166,11 @@ export interface TimelineStep {
   retryAttempt?: number;
   retryCode?: string;
   errorMessage?: string;
+  /** A terminal placeholder used only when no durable process data exists. */
+  historyFallback?: "missing_reply";
   modelName?: string;
+  contextSnapshot?: import("../../../../Source/AgentSystem/Events/AgentModelContextSnapshot").AgentModelContextSnapshot;
+  modelUsage?: import("../../api/eventTypes").ModelUsageMetadata;
   promptChars?: number;
   promptLines?: number;
   promptTokenCount?: number;
@@ -197,8 +212,13 @@ export interface TimelineChildRunTodo {
 
 export interface TimelineChildRunState {
   id: string;
+  /** Latest state event, independent of the delegation's first timeline sequence. */
+  updatedSequence?: number;
   workItemId?: string;
   taskDigest?: string;
+  taskLabel?: string;
+  startedAt?: string;
+  completedAt?: string;
   status:
     | "queued"
     | "running"
@@ -261,7 +281,19 @@ export interface RunRecord {
   activities?: RunActivityRecord[];
   activeFlags?: Array<"waiting_for_approval" | "waiting_for_input">;
   input: string;
+  hostInput?: ConversationEntryMetadata["hostInput"];
+  /** Original attachments, kept separate from the user text and display summaries. */
+  inputAttachments?: UploadAttachmentData[];
   steps: TimelineStep[];
+  /** Committed host boundaries, independent from snapshot-derived content changes. */
+  contextCompactions?: Array<
+    import("../../api/eventTypes").SessionCompactedData & {
+      sequence: number;
+      timestamp: string;
+      step?: number;
+      scope?: TimelineStepScope;
+    }
+  >;
   /** model.delta 累积（原始 token 流，可能含 XML 包装） */
   streamingRaw: string;
   /** Native Pi reasoning blocks, kept separate from user-visible answer text. */
@@ -276,7 +308,7 @@ export interface RunRecord {
   xmlPreview: string;
   /** 后端实时解析出的用户可见文本目标 */
   visibleText: string;
-  /** 前端平滑消费 visibleText 后真正展示的文本，不影响 streamingRaw 准确性 */
+  /** 当前动画帧可直接展示的用户可见文本，不影响 streamingRaw 准确性 */
   displayText: string;
   /** 当前 visibleText 对应的助手消息；切换模型阶段时清除 */
   displayMessageId?: string;
@@ -312,7 +344,6 @@ export interface RunRecord {
     semanticCompatibleCount?: number;
     latencyMs?: number;
   };
-  execution?: ExecutionSnapshotData;
   todos?: TodoSnapshotData;
   recoverySource?: "history";
   recoveryModes?: Array<"retry" | "continue">;
@@ -434,6 +465,7 @@ export interface ApprovalRunRecord {
 }
 
 export interface SessionRecord {
+  agentId?: string;
   sessionId: string;
   title: string;
   status: "creating" | "ready" | "closed";
@@ -443,16 +475,31 @@ export interface SessionRecord {
   messageCount: number;
   messages: ChatMessage[];
   runs: RunRecord[];
+  historyWindow?: import("../../../../Source/AgentSystem/Session/AgentSessionHistoryWindow").AgentSessionHistoryWindow;
+  pendingHistoryWindow?: {
+    window: import("../../../../Source/AgentSystem/Session/AgentSessionHistoryWindow").AgentSessionHistoryWindow;
+    previousRequestIds: string[];
+  };
+  historyInvalidated?: boolean;
   /** Latest runtime status retained outside the bounded diagnostic journal. */
   runtimeSnapshot?: SessionRuntimeSnapshot;
   activeRequestId?: string;
   channel?: SessionChannelMetadata;
   effectiveModel?: SessionSnapshotData["effectiveModel"];
+  /** Server-reported selection, kept separate from pending local model edits. */
+  modelProviderId?: SessionSnapshotData["modelProviderId"];
   modelPreference?: SessionSnapshotData["modelPreference"];
   forkOrigin?: {
     sourceSessionId: string;
     throughRequestId: string;
   };
+  /**
+   * The user's own ratings of finished turns, keyed by request id. Retraction
+   * removes the entry, so an absent key means "not rated".
+   */
+  messageFeedback?: Record<string, FeedbackRecordedData>;
+  /** Retractions retain their revision so an older history page cannot revive them. */
+  messageFeedbackRevisions?: Record<string, { updatedAt: number; sequence: number }>;
 }
 
 export type HistoryReplayEntry = {
@@ -463,6 +510,8 @@ export type HistoryReplayEntry = {
 export type SessionOrderPlacement = "before" | "after";
 
 export interface StoreState {
+  agentDirectory: import("../../../../Source/AgentSystem/Core/AgentDirectoryContract").AgentDirectorySnapshot | null;
+  selectedAgentId: string | null;
   sessions: Record<string, SessionRecord>;
   /** Latest runtime snapshots retained across frontend restarts. */
   runtimeSnapshotsBySession: Record<string, SessionRuntimeSnapshot>;
@@ -472,7 +521,11 @@ export interface StoreState {
   rightPanelCollapsed: boolean;
   defaultSidebarCollapsed: boolean;
   defaultRightPanelCollapsed: boolean;
-  workflowDockWidth: number;
+  /** Shared right-hand tool width, relative to the area beside the session sidebar. */
+  workflowDockWidthRatio: number;
+  terminalPanelOpen: boolean;
+  terminalPanelMaximized: boolean;
+  terminalPanelHeightRatio: number;
   motionLevel: MotionLevel;
   /** 每个 session 当前在右栏查看的 run requestId；不存在则用最新 run */
   viewedRunIdBySession: Record<string, string>;
@@ -505,7 +558,10 @@ export interface StoreState {
   historyHydration: Record<string, HistoryHydrationProgress>;
   /** 当前前端生命周期内已经投影的服务端事件，用于 live/replay 全局幂等。 */
   processedEventIds: Record<string, string | null>;
+  processedEventRequestIds?: Record<string, string>;
   processedEventIdOrder: string[];
+  /** Completed-run diagnostic detail is loaded only after its workflow is opened. */
+  runHistoryDetailStates: Record<string, Record<string, import("./runHistoryDetailState").RunHistoryDetailLoadState>>;
   /** 已确认不在后端存在、仅本地残留的 sessionId */
   missingOnServerIds: Record<string, boolean>;
   /** 本地刚创建、尚未被 session.list 快照确认的 sessionId */
@@ -517,14 +573,15 @@ export interface StoreState {
   modelProviders: ModelProviderListItem[];
   providerModelCatalogs: Record<string, ProviderModelsSnapshotData>;
   providerModelErrors: Record<string, ProviderModelsFailedData & { updatedAt: string }>;
-  /** Current active conversation's model. Kept for existing command/UI contracts. */
+  /** Resolved composer model; explicit overrides live in the per-session map below. */
   selectedModelProviderId: string | null;
-  /** Authoritative default model from model.list; used when creating a new conversation. */
+  /** Authoritative default model from model.list; inherited by conversations without their own choice. */
   defaultModelProviderId: string | null;
-  /** Local per-conversation selections. The backend still receives the chosen id per request. */
+  /** 每个对话显式选择的模型；服务端上报的运行历史模型只用于展示，不写入这里。 */
   selectedModelProviderIdsBySession: Record<string, string>;
-  /** Current conversation's Pi thinking level; validated against the selected model metadata. */
+  /** 当前对话的推理等级；随所选模型解析，未显式选择时使用该模型的默认等级。 */
   selectedThinkingLevel: ModelThinkingLevel | null;
+  /** 每个对话显式选择的推理等级；未显式选择时不写入，切换模型后重新解析。 */
   selectedThinkingLevelsBySession: Record<string, ModelThinkingLevel>;
   executionApprovalMode: ExecutionApprovalMode;
   configSnapshot: ConfigSnapshotData | null;
@@ -551,7 +608,10 @@ export interface StoreState {
   setRightPanelCollapsed: (collapsed: boolean) => void;
   setDefaultSidebarCollapsed: (collapsed: boolean) => void;
   setDefaultRightPanelCollapsed: (collapsed: boolean) => void;
-  setWorkflowDockWidth: (width: number) => void;
+  setWorkflowDockWidthRatio: (ratio: number) => void;
+  setTerminalPanelOpen: (open: boolean) => void;
+  setTerminalPanelMaximized: (maximized: boolean) => void;
+  setTerminalPanelHeightRatio: (ratio: number) => void;
   setMotionLevel: (level: MotionLevel) => void;
   markRunCancelling: (sessionId: string, requestId: string) => void;
   setViewedRun: (sessionId: string, requestId: string | undefined) => void;
@@ -572,16 +632,22 @@ export interface StoreState {
     requestId: string,
     input: string,
     attachments?: UploadAttachmentData[],
-    options?: { createRun?: boolean; metadata?: ConversationEntryMetadata },
+    options?: {
+      createRun?: boolean;
+      metadata?: ConversationEntryMetadata;
+      queueAdmission?: ChatMessage["queueAdmission"];
+    },
   ) => void;
   truncateFromRequest: (sessionId: string, fromRequestId: string) => void;
-  advanceStreamingDisplay: (sessionId: string, requestId: string) => boolean;
   ingest: (env: EventEnvelope) => void;
   ingestMany: (events: readonly EventEnvelope[]) => void;
   requestSessionDeletions: (sessionIds: readonly string[]) => void;
   clearAllSessions: (sessionIds?: string[]) => void;
   markHistoryLoading: (sessionId: string) => void;
   markHistoryLoadFailed: (sessionId: string) => void;
+  beginRunHistoryDetailLoad: (sessionId: string, requestId: string) => boolean;
+  abandonRunHistoryDetailLoad: (sessionId: string, requestId: string) => void;
+  abandonPendingRunHistoryDetailLoads: () => void;
   /** 投影一小段待补全历史，返回是否还有未处理工作。 */
   advanceHistoryHydration: (sessionId: string) => boolean;
   selectModelProvider: (id: string) => void;

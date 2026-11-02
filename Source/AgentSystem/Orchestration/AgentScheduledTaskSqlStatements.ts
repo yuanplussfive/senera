@@ -7,6 +7,9 @@ export interface AgentScheduledTaskRow {
   readonly user_id: string | null;
   readonly workspace_id: string | null;
   readonly session_id: string;
+  readonly time_zone: string;
+  readonly target_mode: string;
+  readonly target_session_id: string | null;
   readonly source_request_id: string | null;
   readonly execution_mode: string;
   readonly name: string | null;
@@ -36,6 +39,7 @@ export interface AgentScheduledTaskRow {
 
 export interface AgentScheduledTaskRunRow {
   readonly id: string;
+  readonly instruction_prompt: string | null;
   readonly task_id: string;
   readonly scheduled_for: string;
   readonly execution_status: string;
@@ -105,12 +109,12 @@ export interface AgentScheduledTaskSqlStatements {
   readonly selectToolPolicy: Database.Statement<[string], { allowed_tool_names_json: string }>;
 }
 
-const TaskColumns = agentSql`id, tenant_id, user_id, workspace_id, session_id, source_request_id, execution_mode, name, description, prompt,
+const TaskColumns = agentSql`id, tenant_id, user_id, workspace_id, session_id, source_request_id, execution_mode, time_zone, target_mode, target_session_id, name, description, prompt,
   task_type, schedule_expression, interval_seconds, enabled, model_provider, model_id, thinking_level,
   auth_profile_id, reasoning, tool_policy_profile, workspace_dir, created_at, updated_at, last_run_at,
   next_run_at, run_count, timeout_ms, last_status, last_error, revision`;
 
-const RunColumns = agentSql`id, task_id, scheduled_for, execution_status, delivery_status, execution_session_id, deliver_at, source_request_id,
+const RunColumns = agentSql`id, instruction_prompt, task_id, scheduled_for, execution_status, delivery_status, execution_session_id, deliver_at, source_request_id,
   claim_id, claim_until, attempt, result, error, delivery_claim_id, delivery_claim_until, delivery_attempt,
   delivery_error, created_at, started_at, completed_at, delivered_at, updated_at`;
 
@@ -133,19 +137,19 @@ export function prepareAgentScheduledTaskSqlStatements(database: Database.Databa
       `SELECT ${TaskColumns} FROM scheduled_tasks WHERE id = ? AND tenant_id = ? AND user_id = ?`,
     ),
     insert: database.prepare(agentSql`INSERT INTO scheduled_tasks (
-      id, tenant_id, user_id, workspace_id, session_id, source_request_id, execution_mode, name, description, prompt, task_type,
+      id, tenant_id, user_id, workspace_id, session_id, source_request_id, execution_mode, time_zone, target_mode, target_session_id, name, description, prompt, task_type,
       schedule_expression, interval_seconds, enabled, model_provider, model_id, thinking_level,
       auth_profile_id, reasoning, tool_policy_profile, workspace_dir, created_at, updated_at,
       last_run_at, next_run_at, run_count, timeout_ms, last_status, last_error
     ) VALUES (
-      @id, @tenant_id, @user_id, @workspace_id, @session_id, @source_request_id, @execution_mode, @name, @description, @prompt, @task_type,
+      @id, @tenant_id, @user_id, @workspace_id, @session_id, @source_request_id, @execution_mode, @time_zone, @target_mode, @target_session_id, @name, @description, @prompt, @task_type,
       @schedule_expression, @interval_seconds, @enabled, @model_provider, @model_id, @thinking_level,
       @auth_profile_id, @reasoning, @tool_policy_profile, @workspace_dir, @created_at, @updated_at,
       @last_run_at, @next_run_at, @run_count, @timeout_ms, @last_status, @last_error
     )`),
     update: database.prepare(agentSql`UPDATE scheduled_tasks SET
       tenant_id = @tenant_id, user_id = @user_id, workspace_id = @workspace_id, session_id = @session_id,
-      source_request_id = @source_request_id, execution_mode = @execution_mode, name = @name, description = @description, prompt = @prompt,
+      source_request_id = @source_request_id, execution_mode = @execution_mode, time_zone = @time_zone, target_mode = @target_mode, target_session_id = @target_session_id, name = @name, description = @description, prompt = @prompt,
       task_type = @task_type,
       schedule_expression = @schedule_expression, interval_seconds = @interval_seconds, enabled = @enabled,
       model_provider = @model_provider, model_id = @model_id, thinking_level = @thinking_level,
@@ -160,22 +164,22 @@ export function prepareAgentScheduledTaskSqlStatements(database: Database.Databa
       agentSql`DELETE FROM scheduled_tasks WHERE id = ? AND tenant_id = ? AND user_id = ?`,
     ),
     upsertRun: database.prepare(agentSql`INSERT INTO scheduled_task_runs (
-      id, task_id, scheduled_for, execution_status, delivery_status, execution_session_id, deliver_at, source_request_id, claim_id,
+      id, instruction_prompt, task_id, scheduled_for, execution_status, delivery_status, execution_session_id, deliver_at, source_request_id, claim_id,
       claim_until, attempt, result, error, delivery_claim_id, delivery_claim_until, delivery_attempt,
       delivery_error, created_at, started_at, completed_at, delivered_at, updated_at
     ) VALUES (
-      @id, @task_id, @scheduled_for, @execution_status, @delivery_status, @execution_session_id, @deliver_at, @source_request_id, @claim_id,
+      @id, @instruction_prompt, @task_id, @scheduled_for, @execution_status, @delivery_status, @execution_session_id, @deliver_at, @source_request_id, @claim_id,
       @claim_until, @attempt, @result, @error, @delivery_claim_id, @delivery_claim_until, @delivery_attempt,
       @delivery_error, @created_at, @started_at, @completed_at, @delivered_at, @updated_at
     ) ON CONFLICT (id) DO UPDATE SET
       execution_status = excluded.execution_status, result = excluded.result, error = excluded.error,
       completed_at = excluded.completed_at, updated_at = excluded.updated_at`),
     insertRun: database.prepare(agentSql`INSERT INTO scheduled_task_runs (
-      id, task_id, scheduled_for, execution_status, delivery_status, execution_session_id, deliver_at, source_request_id, claim_id,
+      id, instruction_prompt, task_id, scheduled_for, execution_status, delivery_status, execution_session_id, deliver_at, source_request_id, claim_id,
       claim_until, attempt, result, error, delivery_claim_id, delivery_claim_until, delivery_attempt,
       delivery_error, created_at, started_at, completed_at, delivered_at, updated_at
     ) VALUES (
-      @id, @task_id, @scheduled_for, @execution_status, @delivery_status, @execution_session_id, @deliver_at, @source_request_id, @claim_id,
+      @id, @instruction_prompt, @task_id, @scheduled_for, @execution_status, @delivery_status, @execution_session_id, @deliver_at, @source_request_id, @claim_id,
       @claim_until, @attempt, @result, @error, @delivery_claim_id, @delivery_claim_until, @delivery_attempt,
       @delivery_error, @created_at, @started_at, @completed_at, @delivered_at, @updated_at
     )`),

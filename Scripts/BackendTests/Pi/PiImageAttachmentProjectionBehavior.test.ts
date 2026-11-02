@@ -1,31 +1,21 @@
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { projectAgentPiImageAttachments } from "../../../Source/AgentSystem/Pi/AgentPiImageAttachmentProjector.js";
 import type { AgentPiModelProjection } from "../../../Source/AgentSystem/Pi/AgentPiTypes.js";
-import type {
-  AgentResolvedUpload,
-  AgentUploadAttachment,
-  AgentUploadManifest,
-} from "../../../Source/AgentSystem/Uploads/AgentUploadTypes.js";
-
-const temporaryRoots: string[] = [];
-
-afterEach(async () => {
-  await Promise.all(temporaryRoots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
-});
+import type { AgentUploadAttachment } from "../../../Source/AgentSystem/Uploads/AgentUploadTypes.js";
+import type { AgentResolvedUploadImage } from "../../../Source/AgentSystem/Uploads/AgentUploadStore.js";
 
 describe("Pi image attachment projection", () => {
-  test("projects an uploaded image as native ImageContent while retaining the resource lookup", async () => {
-    const fixture = await createImageFixture();
-    const resolve = vi.fn(async () => fixture.upload);
+  test("projects an uploaded image through the shared model-image boundary", async () => {
+    const fixture = createImageFixture();
+    const resolveImageForModel = vi.fn(async () => fixture.image);
 
     await expect(
       projectAgentPiImageAttachments({
         attachments: [fixture.attachment],
         model: nativeVisionModel(),
-        uploadStore: { resolve },
+        uploadStore: { resolveImageForModel },
+        imageNormalization: { normalize: vi.fn() },
+        imageInputCapabilities: imageInputCapabilities(),
       }),
     ).resolves.toEqual([
       {
@@ -34,63 +24,108 @@ describe("Pi image attachment projection", () => {
         mimeType: "image/png",
       },
     ]);
-    expect(resolve).toHaveBeenCalledWith(fixture.attachment.resourceUri);
+    expect(resolveImageForModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resourceUri: fixture.attachment.resourceUri,
+        target: imageInputCapabilities(),
+      }),
+    );
   });
 
   test("does not read resources for a text-only model", async () => {
-    const resolve = vi.fn();
+    const resolveImageForModel = vi.fn();
 
     await expect(
       projectAgentPiImageAttachments({
         attachments: [imageAttachment()],
         model: textOnlyModel(),
-        uploadStore: { resolve },
+        uploadStore: { resolveImageForModel },
       }),
     ).resolves.toEqual([]);
-    expect(resolve).not.toHaveBeenCalled();
+    expect(resolveImageForModel).not.toHaveBeenCalled();
+  });
+
+  test("keeps vector resources on the file-reference path", async () => {
+    const resolveImageForModel = vi.fn();
+
+    await expect(
+      projectAgentPiImageAttachments({
+        attachments: [{ ...imageAttachment(), name: "logo.svg", mime: "image/svg+xml" }],
+        model: nativeVisionModel(),
+        uploadStore: { resolveImageForModel },
+        imageNormalization: { normalize: vi.fn() },
+        imageInputCapabilities: imageInputCapabilities(),
+      }),
+    ).resolves.toEqual([]);
+    expect(resolveImageForModel).not.toHaveBeenCalled();
+  });
+
+  test("normalizes a non-browser raster source before native vision projection", async () => {
+    const fixture = createImageFixture();
+    const resolveImageForModel = vi.fn(async () => fixture.image);
+
+    await expect(
+      projectAgentPiImageAttachments({
+        attachments: [{ ...fixture.attachment, name: "capture.heic", mime: "image/heic" }],
+        model: nativeVisionModel(),
+        uploadStore: { resolveImageForModel },
+        imageNormalization: { normalize: vi.fn() },
+        imageInputCapabilities: imageInputCapabilities(),
+      }),
+    ).resolves.toEqual([
+      {
+        type: "image",
+        data: fixture.bytes.toString("base64"),
+        mimeType: "image/png",
+      },
+    ]);
+    expect(resolveImageForModel).toHaveBeenCalledWith(
+      expect.objectContaining({ resourceUri: fixture.attachment.resourceUri }),
+    );
   });
 
   test("resolves only the current turn image because Pi owns native history", async () => {
-    const fixture = await createImageFixture();
-    const resolve = vi.fn(async () => fixture.upload);
+    const fixture = createImageFixture();
+    const resolveImageForModel = vi.fn(async () => fixture.image);
 
     const images = await projectAgentPiImageAttachments({
       attachments: [fixture.attachment],
       model: nativeVisionModel(),
-      uploadStore: { resolve },
+      uploadStore: { resolveImageForModel },
+      imageNormalization: { normalize: vi.fn() },
+      imageInputCapabilities: imageInputCapabilities(),
     });
 
     expect(images).toEqual([{ type: "image", data: fixture.bytes.toString("base64"), mimeType: "image/png" }]);
-    expect(resolve).toHaveBeenCalledTimes(1);
+    expect(resolveImageForModel).toHaveBeenCalledTimes(1);
   });
 });
 
-async function createImageFixture(): Promise<{
+function createImageFixture(): {
   bytes: Buffer;
   attachment: AgentUploadAttachment;
-  upload: AgentResolvedUpload;
-}> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "senera-pi-image-"));
-  temporaryRoots.push(root);
+  image: AgentResolvedUploadImage;
+} {
   const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-  const filePath = path.join(root, "image.png");
-  await fs.writeFile(filePath, bytes);
   const attachment = imageAttachment();
-  const manifest: AgentUploadManifest = {
-    resourceId: "upl_image_fixture",
-    resourceUri: attachment.resourceUri,
-    name: attachment.name,
-    mime: "image/png",
-    size: bytes.byteLength,
-    sha256: "a".repeat(64),
-    createdAt: "2026-01-01T00:00:00.000Z",
-    storage: { fileName: "original" },
-  };
   return {
     bytes,
     attachment,
-    upload: { manifest, filePath, uploadDir: root },
+    image: {
+      resourceUri: attachment.resourceUri,
+      name: attachment.name,
+      mime: attachment.mime,
+      size: bytes.byteLength,
+      sha256: "a".repeat(64),
+      animated: false,
+      bytes,
+      derived: false,
+    },
   };
+}
+
+function imageInputCapabilities() {
+  return { supportedMimeTypes: ["image/png"] };
 }
 
 function imageAttachment(): AgentUploadAttachment {

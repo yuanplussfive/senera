@@ -8,8 +8,6 @@ import {
   type ChildRunSnapshotData,
   type ChildRunStatus,
   type ChildRunWrappingUpData,
-  type ExecutionResourceOutputData,
-  type ExecutionResourceStateData,
   type AssistantMessageCreatedData,
   type EventEnvelope,
   type ModelCompletedData,
@@ -19,23 +17,16 @@ import {
   type PromptSummaryData,
   type RunFailedData,
   type RunCancellationProgressData,
-  type ToolCallResultDetailData,
-  type ToolCallCompletedData,
-  type ToolCallFailedData,
-  type ToolCallOutputData,
-  type ToolCallProgressData,
-  type ToolCallStartedData,
-  type ToolCallsPlannedData,
 } from "../../api/eventTypes";
 import { readTodoSnapshotEventData } from "../../api/continuityExecutionEventValidation";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { resolveBackendMessage } from "../../i18n/backendMessage";
-import { summarizeToolPlan, toolPlanTitle, truncate } from "./sessionPresentation";
-import { currentRun, ensureSession, upsertStep } from "./sessionProjectorCore";
+import { truncate } from "./sessionPresentation";
+import { currentRun, ensureSession, upsertStep, upsertStartedStep } from "./sessionProjectorCore";
 import { touchRun } from "./sessionRunProjection";
-import { timelineScopeFromEvent, toolBatchFromEvent } from "./timelineProjection";
-import { mergeToolResultPresentation } from "./toolResultPresentation";
-import { projectToolOutput, projectToolProgress } from "./toolRuntimeProjection";
+import { findOrCreateModelThinkingBlock } from "./modelThinkingBlocks";
+import { timelineScopeFromEvent, scopedStepId, scopedStepTitle, scopedStepDescription } from "./timelineProjection";
+import { projectToolCallEvent } from "./toolCallProjection";
 import type {
   RunRecord,
   StoreState,
@@ -67,6 +58,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
   if (!run) return true;
 
   const scope = timelineScopeFromEvent(env);
+  if (projectToolCallEvent(run, env)) return true;
 
   switch (env.kind) {
     case EventKinds.TodoListWritten: {
@@ -209,7 +201,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
     case EventKinds.ModelStarted: {
       const data = env.data as ModelStartedData;
       const modelName = data.provider?.model ?? data.model;
-      upsertStep(run, {
+      upsertStartedStep(run, {
         id: scopedStepId(env, "model", data.messageIndex ?? "request"),
         kind: "model",
         agentStep: env.step,
@@ -220,6 +212,7 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
         status: "running",
         startedAt: env.timestamp,
         modelName,
+        contextSnapshot: data.contextSnapshot,
         scope,
       });
       return true;
@@ -229,7 +222,9 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
       const data = env.data as ModelCompletedData;
       const step = run.steps.find((entry) => entry.id === scopedStepId(env, "model", data.messageIndex ?? "request"));
       if (step) {
-        step.status = "done";
+        step.status = data.outcome === "failed" ? "failed" : data.outcome === "cancelled" ? "cancelled" : "done";
+        step.modelUsage = data.usage;
+        step.errorMessage = data.errorMessage;
         step.endedAt = env.timestamp;
         step.completedSequence = env.sequence;
         touchRun(run);
@@ -245,192 +240,6 @@ export function applyScopedRunEvent(state: StoreState, env: EventEnvelope): bool
     case EventKinds.ModelThinkingCompleted: {
       if (env.scope?.role === "childAgent") {
         projectChildRunThinking(run, env, env.data as ModelThinkingCompletedData);
-      }
-      return true;
-    }
-    case EventKinds.ToolCallsPlanned: {
-      const data = env.data as ToolCallsPlannedData;
-      const toolBatch = toolBatchFromEvent(env, undefined, data.toolCount);
-      upsertStep(run, {
-        id: scopedStepId(env, "tool-plan", toolBatch.id),
-        kind: "tool",
-        agentStep: env.step,
-        modelMessageIndex: data.modelMessageIndex,
-        eventSequence: env.sequence,
-        title: scopedStepTitle(env, toolPlanTitle(data)),
-        description: scopedStepDescription(env, summarizeToolPlan(data)),
-        status: "done",
-        startedAt: env.timestamp,
-        endedAt: env.timestamp,
-        toolBatch,
-        scope,
-      });
-      for (const [index, call] of (data.calls ?? []).entries()) {
-        upsertStep(run, {
-          id: scopedStepId(env, "tool", call.callId),
-          kind: "tool",
-          agentStep: env.step,
-          modelMessageIndex: data.modelMessageIndex,
-          modelContentIndex: call.modelContentIndex,
-          eventSequence: env.sequence,
-          title: scopedStepTitle(env, frontendMessage("workflow.projection.toolCall", { toolName: call.toolName })),
-          status: "pending",
-          startedAt: env.timestamp,
-          toolName: call.toolName,
-          callId: call.callId,
-          purpose: call.purpose,
-          ...(call.origin ? { toolOrigin: call.origin } : {}),
-          toolBatch: {
-            ...toolBatch,
-            index,
-            size: data.toolCount,
-          },
-          scope,
-        });
-      }
-      return true;
-    }
-
-    case EventKinds.ToolCallStarted: {
-      const data = env.data as ToolCallStartedData;
-      upsertStep(run, {
-        id: scopedStepId(env, "tool", data.callId),
-        kind: "tool",
-        agentStep: env.step,
-        modelMessageIndex: data.modelMessageIndex,
-        modelContentIndex: data.modelContentIndex,
-        eventSequence: env.sequence,
-        startedSequence: env.sequence,
-        title: scopedStepTitle(env, frontendMessage("workflow.projection.toolCall", { toolName: data.toolName })),
-        status: "running",
-        startedAt: env.timestamp,
-        toolName: data.toolName,
-        callId: data.callId,
-        ...(data.purpose ? { purpose: data.purpose } : {}),
-        toolBatch: toolBatchFromEvent(env, data),
-        ...(data.origin ? { toolOrigin: data.origin } : {}),
-        ...(data.arguments === undefined ? {} : { toolArgs: data.arguments }),
-        scope,
-      });
-      return true;
-    }
-
-    case EventKinds.ToolCallOutput: {
-      const data = env.data as ToolCallOutputData;
-      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "tool", data.callId));
-      if (step) {
-        projectToolOutput(step, data);
-        touchRun(run);
-      }
-      return true;
-    }
-
-    case EventKinds.ToolCallProgress: {
-      const data = env.data as ToolCallProgressData;
-      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "tool", data.callId));
-      if (step) {
-        projectToolProgress(step, data);
-        touchRun(run);
-      }
-      return true;
-    }
-
-    case EventKinds.ExecutionResourceOutput: {
-      const data = env.data as ExecutionResourceOutputData;
-      if (!data.toolCallId) return true;
-      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "tool", data.toolCallId));
-      if (step) {
-        projectToolOutput(step, {
-          toolName: data.toolName ?? step.toolName ?? "ExecutionResource",
-          callId: data.toolCallId,
-          stream: data.stream,
-          outputSequence: data.cursor,
-          text: data.text,
-          byteLength: data.byteLength,
-          totalBytes: data.totalBytes,
-          resourceId: data.resourceId,
-        });
-        touchRun(run);
-      }
-      return true;
-    }
-
-    case EventKinds.ExecutionResourceState: {
-      const data = env.data as ExecutionResourceStateData;
-      if (!data.toolCallId) return true;
-      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "tool", data.toolCallId));
-      if (step) {
-        projectToolProgress(step, {
-          toolName: data.toolName ?? step.toolName ?? "ExecutionResource",
-          callId: data.toolCallId,
-          progressSequence: data.cursor,
-          message: data.reason ? `${data.state}: ${data.reason}` : data.state,
-          resourceId: data.resourceId,
-        });
-        touchRun(run);
-      }
-      return true;
-    }
-
-    case EventKinds.ToolCallCompleted: {
-      const data = env.data as ToolCallCompletedData;
-      const step = run.steps.find((entry) => entry.id === scopedStepId(env, "tool", data.callId));
-      if (step) {
-        step.status = "done";
-        step.toolOrigin = data.origin ?? step.toolOrigin;
-        step.endedAt = env.timestamp;
-        if (data.purpose) step.purpose = data.purpose;
-        step.toolPresentation = mergeToolResultPresentation(step.toolPresentation, data.presentation);
-        step.toolPreview = step.toolPresentation?.headline;
-        touchRun(run);
-      }
-      return true;
-    }
-
-    case EventKinds.ToolCallFailed: {
-      const data = env.data as ToolCallFailedData;
-      const message = resolveBackendMessage(data) ?? data.message;
-      const id = scopedStepId(env, "tool", data.callId);
-      const step = run.steps.find((entry) => entry.id === id);
-      if (step) {
-        step.status = "failed";
-        step.toolOrigin = data.origin ?? step.toolOrigin;
-        step.endedAt = env.timestamp;
-        if (data.purpose) step.purpose = data.purpose;
-        step.toolErrorMessage = message;
-        touchRun(run);
-      } else {
-        upsertStep(run, {
-          id,
-          kind: "tool",
-          title: scopedStepTitle(
-            env,
-            frontendMessage("workflow.projection.toolCallFailed", { toolName: data.toolName }),
-          ),
-          status: "failed",
-          startedAt: env.timestamp,
-          endedAt: env.timestamp,
-          toolName: data.toolName,
-          toolOrigin: data.origin,
-          callId: data.callId,
-          ...(data.purpose ? { purpose: data.purpose } : {}),
-          toolBatch: toolBatchFromEvent(env, data),
-          toolErrorMessage: message,
-          scope,
-        });
-      }
-      return true;
-    }
-
-    case EventKinds.ToolCallResultDetail: {
-      const data = env.data as ToolCallResultDetailData;
-      const step = run.steps.find((item) => item.id === scopedStepId(env, "tool", data.callId));
-      if (step) {
-        step.toolResult = data.value;
-        step.toolOrigin = data.origin ?? step.toolOrigin;
-        step.toolPresentation = mergeToolResultPresentation(step.toolPresentation, data.presentation);
-        step.toolPreview = step.toolPresentation?.headline ?? step.toolPreview;
-        touchRun(run);
       }
       return true;
     }
@@ -541,21 +350,6 @@ function projectTodoItems(
   return projected.length > 0 ? projected : undefined;
 }
 
-function scopedStepId(env: EventEnvelope, slot: string, detail?: string | number): string {
-  return [
-    env.scope?.workflowName,
-    env.scope?.role,
-    env.scope?.jobId,
-    env.scope?.childRunId,
-    env.requestId,
-    env.step ?? 0,
-    slot,
-    detail,
-  ]
-    .filter((value) => value !== undefined && value !== "")
-    .join(":");
-}
-
 function projectChildRunLifecycle(
   run: RunRecord,
   env: EventEnvelope,
@@ -564,9 +358,13 @@ function projectChildRunLifecycle(
 ): void {
   updateChildRunStep(run, env, data, scope);
   const step = run.steps.find((entry) => entry.id === childRunStepId(data.childRunId));
-  if (step && data.error) {
-    step.description = data.error;
+  if (step && step.childRun?.updatedSequence === env.sequence) {
     step.errorMessage = data.error;
+    if (data.error) step.description = data.error;
+    if (isTerminalChildRunStatus(data.status)) {
+      step.endedAt = env.timestamp;
+      step.completedSequence = env.sequence;
+    }
     touchRun(run);
   }
 }
@@ -574,22 +372,43 @@ function projectChildRunLifecycle(
 function updateChildRunStep(
   run: RunRecord,
   env: EventEnvelope,
-  data: { childRunId: string; agentName: string; status: ChildRunStatus; workItemId?: string; taskDigest?: string },
+  data: Pick<
+    ChildRunEventIdentityData,
+    "childRunId" | "agentName" | "status" | "workItemId" | "taskDigest" | "taskLabel" | "startedAt" | "completedAt"
+  >,
   scope: TimelineStep["scope"],
   statePatch: Partial<TimelineChildRunState> = {},
 ): void {
   const id = childRunStepId(data.childRunId);
   const current = run.steps.find((entry) => entry.id === id);
-  const childRun: TimelineChildRunState = {
-    ...current?.childRun,
-    messages: current?.childRun?.messages ? [...current.childRun.messages] : [],
+  const previous = current?.childRun;
+  const updatedSequence = previous?.updatedSequence ?? current?.eventSequence;
+  const older = updatedSequence !== undefined && env.sequence < updatedSequence;
+  const preserveStatus =
+    previous &&
+    (older ||
+      (isTerminalChildRunStatus(previous.status) &&
+        !isTerminalChildRunStatus(data.status) &&
+        env.kind !== EventKinds.ChildRunResumed));
+  const status = preserveStatus ? previous.status : data.status;
+  const patch: Partial<TimelineChildRunState> = {
     ...statePatch,
-    id: data.childRunId,
     ...(data.workItemId ? { workItemId: data.workItemId } : {}),
     ...(data.taskDigest ? { taskDigest: data.taskDigest } : {}),
-    status: data.status,
+    ...(data.taskLabel ? { taskLabel: data.taskLabel } : {}),
+    ...(data.startedAt ? { startedAt: data.startedAt } : {}),
+    ...(data.completedAt ? { completedAt: data.completedAt } : {}),
   };
-  const terminal = isTerminalChildRunStatus(data.status);
+  const childRun: TimelineChildRunState = {
+    ...(older ? { ...patch, ...previous } : { ...previous, ...patch }),
+    messages: current?.childRun?.messages ? [...current.childRun.messages] : [],
+    id: data.childRunId,
+    updatedSequence: Math.max(updatedSequence ?? env.sequence, env.sequence),
+    status,
+  };
+  const terminal = isTerminalChildRunStatus(status);
+  childRun.startedAt ??= current?.startedAt ?? env.timestamp;
+  childRun.completedAt = terminal ? (childRun.completedAt ?? current?.endedAt ?? env.timestamp) : undefined;
   const stepScope = mergeChildRunStepScope(current?.scope, scope);
   upsertStep(run, {
     id,
@@ -597,14 +416,14 @@ function updateChildRunStep(
     agentStep: scope?.parentAgentStep,
     modelMessageIndex: scope?.parentModelMessageIndex,
     modelContentIndex: scope?.parentModelContentIndex,
-    title: childRunStatusTitle(data.status),
+    title: childRunStatusTitle(status),
     description: childRunActivityDescription(childRun),
-    status: childRunTimelineStatus(data.status),
-    startedAt: current?.startedAt ?? env.timestamp,
-    eventSequence: env.sequence,
-    startedSequence: current?.startedSequence ?? env.sequence,
-    ...(terminal ? { endedAt: env.timestamp } : {}),
-    ...(terminal ? { completedSequence: env.sequence } : {}),
+    status: childRunTimelineStatus(status),
+    startedAt: current && Date.parse(current.startedAt) < Date.parse(env.timestamp) ? current.startedAt : env.timestamp,
+    eventSequence: Math.min(current?.eventSequence ?? env.sequence, env.sequence),
+    startedSequence: Math.min(current?.startedSequence ?? env.sequence, env.sequence),
+    endedAt: terminal ? (current?.endedAt ?? env.timestamp) : undefined,
+    completedSequence: terminal ? (current?.completedSequence ?? env.sequence) : undefined,
     scope: stepScope,
     childRun,
   });
@@ -704,20 +523,12 @@ function projectChildRunThinking(
 
   const childRun = step.childRun;
   const blocks = (childRun.thinkingBlocks ??= []);
-  const id = `step:${env.step ?? 0}:message:${data.messageIndex}:content:${data.contentIndex}`;
-  let block = blocks.find((entry) => entry.id === id);
-  if (!block) {
-    block = {
-      id,
-      step: env.step ?? 0,
-      messageIndex: data.messageIndex,
-      contentIndex: data.contentIndex,
-      eventSequence: env.sequence,
-      content: "",
-      status: "streaming",
-    };
-    blocks.push(block);
-  }
+  const block = findOrCreateModelThinkingBlock(blocks, {
+    step: env.step ?? 0,
+    messageIndex: data.messageIndex,
+    contentIndex: data.contentIndex,
+    eventSequence: env.sequence,
+  });
 
   if ("delta" in data) {
     block.content += data.delta;
@@ -750,7 +561,7 @@ function registerChildSessionRelation(state: StoreState, env: EventEnvelope): vo
   hideChildSessionFromTopLevel(state, childSessionId);
 }
 
-function isChildRunEventKind(kind: EventEnvelope["kind"]): boolean {
+export function isChildRunEventKind(kind: EventEnvelope["kind"]): boolean {
   return (
     kind === EventKinds.ChildRunQueued ||
     kind === EventKinds.ChildRunStarted ||
@@ -870,15 +681,4 @@ function isTerminalChildRunStatus(status: ChildRunStatus): boolean {
     status === "failed" ||
     status === "cancelled"
   );
-}
-
-function scopedStepTitle(env: EventEnvelope, title: string): string {
-  const owner = env.scope?.role === "merge" ? frontendMessage("workflow.scope.merge") : env.scope?.agentName;
-  return owner ? `${owner} · ${title}` : title;
-}
-
-function scopedStepDescription(env: EventEnvelope, description?: string): string | undefined {
-  const workflowName = env.scope?.workflowName;
-  if (!workflowName) return description;
-  return description ? `${workflowName} · ${description}` : workflowName;
 }

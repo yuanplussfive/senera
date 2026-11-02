@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test } from "vitest";
 import { NodeDetailDrawer } from "../../../Frontend/src/features/workflow/NodeDetailDrawer.tsx";
@@ -67,6 +67,10 @@ test("long tool values stay compact until the full value is requested", async ()
   await user.click(preview);
 
   expect(document.querySelector("[data-data-value-full]")).toBeInTheDocument();
+  const scrollContainer = document.querySelector("[data-data-value-scroll]");
+  expect(document.querySelectorAll("[data-data-value-scroll]")).toHaveLength(1);
+  expect(scrollContainer).toHaveClass("overflow-auto");
+  expect(scrollContainer?.querySelector("pre")).not.toHaveClass("overflow-auto");
   expect(screen.getByText(longValue)).toBeVisible();
 });
 
@@ -242,15 +246,15 @@ test("child-run detail shows directional messages as readable text", async () =>
     ),
   );
 
-  expect(await screen.findByText("当前活动")).toBeTruthy();
+  await waitFor(() => expect(document.querySelector("[data-child-run-active-tools]")).toBeTruthy());
   expect(screen.getByText(/WorkspaceRead/)).toBeTruthy();
   expect(screen.getByText(/WorkspaceGrep/)).toBeTruthy();
-  expect(screen.getByText("正在并行使用 2 个工具")).toBeTruthy();
-  expect(await screen.findByText("子代理消息")).toBeTruthy();
+  expect(screen.getByText("工具 3/4")).toBeTruthy();
+  expect(document.querySelector("[data-child-run-activity-details]")).toBeTruthy();
   expect(screen.getByText("发给子代理")).toBeTruthy();
   expect(screen.getByText("子代理反馈")).toBeTruthy();
   expect(screen.getByText("请检查配置入口。")).toBeTruthy();
-  expect(screen.getAllByText("配置入口位于 Source/AgentSystem。")).not.toHaveLength(0);
+  expect(screen.getAllByText("配置入口位于 Source/AgentSystem。")).toHaveLength(1);
 });
 
 test("workflow feed keeps internal lifecycle telemetry out of the user workflow", () => {

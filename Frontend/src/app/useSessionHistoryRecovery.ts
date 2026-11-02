@@ -16,7 +16,7 @@ export interface UseSessionHistoryRecoveryOptions {
 }
 
 export interface SessionHistoryRecoveryHandle {
-  requestSessionHistory: (sessionId: string, options?: { refresh?: boolean }) => boolean;
+  requestSessionHistory: (sessionId: string, options?: { refresh?: boolean; before?: string }) => boolean;
 }
 
 export function shouldRequestActiveSessionHistory({
@@ -78,12 +78,7 @@ export function readRecoveryPollingKey({
       session.runs
         .filter((run) => run.status === "running" && run.recoverySource === "history")
         .map((run) =>
-          [
-            session.sessionId,
-            run.requestId,
-            String(run.revision),
-            historyLoadingIds[session.sessionId] ? "loading" : "idle",
-          ].join("\u0001"),
+          [session.sessionId, run.requestId, historyLoadingIds[session.sessionId] ? "loading" : "idle"].join("\u0001"),
         ),
     )
     .sort()
@@ -111,10 +106,14 @@ export function useSessionHistoryRecovery({
   const activeSessionPendingDeletion = useStore((state) =>
     Boolean(activeSessionId && state.pendingDeletedSessionIds[activeSessionId]),
   );
-  const historyHydrationKey = useStore((state) =>
-    Object.keys(state.historyHydration ?? {})
-      .sort()
-      .join("\u0000"),
+  const activeHistoryHydrating = useStore((state) =>
+    Boolean(activeSessionId && state.historyHydration?.[activeSessionId]),
+  );
+  const activeHistoryLoading = useStore((state) =>
+    Boolean(activeSessionId && state.historyLoadingIds[activeSessionId]),
+  );
+  const activeHistoryInvalidated = useStore((state) =>
+    Boolean(activeSessionId && state.sessions[activeSessionId]?.historyInvalidated),
   );
   const activeSessionHasHistory = useStore((state) => {
     const session = activeSessionId ? state.sessions[activeSessionId] : undefined;
@@ -142,13 +141,16 @@ export function useSessionHistoryRecovery({
   );
 
   const requestSessionHistory = useCallback(
-    (sessionId: string, options: { refresh?: boolean } = {}): boolean => {
+    (sessionId: string, options: { refresh?: boolean; before?: string } = {}): boolean => {
+      const state = useStore.getState();
+      if (state.historyLoadingIds[sessionId] || state.historyHydration?.[sessionId]) return false;
       markHistoryLoading(sessionId);
       const ok = send({
         type: "session.history",
         sessionId,
         refresh: options.refresh || undefined,
         initialWindow: true,
+        ...(options.before ? { before: options.before } : {}),
       });
       if (!ok) {
         markHistoryLoadFailed(sessionId);
@@ -169,6 +171,27 @@ export function useSessionHistoryRecovery({
     },
     [markHistoryLoadFailed, markHistoryLoading, send],
   );
+
+  useEffect(() => {
+    if (
+      status !== "open" ||
+      !sessionsCatalogSynced ||
+      !activeSessionId ||
+      !activeHistoryInvalidated ||
+      activeHistoryLoading ||
+      activeHistoryHydrating
+    )
+      return;
+    requestSessionHistory(activeSessionId, { refresh: true });
+  }, [
+    activeHistoryHydrating,
+    activeHistoryInvalidated,
+    activeHistoryLoading,
+    activeSessionId,
+    requestSessionHistory,
+    sessionsCatalogSynced,
+    status,
+  ]);
 
   useEffect(() => {
     const sessionId = activeSessionId;
@@ -207,7 +230,7 @@ export function useSessionHistoryRecovery({
   ]);
 
   useEffect(() => {
-    if (status !== "open" || !historyHydrationKey) return undefined;
+    if (status !== "open" || !activeSessionId || !activeHistoryHydrating) return undefined;
 
     let disposed = false;
     let cancelScheduled: (() => void) | undefined;
@@ -220,12 +243,8 @@ export function useSessionHistoryRecovery({
     const pump = (): void => {
       cancelScheduled = undefined;
       if (disposed) return;
-      const pendingIds = Object.keys(useStore.getState().historyHydration ?? {}).sort();
-      let pending = false;
-      for (const sessionId of pendingIds) {
-        pending = advanceHistoryHydration(sessionId) || pending;
-      }
-      if (pending) scheduleNext();
+      const stillActive = useStore.getState().historyHydration?.[activeSessionId];
+      if (stillActive && advanceHistoryHydration(activeSessionId)) scheduleNext();
     };
 
     scheduleNext();
@@ -233,7 +252,7 @@ export function useSessionHistoryRecovery({
       disposed = true;
       cancelScheduled?.();
     };
-  }, [advanceHistoryHydration, historyHydrationKey, status]);
+  }, [activeHistoryHydrating, activeSessionId, advanceHistoryHydration, status]);
 
   useEffect(() => {
     if (status !== "open" || !sessionsCatalogSynced || !recoveryPollingKey) {

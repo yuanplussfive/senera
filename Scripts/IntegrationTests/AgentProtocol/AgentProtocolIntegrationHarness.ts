@@ -23,6 +23,7 @@ import { AgentConfigService } from "../../../Source/AgentSystem/Config/AgentConf
 import { resolveAgentLoopConfig } from "../../../Source/AgentSystem/AgentDefaults.js";
 import { resolveAgentWorkspaceLayout } from "../../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
 import { createAgentRequestCancellationResource } from "../../../Source/AgentSystem/Session/AgentSessionRunResource.js";
+import { seedTestModelsDevCatalog } from "../../BackendTests/Support/AgentModelsDevCatalogFixture.js";
 
 export interface AgentProtocolIntegrationHarness {
   readonly workspaceRoot: string;
@@ -45,6 +46,7 @@ export async function createAgentProtocolIntegrationHarness(
   options: { authentication?: AgentProtocolIntegrationAuthentication; approvalRuntime?: AgentApprovalRuntime } = {},
 ): Promise<AgentProtocolIntegrationHarness> {
   const workspaceRoot = mkdtempSync(path.join(os.tmpdir(), "senera-e2e-"));
+  await seedTestModelsDevCatalog(workspaceRoot);
   const authentication = options.authentication;
   const config = createIntegrationConfig(await reserveTcpPort(), authentication);
   if (authentication) {

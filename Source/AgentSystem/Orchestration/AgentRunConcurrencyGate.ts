@@ -68,6 +68,13 @@ export class AgentRunConcurrencyGate {
     });
   }
 
+  /** Activating an agent must never wait behind an ancestor holding capacity. */
+  tryAcquire(kind: AgentRunPermitKind): AgentRunPermit {
+    if (!this.canAcquire(kind))
+      throw new Error("Agent activation capacity is full. Continue existing agents before starting more work.");
+    return this.grant(kind);
+  }
+
   snapshot(): { readonly activeRuns: number; readonly activeWriters: number; readonly queuedRuns: number } {
     return {
       activeRuns: this.activeRuns,

@@ -1,0 +1,177 @@
+{
+  "name": "subagent",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "agent-spawn",
+    "icon": "delegation",
+    "activity": {
+      "action": {
+        "zh-CN": "启动子代理",
+        "en-US": "Start subagent"
+      },
+      "argumentPath": "/description",
+      "detailPaths": ["/agent"]
+    }
+  },
+  "description": "Start an independent child session immediately. Return its persistent agent_id and this activation's job_id. Completion follows the returned delivery policy. Use send_message to continue the child, or job_output to observe this activation.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "description": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Short task label."
+      },
+      "prompt": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Complete delegated objective, scope and expected outcome."
+      },
+      "agent": {
+        "description": "Optional role from the host role catalog. Omit it to use the catalog-declared default role.",
+        "type": "string",
+        "minLength": 1
+      },
+      "forkContext": {
+        "description": "True forks parent conversation context; false starts fresh; omission follows the role contract.",
+        "type": "boolean"
+      },
+      "workItemId": {
+        "description": "Stable logical task id for retries. Reuse only for the same assignment; use a different id for independent repeated work.",
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "todo": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Exact content of an existing in_progress parent plan step assigned to this child. Update the plan first. Successful completion closes this step once every child linked to it succeeds; failures remain open for the supervisor. Parent review belongs in a separate step."
+      },
+      "resources": {
+        "description": "Capability-level resources reserved for this assignment. Choose capability IDs from the host-provided list; tool permissions are not resource capabilities. Declare files or directories when the child may modify them; omit only when the scope is genuinely unknown.",
+        "minItems": 1,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "capability": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Registered resource capability ID. This is not a tool permission or authorization scope."
+            },
+            "value": {
+              "description": "Capability-specific resource value, usually a workspace path."
+            },
+            "intent": {
+              "description": "Capability-defined access intent, such as read or replace.",
+              "type": "string",
+              "minLength": 1
+            },
+            "parameters": {
+              "description": "Capability-specific parameters.",
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "required": ["capability", "value"],
+          "additionalProperties": false
+        }
+      },
+      "modelProviderId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Optional model route from the host-declared child model policy. Omission follows the role and configured pool."
+      },
+      "thinking": {
+        "type": "string",
+        "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+        "description": "Optional reasoning level validated against the selected route."
+      }
+    },
+    "required": ["description", "prompt"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "agent_id": {
+        "type": "string"
+      },
+      "parent_id": {
+        "type": "string"
+      },
+      "description": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "job_id": {
+        "type": "string"
+      },
+      "delivery": {
+        "type": "object",
+        "description": "Current completion delivery mode, ability to wake an idle session, remaining wake budget and effective wait limits."
+      }
+    },
+    "required": ["agent_id", "parent_id", "description", "status", "job_id"],
+    "additionalProperties": false
+  },
+  "permissions": ["orchestration:delegate"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "RemoteJob",
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Progress": true,
+      "Cancellation": true,
+      "ResumableEvents": true
+    }
+  },
+  "resources": [{ "Capability": "senera.resource.declarations", "Pointer": "/resources" }],
+  "sources": [
+    {
+      "Id": "orchestration",
+      "Title": "Orchestration",
+      "Description": "Child-agent runs managed by Senera."
+    }
+  ],
+  "search": {
+    "Summary": "Start an independent child session immediately. Return its persistent agent_id and this activation's job_id. Completion follows the returned delivery policy. Use send_message to continue the child, or job_output to observe this activation.",
+    "Tags": ["agent", "协作"],
+    "Capabilities": [
+      {
+        "Id": "orchestration.subagent",
+        "Title": "subagent",
+        "Description": "Start an independent child session immediately. Return its persistent agent_id and this activation's job_id. Completion follows the returned delivery policy. Use send_message to continue the child, or job_output to observe this activation.",
+        "Facets": {
+          "Actions": ["subagent"],
+          "Targets": ["agent-session"],
+          "Inputs": ["description", "prompt", "modelProviderId", "thinking"],
+          "Outputs": ["agent_id", "parent_id", "description", "status", "job_id"],
+          "Effects": ["session-state"]
+        },
+        "Risk": {
+          "SideEffect": "session-state",
+          "Permission": "orchestration"
+        },
+        "Aliases": ["subagent"]
+      }
+    ],
+    "UseCases": ["独立分工与持续协作"],
+    "Avoid": ["不要用空泛催促代替完成通知"]
+  },
+  "evidenceCapabilities": [],
+  "approval": {
+    "Mode": "ask",
+    "Reason": "启动会产生模型调用并可能执行工具的子代理。"
+  }
+}

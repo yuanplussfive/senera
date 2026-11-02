@@ -2,16 +2,16 @@ import type { ModelListSnapshotData } from "../../api/eventTypes";
 import { readChatModelProviders } from "../../features/chat/modelProvider";
 import type { StoreState } from "./types";
 import { syncActiveSessionThinkingSelection } from "./sessionThinkingSelection";
+import { readConversationDefaultModelId } from "./sessionAgentSelection";
 
 /**
- * The configured default is the starting model for a newly created conversation.
- * An active conversation keeps its own local model choice until the user explicitly
- * chooses the default again. This matches the Chat model ownership shown in the UI.
+ * Resolve a local choice, then a durable conversation preference, then the Agent's
+ * configured default. A previous execution receipt describes history only.
  */
 export function applyModelListSnapshotSelection(state: StoreState, data: ModelListSnapshotData): void {
   state.modelProviders = data.models;
   const chatModels = readChatModelProviders(data.models);
-  const availableIds = new Set(chatModels.map((model) => model.id));
+  const availableIds = new Set(data.models.map((model) => model.id));
   const defaultModelId =
     chatModels.find((model) => model.id === data.defaultModelProviderId)?.id ??
     chatModels.find((model) => model.isDefault)?.id ??
@@ -37,40 +37,53 @@ export function selectModelForActiveSession(state: StoreState, modelId: string):
 }
 
 export function applyDefaultModelToActiveSession(state: StoreState): boolean {
-  const defaultModelId = state.defaultModelProviderId;
+  const defaultModelId = readConversationDefaultModelId(state);
   if (!defaultModelId) return false;
-  selectModelForActiveSession(state, defaultModelId);
+  const id = state.activeSessionId;
+  if (id && !state.sessions[id]?.modelPreference) {
+    delete state.selectedModelProviderIdsBySession[id];
+    syncActiveSessionModelSelection(state);
+  } else {
+    // A durable preference must be replaced on the next request; merely hiding
+    // it locally would let the server continue using the previous model.
+    selectModelForActiveSession(state, defaultModelId);
+  }
   return true;
 }
 
 export function syncActiveSessionModelSelection(state: StoreState): void {
-  const availableIds = new Set(readChatModelProviders(state.modelProviders).map((model) => model.id));
+  const availableIds = new Set(state.modelProviders.map((model) => model.id));
   syncActiveSessionModelSelectionWithAvailableIds(state, availableIds);
 }
 
 function syncActiveSessionModelSelectionWithAvailableIds(state: StoreState, availableIds: ReadonlySet<string>): void {
   const activeSessionId = state.activeSessionId;
-  const fallbackModelId = isAvailable(state.defaultModelProviderId, availableIds) ? state.defaultModelProviderId : null;
+  const configuredDefault = readConversationDefaultModelId(state);
+  const defaultModelId = isAvailable(configuredDefault, availableIds) ? configuredDefault : null;
 
   if (!activeSessionId) {
     state.selectedModelProviderId = isAvailable(state.selectedModelProviderId, availableIds)
       ? state.selectedModelProviderId
-      : fallbackModelId;
+      : defaultModelId;
     syncActiveSessionThinkingSelection(state);
     return;
   }
 
   const rememberedModelId = state.selectedModelProviderIdsBySession[activeSessionId];
-  const legacySelectedModelId = state.selectedModelProviderId;
+  const session = state.sessions[activeSessionId];
+  // Only explicit user choices live in the local map. Inherited defaults must
+  // remain derived, otherwise a snapshot would turn them into sticky overrides.
+  if (rememberedModelId && rememberedModelId === session?.modelPreference?.modelProviderId) {
+    delete state.selectedModelProviderIdsBySession[activeSessionId];
+  }
+  const sessionModelId = session?.modelPreference?.modelProviderId;
   const selectedModelId = isAvailable(rememberedModelId, availableIds)
     ? rememberedModelId
-    : isAvailable(legacySelectedModelId, availableIds)
-      ? legacySelectedModelId
-      : fallbackModelId;
+    : isAvailable(sessionModelId, availableIds)
+      ? sessionModelId
+      : defaultModelId;
 
-  if (selectedModelId) {
-    state.selectedModelProviderIdsBySession[activeSessionId] = selectedModelId;
-  } else {
+  if (!selectedModelId) {
     delete state.selectedModelProviderIdsBySession[activeSessionId];
   }
   state.selectedModelProviderId = selectedModelId;

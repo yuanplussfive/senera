@@ -5,6 +5,7 @@ import type { ProviderModelConfigInput } from "../../../api/providerModelCommand
 import { cn } from "../../../lib/util";
 import { sameJsonValue } from "../../../shared/config/JsonConfigValue";
 import { StateView } from "../../../shared/ui";
+import { modelSelectOption } from "../../../shared/models/ModelSelect";
 import {
   createModelDraft,
   groupProviderModelRows,
@@ -462,6 +463,22 @@ export function ProviderModelManagementSurface({
         }
       />
       <ProviderModelManualAddDialog
+        modelOptions={[
+          ...new Map(
+            state.models.map((model) => [
+              model.Model,
+              {
+                ...modelSelectOption({
+                  id: model.Id,
+                  model: model.Model,
+                  providerId: model.ProviderId,
+                  icon: model.Icon ?? state.providers.find((provider) => provider.Id === model.ProviderId)?.Icon,
+                }),
+                value: model.Model,
+              },
+            ]),
+          ).values(),
+        ]}
         disabled={disabled}
         modelTemplate={modelTemplate}
         open={manualOpen}

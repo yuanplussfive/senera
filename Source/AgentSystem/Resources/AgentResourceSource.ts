@@ -7,19 +7,35 @@ const AgentHttpResourceUrlSchema = z
   .url()
   .regex(/^https?:\/\/\S+$/u, "Resource URLs must use HTTP or HTTPS.");
 
-export const AgentResourceSourceSchema = z.discriminatedUnion("kind", [
+export const AgentLocalResourceSourceSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("senera_resource"),
       uri: AgentResourceUriSchema.describe("Canonical Senera resource identity."),
+      path: z
+        .string()
+        .trim()
+        .min(1)
+        .optional()
+        .describe(
+          "Workspace-relative path of the stored resource. Read it directly instead of resolving the URI again.",
+        ),
     })
     .strict(),
   z
     .object({
       kind: z.literal("local_path"),
-      path: z.string().trim().min(1).describe("Workspace-relative or absolute local path inside the active workspace."),
+      path: z
+        .string()
+        .trim()
+        .min(1)
+        .describe("Workspace-relative or absolute local path subject to the active resource access policy."),
     })
     .strict(),
+]);
+
+export const AgentResourceSourceSchema = z.discriminatedUnion("kind", [
+  ...AgentLocalResourceSourceSchema.options,
   z
     .object({
       kind: z.literal("http_url"),
@@ -31,5 +47,5 @@ export const AgentResourceSourceSchema = z.discriminatedUnion("kind", [
 ]);
 
 export type AgentResourceSource = z.output<typeof AgentResourceSourceSchema>;
-export type AgentLocalResourceSource = Extract<AgentResourceSource, { kind: "senera_resource" | "local_path" }>;
+export type AgentLocalResourceSource = z.output<typeof AgentLocalResourceSourceSchema>;
 export type AgentHttpResourceSource = Extract<AgentResourceSource, { kind: "http_url" }>;

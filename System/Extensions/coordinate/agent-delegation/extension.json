@@ -9,69 +9,86 @@
     "icon": "users",
     "group": {
       "id": "delegation",
-      "title": { "zh-CN": "协调子代理", "en-US": "Coordinate agents" }
+      "title": {
+        "zh-CN": "协调子代理",
+        "en-US": "Coordinate agents"
+      }
     },
     "activity": {
-      "action": { "zh-CN": "协调子代理", "en-US": "Coordinate agents" }
+      "action": {
+        "zh-CN": "协调子代理",
+        "en-US": "Coordinate agents"
+      }
     }
   },
-  "version": "1.2.0",
-  "displayName": { "zh-CN": "子代理编排", "en-US": "Subagent Orchestration" },
+  "usageExamples": [
+    {
+      "title": {
+        "zh-CN": "分工处理任务",
+        "en-US": "Delegate work"
+      },
+      "prompt": {
+        "zh-CN": "把资料整理交给子代理，完成后汇总给我。",
+        "en-US": "Delegate the research to a subagent and summarize the results."
+      },
+      "outcome": {
+        "zh-CN": "分派明确任务，查看子代理进度，并收集完成结果。",
+        "en-US": "Assign a scoped task, check subagent progress, and collect the result."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### 分工与持续协作\n\nlist_subagent_models 发现当前授权的模型、能力、推理档位与委派限制；subagent 可按任务选择模型，返回稳定的 agent_id 和当前执行的 job_id。send_message 在直接父子之间传递消息，工作中的代理接收引导，空闲代理在原会话继续。list_agents 查看直接子级或整个后代树。interrupt_agent 允许祖先中断指定后代，不连带停止其他代理；未消费消息保留至显式继续。\n\njob_list、job_output、job_kill 同样可管理子代理执行。每次恢复重新计算执行预算，之前的执行结果独立保留。完成通知进入持久收件箱，遵循后台任务的唤醒或静默策略及连续唤醒预算；已提交到 Pi 历史的成功结果读取会确认通知。角色、权限、并发与资源边界由宿主管理。",
+    "en-US": "### Delegate and continue work\n\nlist_subagent_models discovers authorized models, capabilities, reasoning levels and delegation limits. subagent can select a model for the assignment and returns a persistent agent_id and activation-specific job_id. send_message communicates between direct parents and children; active work receives steering and idle agents resume their session. list_agents observes children or all descendants. An ancestor may interrupt one descendant; other agents continue, and unconsumed inputs remain parked until explicit continuation.\n\njob_list, job_output and job_kill also manage agent activations. Resume grants a fresh activation budget and preserves prior results. Completion enters the durable parent inbox under the shared jobs wakeup or quiet policy and consecutive wake budget. Successful result reads committed to Pi history acknowledge notifications. The host owns authority and resource boundaries."
+  },
+  "displayName": {
+    "zh-CN": "子代理编排",
+    "en-US": "Subagent Orchestration"
+  },
   "description": {
-    "zh-CN": "通过简洁生命周期工具启动、协调、停止和恢复受控的 Senera 子会话。",
-    "en-US": "Starts, coordinates, stops, and resumes controlled Senera child sessions through a compact lifecycle API."
+    "zh-CN": "分派任务给子代理，协调进度并收集结果。",
+    "en-US": "Delegate tasks to subagents, coordinate progress, and collect results."
   },
   "priority": 3,
-  "configuration": { "schema": "config.schema.json", "ui": "ui.schema.json" },
+  "configuration": {
+    "schema": "config.schema.json",
+    "ui": "ui.schema.json"
+  },
   "contributions": [
     {
       "kind": "hostTool",
-      "contract": "tools/AgentSpawn.tool.json",
-      "capability": "orchestration.agent.spawn",
+      "contract": "tools/subagent.tool.json",
+      "capability": "orchestration.subagent",
       "childGrant": "delegation",
       "recommendedForSkills": ["agent-orchestration"]
     },
     {
       "kind": "hostTool",
-      "contract": "tools/AgentList.tool.json",
-      "capability": "orchestration.agent.list",
-      "childGrant": "delegation",
-      "recommendedForSkills": ["agent-orchestration"]
-    },
-    {
-      "kind": "hostTool",
-      "contract": "tools/AgentWait.tool.json",
-      "capability": "orchestration.agent.wait",
-      "childGrant": "delegation",
-      "recommendedForSkills": ["agent-orchestration"]
-    },
-    {
-      "kind": "hostTool",
-      "contract": "tools/AgentInput.tool.json",
-      "capability": "orchestration.agent.input",
-      "childGrant": "delegation",
-      "recommendedForSkills": ["agent-orchestration"]
-    },
-    {
-      "kind": "hostTool",
-      "contract": "tools/AgentStop.tool.json",
-      "capability": "orchestration.agent.stop",
-      "childGrant": "delegation",
-      "recommendedForSkills": ["agent-orchestration"]
-    },
-    {
-      "kind": "hostTool",
-      "contract": "tools/AgentResume.tool.json",
-      "capability": "orchestration.agent.resume",
-      "childGrant": "delegation",
-      "recommendedForSkills": ["agent-orchestration"]
-    },
-    {
-      "kind": "hostTool",
-      "contract": "tools/AgentContactSupervisor.tool.json",
-      "capability": "orchestration.agent.contact_supervisor",
+      "contract": "tools/list_subagent_models.tool.json",
+      "capability": "orchestration.list_subagent_models",
       "childGrant": "internal",
-      "recommendedForSkills": []
+      "recommendedForSkills": ["agent-orchestration"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/send_message.tool.json",
+      "capability": "orchestration.send_message",
+      "childGrant": "internal",
+      "recommendedForSkills": ["agent-orchestration"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/list_agents.tool.json",
+      "capability": "orchestration.list_agents",
+      "childGrant": "internal",
+      "recommendedForSkills": ["agent-orchestration"]
+    },
+    {
+      "kind": "hostTool",
+      "contract": "tools/interrupt_agent.tool.json",
+      "capability": "orchestration.interrupt_agent",
+      "childGrant": "delegation",
+      "recommendedForSkills": ["agent-orchestration"]
     },
     {
       "kind": "agentRoles",

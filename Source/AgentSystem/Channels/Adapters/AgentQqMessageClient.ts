@@ -73,6 +73,19 @@ export class AgentQqMessageClient {
     content: string,
     options?: AgentChannelSendReplyOptions,
   ): Promise<AgentChannelSendResult> {
+    if (options?.parts) {
+      let result: AgentChannelSendResult = { kind: "unsupported" };
+      for (const part of options.parts) {
+        result = await this.sendPrepared(
+          source,
+          part.kind === "text" ? part.content : "",
+          { ...options, parts: undefined, media: part.kind === "media" ? [part.media] : [] },
+          false,
+        );
+        if (result.kind !== "sent") return result;
+      }
+      return result;
+    }
     return this.sendPrepared(source, content, options, false);
   }
 
@@ -88,7 +101,7 @@ export class AgentQqMessageClient {
     const formatted = convertAgentChannelMarkdown(content, this.markdownSupport ? "markdown" : "plain");
     if (!formatted.trim() && media.length === 0) return { kind: "unsupported" };
     const chunks = formatted.length > 0 ? splitAgentChannelContent(formatted, this.maxMessageLength) : [""];
-    const replyTo = options?.replyToMessageId ?? source.messageId;
+    const replyTo = options?.replyToMessageId ?? source.messageId ?? this.latestMessageIds.get(sourceKey(source));
     let last: AgentChannelSendResult = { kind: "unsupported" };
     let first = true;
     if (attachCaptionToMedia) {

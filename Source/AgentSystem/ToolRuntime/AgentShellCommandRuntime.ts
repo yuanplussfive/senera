@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { isTerminalResourceState } from "../ExecutionResources/AgentExecutionResourceTypes.js";
 import type { AgentHostToolHandler } from "./AgentToolHostCapabilityRegistry.js";
 import type { AgentToolProcessRunResult } from "./AgentToolProcessTypes.js";
 import { createToolProcessSuccessResponse, toolProcessFailureResult } from "./AgentToolProcessEnvelope.js";
@@ -12,8 +12,8 @@ import {
 } from "../Execution/SeneraExecutionTypes.js";
 import type { SeneraProcessExecutionProfile } from "../Execution/SeneraExecutionProfile.js";
 import type { AgentToolExecutionPlan } from "./AgentToolExecutionPlan.js";
-import { SeneraShellCommandSpecSchema } from "../Execution/SeneraShellCommand.js";
-import { AgentWorkspaceEffectSchema, AgentWorkspaceEffects } from "../Artifacts/AgentWorkspaceObservationIntent.js";
+import type { SeneraShellCommandSpec } from "../Execution/SeneraShellCommand.js";
+import { AgentWorkspaceEffects, type AgentWorkspaceEffect } from "../Artifacts/AgentWorkspaceObservationIntent.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { resolveAgentToolCallTimeoutMs } from "./AgentToolDeadline.js";
 import type { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
@@ -32,49 +32,33 @@ import {
   collectAgentExecutionResourceOutput,
   projectAgentExecutionResourceResult,
 } from "./AgentExecutionResourceResultProjector.js";
+import { systemToolArguments } from "../SystemTools/AgentSystemToolDefinition.js";
+import type { AgentSelfServicePort } from "../SelfService/AgentSelfServiceTypes.js";
+import type { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js";
+import type { AgentSelfCliLease } from "../SelfService/AgentSelfCliRuntime.js";
+import { createAgentSelfModelExecutor } from "../SelfService/AgentSelfModelExecutor.js";
 
 const ShellExecutionProfileName = "host-shell";
 
-const ShellCwdSchema = z.string().trim().min(1);
-const ShellTimeoutSchema = z
-  .number()
-  .int()
-  .nonnegative()
-  .describe("0 表示不设运行时限，持续跟踪进程树直到退出或显式停止；正数受系统工具超时配置约束。")
-  .optional();
-export const ShellCommandArgumentsSchema = z
-  .object({
-    ...SeneraShellCommandSpecSchema.shape,
-    cwd: ShellCwdSchema.optional(),
-    timeoutMs: ShellTimeoutSchema,
-    workspaceEffect: AgentWorkspaceEffectSchema,
-  })
-  .strict();
+/** Validated and default-materialized by ShellCommandTool.tool.json. */
+interface ShellCommandArguments extends SeneraShellCommandSpec {
+  readonly cwd?: string;
+  readonly timeoutMs?: number;
+  readonly workspaceEffect: AgentWorkspaceEffect;
+}
 
 export function createShellCommandHostTool(
-  broker?: AgentExecutionResourceBroker,
+  broker: AgentExecutionResourceBroker,
   outputSpoolFactory: AgentToolOutputSpoolFactory = createAgentToolOutputSpool,
+  options: { readonly selfService?: AgentSelfServicePort; readonly approvalRuntime?: AgentApprovalRuntime } = {},
 ): AgentHostToolHandler {
+  const modelExecutor = options.selfService
+    ? createAgentSelfModelExecutor(options.selfService, options.approvalRuntime)
+    : undefined;
   return async (args, context) => {
-    const parsed = ShellCommandArgumentsSchema.safeParse(args);
-    if (!parsed.success) {
-      return shellFailure({
-        code: AgentExecutionErrorCodes.InvalidToolArguments,
-        message: agentErrorMessage("tool.shellArgumentsInvalid"),
-        details: {
-          phase: AgentToolProcessErrorPhases.RuntimeExecution,
-          issues: parsed.error.issues,
-          toolName: context.tool.name,
-        },
-        diagnostics: parsed.error.issues.map((issue) => ({
-          message: issue.message,
-          pointer: `/${issue.path.join("/")}`,
-          path: issue.path.map((entry) => (typeof entry === "number" ? entry : String(entry))),
-        })),
-      });
-    }
+    const input = systemToolArguments<ShellCommandArguments>(args);
 
-    const cwdResult = await context.executionEnv.canonicalPath(parsed.data.cwd ?? ".");
+    const cwdResult = await context.executionEnv.canonicalPath(input.cwd ?? ".");
     if (!cwdResult.ok) {
       const message = cwdResult.error.message;
       return shellFailure({
@@ -82,7 +66,7 @@ export function createShellCommandHostTool(
         message,
         details: {
           phase: AgentToolProcessErrorPhases.RuntimeExecution,
-          cwd: parsed.data.cwd,
+          cwd: input.cwd,
           workspaceRoot: context.workspaceRoot,
         },
         diagnostics: [
@@ -96,29 +80,25 @@ export function createShellCommandHostTool(
       });
     }
 
-    if (!broker) {
-      return shellFailure({
-        code: AgentExecutionErrorCodes.ToolProcessConfigurationInvalid,
-        message: "Shell execution requires the execution resource broker.",
-        details: { phase: AgentToolProcessErrorPhases.ConfigurationValidation, toolName: context.tool.name },
-      });
-    }
-
-    const executionPolicy = resolveAgentShellCommandExecutionPolicy(context.config, parsed.data.timeoutMs);
+    const executionPolicy = resolveAgentShellCommandExecutionPolicy(context.config, input.timeoutMs);
     const executionProfile = createAgentShellExecutionProfile(requireExecutionPlan(context));
     const owner = shellResourceOwner(context);
     const shellCommand = {
-      mode: parsed.data.mode,
-      dialect: parsed.data.dialect,
-      script: parsed.data.script,
-    } satisfies z.output<typeof SeneraShellCommandSpecSchema>;
+      mode: input.mode,
+      dialect: input.dialect,
+      script: input.script,
+    } satisfies SeneraShellCommandSpec;
     const workspaceLease =
-      parsed.data.workspaceEffect === AgentWorkspaceEffects.Mutate
+      input.workspaceEffect === AgentWorkspaceEffects.Mutate
         ? await context.workspaceObservation?.openResourceLease?.()
         : undefined;
     let outputSpool: SeneraOutputSpool | undefined;
     let resourceStarted = false;
+    let cliLease: AgentSelfCliLease | undefined;
     try {
+      if (executionProfile.backend === "local" && modelExecutor && options.selfService?.cli) {
+        cliLease = await options.selfService.cli.open(context, modelExecutor);
+      }
       outputSpool = await outputSpoolFactory(context.config, context.workspaceRoot, {
         sessionId: context.sessionId,
         requestId: context.requestId,
@@ -130,6 +110,8 @@ export function createShellCommandHostTool(
         shellCommand,
         displayCommand: shellCommand.script,
         cwd: cwdResult.value,
+        env: cliLease?.environment,
+        onSettled: cliLease?.close,
         executionEnv: context.executionEnv,
         profile: executionProfile,
         owner,
@@ -199,6 +181,7 @@ export function createShellCommandHostTool(
         workspaceObservation,
       };
     } catch (error) {
+      if (!resourceStarted) cliLease?.close();
       if (outputSpool && !resourceStarted) await outputSpool.cleanup().catch(() => undefined);
       workspaceLease?.cancel();
       const failure = shellExecutionFailure({
@@ -262,14 +245,6 @@ async function waitForInitialShellOutcome(
     snapshot = await broker.wait(snapshot.resourceId, owner, snapshot.cursor, remainingMs, signal);
   }
   return broker.inspect(started.resourceId, owner, started.cursor);
-}
-
-function isTerminalResourceState(state: AgentExecutionResourceSnapshot["state"]): boolean {
-  return (
-    state === AgentExecutionResourceStates.Completed ||
-    state === AgentExecutionResourceStates.Failed ||
-    state === AgentExecutionResourceStates.Cancelled
-  );
 }
 
 function normalizeResourceSignal(signal: AgentExecutionResourceSnapshot["signal"]): NodeJS.Signals | null {

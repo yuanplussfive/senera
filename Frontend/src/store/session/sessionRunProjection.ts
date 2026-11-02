@@ -1,8 +1,11 @@
-import type { MotionLevel } from "../../shared/motion/types";
-import { advanceStreamingDisplayText, alignStreamingDisplayTarget } from "./streamingDisplay";
 import type { RunRecord } from "./types";
 
-export function createRunRecord(input: { requestId: string; startedAt: string; input: string }): RunRecord {
+export function createRunRecord(input: {
+  requestId: string;
+  startedAt: string;
+  input: string;
+  inputAttachments?: RunRecord["inputAttachments"];
+}): RunRecord {
   return {
     requestId: input.requestId,
     revision: 0,
@@ -10,6 +13,7 @@ export function createRunRecord(input: { requestId: string; startedAt: string; i
     status: "running",
     outputState: "pending",
     input: input.input,
+    inputAttachments: input.inputAttachments,
     activities: [],
     steps: [],
     streamingRaw: "",
@@ -41,21 +45,6 @@ export function touchRun(run: RunRecord): void {
   run.revision = (run.revision ?? 0) + 1;
 }
 
-export function advanceRunDisplayText(run: RunRecord, motionLevel: MotionLevel): boolean {
-  const next = advanceStreamingDisplayText(
-    {
-      displayText: run.displayText,
-      targetText: run.visibleText,
-    },
-    motionLevel,
-  );
-  if (next.changed) {
-    run.displayText = next.displayText;
-    touchRun(run);
-  }
-  return next.pending;
-}
-
 export function projectStreamingVisibility(run: RunRecord): void {
   if (run.expectedOutputMode === "final_text") {
     run.decisionMode = "final_text";
@@ -82,11 +71,10 @@ export function projectStreamingVisibility(run: RunRecord): void {
 }
 
 export function alignRunDisplayTarget(run: RunRecord): void {
-  const aligned = alignStreamingDisplayTarget({
-    displayText: run.displayText,
-    targetText: run.visibleText,
-  });
-  run.displayText = aligned.displayText;
+  // Socket deltas are already coalesced once per animation frame. Rendering
+  // that authoritative frame directly avoids a second character-by-character
+  // state loop that repeatedly rescanned the unread tail of long responses.
+  run.displayText = run.visibleText;
 }
 
 export function projectTerminalDisplayText(run: RunRecord, text: string, replayingHistory: boolean): void {

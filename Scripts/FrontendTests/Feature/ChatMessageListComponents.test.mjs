@@ -12,7 +12,8 @@ vi.mock("../../../Frontend/src/shared/ui/Tooltip.tsx", () => ({
 const { MessageList, scrollConversationAnchorIntoView } =
   await import("../../../Frontend/src/features/chat/MessageList.tsx");
 const { ChatActivityDock } = await import("../../../Frontend/src/features/chat/ChatActivityDock.tsx");
-const { projectAssistantTurns } = await import("../../../Frontend/src/features/chat/assistantTurnProjection.ts");
+const { projectAssistantTurns, readProjectedMessageListItemKeys } =
+  await import("../../../Frontend/src/features/chat/assistantTurnProjection.ts");
 const { projectAssistantTurnStages } =
   await import("../../../Frontend/src/features/chat/assistantTurnStageProjection.ts");
 const {
@@ -75,7 +76,7 @@ test("assistant turn projection preserves a cancelled execution slice between it
   expect(projected).toHaveLength(3);
   expect(projected[0]).toBe(userMessage);
   expect(projected[1]).toMatchObject({
-    key: `assistant-run-slice:${requestId}`,
+    key: `assistant-turn:${requestId}:0`,
     requestId,
     streaming: false,
     run: cancelledRun,
@@ -86,6 +87,52 @@ test("assistant turn projection preserves a cancelled execution slice between it
   expect(stages).toHaveLength(1);
   expect(stages[0]).toMatchObject({ kind: "execution", current: false });
   expect(stages[0].run?.steps.map((step) => step.id)).toEqual(["cancelled-tool", `${requestId}-cancelled`]);
+});
+
+test("live turn projection retains historical rows and their keys across stream frames", () => {
+  const historicalUser = createMessage({
+    id: "historical-user",
+    requestId: "request-historical",
+    role: "user",
+    content: "之前的问题",
+  });
+  const historicalAnswer = createMessage({
+    id: "historical-answer",
+    requestId: "request-historical",
+    kind: "AssistantFinal",
+    content: "之前的答案",
+  });
+  const liveUser = createMessage({
+    id: "live-user",
+    requestId: "request-live",
+    role: "user",
+    content: "正在处理的问题",
+    createdAt: "2026-01-01T00:01:00.000Z",
+  });
+  const historicalRun = createRun({ requestId: "request-historical", status: "completed" });
+  const staticRuns = [historicalRun];
+  const liveFirstFrame = createRun({
+    requestId: "request-live",
+    thinkingBlocks: [
+      { id: "live-thought", step: 1, messageIndex: 0, contentIndex: 0, content: "开始分析", status: "streaming" },
+    ],
+  });
+  const liveSecondFrame = {
+    ...liveFirstFrame,
+    thinkingBlocks: [{ ...liveFirstFrame.thinkingBlocks[0], content: "开始分析并整理结果" }],
+  };
+  const messages = [historicalUser, historicalAnswer, liveUser];
+
+  const first = projectAssistantTurns(messages, staticRuns, liveFirstFrame);
+  const firstKeys = readProjectedMessageListItemKeys(first);
+  const second = projectAssistantTurns(messages, staticRuns, liveSecondFrame);
+
+  expect(second).not.toBe(first);
+  expect(second[0]).toBe(first[0]);
+  expect(second[1]).toBe(first[1]);
+  expect(second[2]).toBe(first[2]);
+  expect(second.at(-1)).not.toBe(first.at(-1));
+  expect(readProjectedMessageListItemKeys(second)).toBe(firstKeys);
 });
 
 test("a newly active run shows its initial thinking state beside the sent request", async () => {
@@ -117,6 +164,22 @@ test("a newly active run shows its initial thinking state beside the sent reques
   expect(
     screen.getByText(userMessage.content).compareDocumentPosition(thinking) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).not.toBe(0);
+});
+
+test("a queued user message shows its admission state instead of an orphaned thinking placeholder", async () => {
+  const queued = createMessage({
+    id: "queued-user-message",
+    requestId: "request-queued-message",
+    role: "user",
+    content: "先处理这个方向。",
+    queueAdmission: { mode: "steer", status: "pending" },
+  });
+
+  renderWithFrontendProviders(React.createElement(MessageList, createMessageListProps({ messages: [queued] })));
+
+  expect(await screen.findByText(frontendMessage("chat.queue.pending.steer"))).toBeInTheDocument();
+  expect(document.querySelector('[data-queued-message-status="pending"]')).toBeInTheDocument();
+  expect(document.querySelector("[data-initial-thinking]")).not.toBeInTheDocument();
 });
 
 test("completed background preparation telemetry does not hide the initial thinking state", async () => {
@@ -153,6 +216,78 @@ test("completed background preparation telemetry does not hide the initial think
 
   expect(await screen.findByText("Thinking")).toBeInTheDocument();
   expect(document.querySelectorAll("[data-initial-thinking]")).toHaveLength(1);
+});
+
+test("a completed tool immediately yields to the live thinking state before the next model response", async () => {
+  const requestId = "request-tool-handoff-thinking";
+  const createdAt = "2026-01-01T00:00:00.000Z";
+  const userMessage = createMessage({
+    id: "tool-handoff-user",
+    requestId,
+    role: "user",
+    content: "继续优化这个文件。",
+    createdAt,
+  });
+  const preface = createMessage({
+    id: "tool-handoff-preface",
+    requestId,
+    kind: "AssistantToolPreface",
+    content: "我先读取现有文件。",
+    createdAt,
+  });
+  const run = createRun({
+    requestId,
+    steps: [
+      {
+        id: `${requestId}-model-0-0`,
+        kind: "model",
+        agentStep: 0,
+        modelMessageIndex: 0,
+        eventSequence: 1,
+        title: "调用模型",
+        status: "done",
+        startedAt: createdAt,
+        endedAt: createdAt,
+      },
+      {
+        id: `${requestId}-assistant-message-${preface.id}`,
+        kind: "decision",
+        agentStep: 0,
+        modelMessageIndex: 0,
+        modelContentIndex: 0,
+        eventSequence: 2,
+        title: "调用工具前说明",
+        status: "done",
+        startedAt: createdAt,
+        endedAt: createdAt,
+        decisionKind: "tool_preface",
+      },
+      {
+        ...stageTool("tool-handoff-read", "WorkspaceRead", createdAt),
+        agentStep: 0,
+        modelMessageIndex: 0,
+        modelContentIndex: 1,
+        eventSequence: 3,
+        startedSequence: 3,
+        completedSequence: 4,
+      },
+    ],
+  });
+
+  renderWithFrontendProviders(
+    React.createElement(
+      MessageList,
+      createMessageListProps({
+        messages: [userMessage, preface],
+        runs: [run],
+        currentRun: run,
+      }),
+    ),
+  );
+
+  expect(await screen.findByText("Thinking")).toBeInTheDocument();
+  expect(document.querySelectorAll("[data-initial-thinking]")).toHaveLength(1);
+  expect(document.querySelector("[data-execution-feed-fallback]")).not.toBeInTheDocument();
 });
 
 test("streaming model thinking is rendered with the thinking indicator in the conversation list", async () => {
@@ -737,7 +872,7 @@ test("message list refreshes the user profile while keeping the project identity
   expect(screen.getByAltText("Ada")).toBeInTheDocument();
   expect(screen.getByText("Senera")).toHaveClass("text-[13.5px]", "font-semibold");
   expect(document.querySelector("[data-message-avatar='assistant']")).toHaveClass("h-8", "w-8");
-  expect(document.querySelector('[data-message-avatar="assistant"] img[src="./favicon.svg"]')).not.toBeNull();
+  expect(document.querySelector('[data-message-avatar="assistant"] img[src$="favicon.svg"]')).not.toBeNull();
   expect(document.querySelector("[data-message-avatar='assistant']")).not.toHaveClass(
     "rounded-full",
     "border",
@@ -760,7 +895,7 @@ test("message list refreshes the user profile while keeping the project identity
 
   expect(screen.getByAltText("Grace")).toBeInTheDocument();
   expect(screen.queryByText("Beta")).not.toBeInTheDocument();
-  expect(document.querySelector('[data-message-avatar="assistant"] img[src="./favicon.svg"]')).not.toBeNull();
+  expect(document.querySelector('[data-message-avatar="assistant"] img[src$="favicon.svg"]')).not.toBeNull();
 });
 
 test("user messages edit inline and keep the existing replay command", async () => {

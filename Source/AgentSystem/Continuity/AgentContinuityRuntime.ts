@@ -1,4 +1,6 @@
 import path from "node:path";
+import { AgentMemoryDiaryStore } from "./AgentMemoryDiaryStore.js";
+import { agentMemoryDiaryDate } from "./AgentMemoryDiaryContract.js";
 import { AgentSqliteDatabaseKernel } from "../Database/AgentSqliteDatabaseKernel.js";
 import { AgentContinuityMemoryService } from "./AgentContinuityMemoryService.js";
 import { AgentContinuitySqliteStore } from "./AgentContinuitySqliteStore.js";
@@ -7,6 +9,7 @@ import { AgentMemoryService } from "../Memory/AgentMemoryService.js";
 import { SqliteAgentMemorySourceRepository } from "../Memory/AgentMemorySourceRepository.js";
 import type { AgentUpgradeSession } from "../Upgrade/AgentUpgradeSession.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
+import type { AgentPiDiagnosticSink } from "../PiShared/AgentPiDiagnosticsTypes.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { AgentExecutionLedgerService } from "../Goals/AgentExecutionLedgerService.js";
@@ -23,6 +26,8 @@ import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import { AgentBackgroundLearningRequestLedger } from "../Memory/AgentBackgroundLearningRequestLedger.js";
 import { createAgentContinuityRecallService, type AgentContinuityRecallService } from "./AgentContinuityToolRuntime.js";
 import { AgentContinuityMemOSRuntime } from "./AgentContinuityMemOSRuntime.js";
+import { AgentMemoryLearningLedger, agentMemorySubject } from "./AgentMemoryLearningLedger.js";
+import { createAgentMemoryRelevanceAssessment } from "./AgentMemoryRelevanceModel.js";
 
 export interface AgentContinuityRuntime {
   readonly database: AgentSqliteDatabaseKernel;
@@ -36,15 +41,19 @@ export interface AgentContinuityRuntime {
   readonly lifecycle: AgentContinuityLifecyclePort;
   readonly recall: AgentContinuityRecallService;
   readonly memos: AgentContinuityMemOSRuntime;
+  readonly diaries: AgentMemoryDiaryStore;
   close(): Promise<void>;
 }
 
 export function createAgentContinuityRuntime(input: {
+  readonly canonicalSubject?: (subject: string) => string;
+  readonly agentId: string;
   /** Physical source and continuity ledger used for provenance and deletion. */
   readonly databasePath: string;
   /** MemOS graph database used for semantic memory and routing scenarios. */
   readonly memosDatabasePath: string;
   readonly identityPath: string;
+  readonly diaryRoot: string;
   readonly workspaceId?: string;
   readonly upgradeSession: AgentUpgradeSession;
   readonly configSnapshot: () => AgentSystemConfig;
@@ -52,10 +61,11 @@ export function createAgentContinuityRuntime(input: {
   /** Shared embedding client used by the MemOS memory authority. */
   readonly embeddingClient: AgentContinuitySemanticEmbeddingClient;
   readonly embeddingModel: () => string;
-  readonly identityDisplayValues?: () => AgentIdentityDisplayValues;
+  readonly identityDisplayValues?: (sessionId?: string) => AgentIdentityDisplayValues;
   readonly logger?: AgentLogger;
   /** Dedicated projection stream for semantic-learning queue and promotion work. */
   readonly learningLogger?: AgentLogger;
+  readonly diagnostics?: AgentPiDiagnosticSink;
 }): AgentContinuityRuntime {
   assertDistinctDatabasePaths(input.databasePath, input.memosDatabasePath);
   const database = new AgentSqliteDatabaseKernel({
@@ -66,12 +76,18 @@ export function createAgentContinuityRuntime(input: {
   let memosForCleanup: AgentContinuityMemOSRuntime | undefined;
   try {
     const identityStore = new AgentContinuityIdentityStore(input.identityPath, input.workspaceId);
-    const baseIdentity = identityStore.context();
-    const learningRequests = new AgentBackgroundLearningRequestLedger(database, input.learningLogger);
+    const learningRequests = new AgentBackgroundLearningRequestLedger(
+      database,
+      input.learningLogger,
+      input.diagnostics,
+    );
     const sourceRepository = new SqliteAgentMemorySourceRepository(database);
+    const learningLedger = new AgentMemoryLearningLedger(database);
+    const diaries = new AgentMemoryDiaryStore(input.diaryRoot);
     const memos = new AgentContinuityMemOSRuntime({
+      canonicalSubject: input.canonicalSubject,
       databasePath: input.memosDatabasePath,
-      namespace: baseIdentity.workspaceId,
+      namespace: input.agentId,
       embeddingClient: input.embeddingClient,
       embeddingModel: input.embeddingModel,
       autoLinkThreshold: resolveContinuityLearningConfig(input.configSnapshot()).MemOS.AutoLinkThreshold,
@@ -81,6 +97,7 @@ export function createAgentContinuityRuntime(input: {
       },
       sourceRepository,
       learningRequests,
+      learningLedger,
       semanticModelProvider: () => resolveContinuityLearningConfig(input.configSnapshot()).Client.ModelProvider,
       semanticPolicy: () => {
         const continuity = resolveContinuityLearningConfig(input.configSnapshot());
@@ -98,20 +115,24 @@ export function createAgentContinuityRuntime(input: {
           fragmentHistoryTurns: memosConfig.FragmentHistoryTurns,
           knowledgeCandidateLimit: memosConfig.KnowledgeCandidateLimit,
           assistantPreviewTokens: memosConfig.AssistantPreviewTokens,
-          digestInputTokenBudget: memosConfig.DigestInputTokenBudget,
-          digestSummaryTokenLimit: memosConfig.DigestSummaryTokenLimit,
+          fragmentSummaryTokenLimit: memosConfig.FragmentSummaryTokenLimit,
         };
       },
-      semanticScopeKey: baseIdentity.workspaceId,
+      semanticScopeKey: input.agentId,
+      retentionPolicy: () => resolveContinuityLearningConfig(input.configSnapshot()).Retention,
+      retentionInputTokenBudget: () =>
+        resolveContinuityLearningConfig(input.configSnapshot()).MemOS.RelevanceInputTokenBudget,
+      diary: { store: diaries, config: () => resolveContinuityLearningConfig(input.configSnapshot()).Diary },
       identityDisplayValues: input.identityDisplayValues,
       logger: input.logger,
       learningLogger: input.learningLogger,
     });
     memosForCleanup = memos;
     const store = new AgentContinuitySqliteStore(database);
-    const identity = identityStore.context();
+    const identity = { ...identityStore.context(), agentId: input.agentId };
     const recall = createAgentContinuityRecallService({
       memos,
+      learningLedger,
       configSnapshot: input.configSnapshot,
     });
     const executionLedger = new AgentExecutionLedgerService({
@@ -122,7 +143,20 @@ export function createAgentContinuityRuntime(input: {
       store,
       recallConfig: () => resolveContinuityLearningConfig(input.configSnapshot()).Recall,
       memos,
+      learningLedger,
+      assessRelevance: createAgentMemoryRelevanceAssessment({
+        model: () => resolveContinuityLearningConfig(input.configSnapshot()).Client.ModelProvider,
+        scopeKey: input.agentId,
+        learningRequests,
+        maxInputTokens: () => resolveContinuityLearningConfig(input.configSnapshot()).MemOS.RelevanceInputTokenBudget,
+      }),
       identityDisplayValues: input.identityDisplayValues,
+      diaryIndex: (interaction) => {
+        const config = resolveContinuityLearningConfig(input.configSnapshot()).Diary;
+        const subject = agentMemorySubject(interaction);
+        const store = input.canonicalSubject ? diaries.forSubject(input.canonicalSubject(subject.id)) : diaries;
+        return store.recentIndex(agentMemoryDiaryDate(new Date().toISOString(), config.TimeZone), config.RecentDays);
+      },
       logger: input.logger,
     });
     const memory = new AgentMemoryService({
@@ -132,7 +166,7 @@ export function createAgentContinuityRuntime(input: {
         input.learningLogger?.warn("memory.completed_turn_sink.failed", {
           error: errorMessage(error),
         }),
-      deletionSinks: [store, promptContext, memos],
+      deletionSinks: [store, promptContext, learningLedger, memos],
     });
     const lifecycle = new AgentContinuityLifecycleCoordinator({
       memory: {
@@ -141,6 +175,7 @@ export function createAgentContinuityRuntime(input: {
       },
       promptContext,
     });
+    let closePromise: Promise<void> | undefined;
     return {
       database,
       learningRequests,
@@ -153,14 +188,19 @@ export function createAgentContinuityRuntime(input: {
       lifecycle,
       recall,
       memos,
-      close: async () => {
-        try {
-          await lifecycle.close();
-          await memos.close();
-        } finally {
-          database.close();
-        }
-      },
+      diaries,
+      close: () =>
+        (closePromise ??= (async () => {
+          const failures: unknown[] = [];
+          for (const close of [() => lifecycle.close(), () => memos.close(), () => database.close()]) {
+            try {
+              await close();
+            } catch (error) {
+              failures.push(error);
+            }
+          }
+          if (failures.length) throw new AggregateError(failures, "Agent learning storage could not close cleanly.");
+        })()),
     };
   } catch (error) {
     if (memosForCleanup) {

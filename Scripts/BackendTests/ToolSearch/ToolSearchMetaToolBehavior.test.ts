@@ -16,11 +16,18 @@ import { createAgentToolAccessGrant } from "../../../Source/AgentSystem/ToolRunt
 import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
 import { AgentToolSuccessOutcome } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResultOutcome.js";
 import { AgentToolRunner } from "../../../Source/AgentSystem/ToolRuntime/AgentToolRunner.js";
+import type { AgentToolRunnerContext } from "../../../Source/AgentSystem/ToolRuntime/AgentToolRunner.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
-import type { ExecutedToolCallResult } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
+import type {
+  AgentExtensionRegistryLike,
+  ExecutedToolCallResult,
+} from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
+import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
+import { AgentJsonSchemaPromptContractProjector } from "../../../Source/AgentSystem/ToolContracts/AgentJsonSchemaPromptContractProjector.js";
 import { AgentChannelKinds } from "../../../Source/AgentSystem/Channels/AgentChannelTypes.js";
 import { AgentInteractionSurfaces } from "../../../Source/AgentSystem/Interaction/AgentInteractionContext.js";
 import { createModelProvider, createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
+import { loadSystemToolContractByName } from "../SystemTools/SystemToolContractTestSupport.js";
 import { createRegistry, createTool, createToolSearchConfig } from "./ToolSearchTestFixtures.js";
 
 describe("ToolSearch meta-tool behavior", () => {
@@ -85,16 +92,13 @@ describe("ToolSearch meta-tool behavior", () => {
     });
     const toolExposure = new AgentToolExposureState(grant);
 
-    const invalid = await handler({ query: "" }, hostToolContext({ visibleToolNames: [] }));
-    const staleConversationArguments = await handler(
-      {
-        catalogRevision: "",
-        query: "read workspace file",
-        preferredSources: ["web"],
-        includeLoaded: false,
-      },
-      hostToolContext({ visibleToolNames: [] }),
-    );
+    const invalid = await runPackageValidatedToolSearch(runtime, registry, "E:/workspace", { query: "" });
+    const staleConversationArguments = await runPackageValidatedToolSearch(runtime, registry, "E:/workspace", {
+      catalogRevision: "",
+      query: "read workspace file",
+      preferredSources: ["web"],
+      includeLoaded: false,
+    });
     const valid = await handler(
       { query: "read workspace file" },
       hostToolContext({
@@ -154,7 +158,10 @@ describe("ToolSearch meta-tool behavior", () => {
       }),
     );
     expect(describe.response.ok).toBe(true);
-    expect(toolExposure.hasConfirmedContract("WorkspaceReadFile", "WorkspaceReadFile.contract")).toBe(true);
+    expect(toolExposure.hasConfirmedContract("WorkspaceReadFile", "WorkspaceReadFile.contract")).toBe(false);
+    expect(describe.toolContractReceipts).toEqual([
+      expect.objectContaining({ toolName: "WorkspaceReadFile", contractDigest: "WorkspaceReadFile.contract" }),
+    ]);
     expect(describe.response.result).toMatchObject({
       type: "senera.tool_description.v2",
       tools: [
@@ -203,7 +210,13 @@ describe("ToolSearch meta-tool behavior", () => {
       ok: true,
       result: {
         type: "senera.tool_discovery.v5",
-        match: [["WorkspaceReadFile", "Read workspace files", ["visible", "unconfirmed", "none"]]],
+        match: [
+          [
+            "WorkspaceReadFile",
+            "Read workspace files",
+            ["visible", "unconfirmed", "arguments", { path: "package.json" }],
+          ],
+        ],
       },
     });
     const unload = await runtime.createUnloadHostHandler()(
@@ -245,34 +258,7 @@ describe("ToolSearch meta-tool behavior", () => {
 
   test("rejects obsolete search arguments instead of silently changing their meaning", async () => {
     const workspaceRoot = createTemporaryDirectory("senera-tool-search-replay");
-    const searchTool = createTool({
-      name: AgentToolMetaToolNames.Search,
-      title: "Tool search",
-      summary: "Find tools",
-      tags: ["search"],
-      actions: ["search"],
-      targets: ["tools"],
-      priority: 100,
-      rootKind: "System",
-      loading: "Bootstrap",
-    });
-    searchTool.handler = { kind: "HostCapability", capability: "tool.search" };
-    searchTool.contract = {
-      digest: "tool-search-contract-v2",
-      arguments: {
-        tsHintLines: [],
-        xmlPreview: "",
-        properties: [],
-        jsonSchema: {
-          type: "object",
-          properties: { query: { type: "string" } },
-          required: ["query"],
-          additionalProperties: false,
-        },
-      },
-    };
     const registry = createRegistry([
-      searchTool,
       createTool({
         name: "WorkspaceReadFile",
         title: "Read file",
@@ -290,20 +276,8 @@ describe("ToolSearch meta-tool behavior", () => {
       createModelProvider(),
       { scenarioSource: new VerificationScenarioSource(), availableExecutionTargets: () => ["Local"] },
     );
-    const capabilities = new AgentToolHostCapabilityRegistry().register(
-      "tool.search",
-      runtime.createSearchHostHandler(),
-    );
-    const runner = new AgentToolRunner(
-      {} as AgentSystemConfig,
-      workspaceRoot,
-      capabilities,
-      registry,
-      new SeneraLocalExecutionEnv({ workspaceRoot }),
-    );
-
     try {
-      const result = await runner.run(searchTool, {
+      const result = await runPackageValidatedToolSearch(runtime, registry, workspaceRoot, {
         catalogRevision: "",
         preferredSources: ["web"],
         includeLoaded: false,
@@ -311,7 +285,6 @@ describe("ToolSearch meta-tool behavior", () => {
       });
       expect(result.response.ok).toBe(false);
     } finally {
-      await runner.close();
       await runtime.close();
       removeDirectory(workspaceRoot);
     }
@@ -497,10 +470,10 @@ describe("ToolSearch meta-tool behavior", () => {
       { scenarioSource: new VerificationScenarioSource(), availableExecutionTargets: () => ["Local"] },
     );
     const handler = runtime.createSearchHostHandler();
-    const staleConversationArguments = await handler(
-      { query: "current information", preferredSources: ["web"] },
-      hostToolContext({ visibleToolNames: [] }),
-    );
+    const staleConversationArguments = await runPackageValidatedToolSearch(runtime, registry, "E:/workspace", {
+      query: "current information",
+      preferredSources: ["web"],
+    });
     const valid = await handler({ query: "current information" }, hostToolContext({ visibleToolNames: [] }));
 
     expect(staleConversationArguments.response.ok).toBe(false);
@@ -515,53 +488,54 @@ describe("ToolSearch meta-tool behavior", () => {
   });
 
   test("returns only authorized candidates and rejects unknown search arguments", async () => {
+    const registry = createRegistry([
+      createTool({
+        name: AgentToolMetaToolNames.Search,
+        title: "Tool search",
+        summary: "Find tools",
+        tags: ["search"],
+        actions: ["search"],
+        targets: ["tools"],
+        priority: 100,
+        rootKind: "System",
+        loading: "Bootstrap",
+      }),
+      createTool({
+        name: "CalendarTool",
+        title: "Calendar",
+        summary: "Read calendar events",
+        tags: ["calendar"],
+        actions: ["read"],
+        targets: ["calendar"],
+        priority: 30,
+        rootKind: "System",
+        loading: "Dynamic",
+      }),
+      createTool({
+        name: "WeatherTool",
+        title: "Weather",
+        summary: "Read weather forecasts",
+        tags: ["weather"],
+        actions: ["read"],
+        targets: ["weather"],
+        priority: 20,
+        rootKind: "User",
+        loading: "Dynamic",
+      }),
+      createTool({
+        name: "PrivateTool",
+        title: "Private",
+        summary: "Private capability",
+        tags: ["private"],
+        actions: ["read"],
+        targets: ["private"],
+        priority: 10,
+        rootKind: "User",
+        loading: "Dynamic",
+      }),
+    ]);
     const runtime = new AgentToolSearchRuntime(
-      createRegistry([
-        createTool({
-          name: AgentToolMetaToolNames.Search,
-          title: "Tool search",
-          summary: "Find tools",
-          tags: ["search"],
-          actions: ["search"],
-          targets: ["tools"],
-          priority: 100,
-          rootKind: "System",
-          loading: "Bootstrap",
-        }),
-        createTool({
-          name: "CalendarTool",
-          title: "Calendar",
-          summary: "Read calendar events",
-          tags: ["calendar"],
-          actions: ["read"],
-          targets: ["calendar"],
-          priority: 30,
-          rootKind: "System",
-          loading: "Dynamic",
-        }),
-        createTool({
-          name: "WeatherTool",
-          title: "Weather",
-          summary: "Read weather forecasts",
-          tags: ["weather"],
-          actions: ["read"],
-          targets: ["weather"],
-          priority: 20,
-          rootKind: "User",
-          loading: "Dynamic",
-        }),
-        createTool({
-          name: "PrivateTool",
-          title: "Private",
-          summary: "Private capability",
-          tags: ["private"],
-          actions: ["read"],
-          targets: ["private"],
-          priority: 10,
-          rootKind: "User",
-          loading: "Dynamic",
-        }),
-      ]) as unknown as AgentExtensionRegistry,
+      registry as unknown as AgentExtensionRegistry,
       createToolSearchConfig(),
       "E:/workspace",
       createModelProvider(),
@@ -587,13 +561,16 @@ describe("ToolSearch meta-tool behavior", () => {
     expect(JSON.stringify(result)).not.toContain("PrivateTool");
     expect(readToolNamesFromSearchResult(result)).toEqual(["WeatherTool"]);
 
-    const invalidResponse = await runtime.createSearchHostHandler()(
+    const invalidResponse = await runPackageValidatedToolSearch(
+      runtime,
+      registry,
+      "E:/workspace",
       { query: "weather", scope: "all" },
-      hostToolContext({
+      {
         requestId: "catalog-request",
         visibleToolNames: [AgentToolMetaToolNames.Search],
         authorizedToolNames: [AgentToolMetaToolNames.Search, "CalendarTool", "WeatherTool"],
-      }),
+      },
     );
 
     expect(invalidResponse.response.ok).toBe(false);
@@ -639,6 +616,52 @@ function artifactWithEvidence(): ExecutedToolCallResult["artifact"] {
     ],
     delta: [],
   };
+}
+
+const toolContracts = new AgentJsonSchemaPromptContractProjector();
+
+function packageToolSearch(): RegisteredTool {
+  const published = loadSystemToolContractByName("ToolSearch");
+  const tool = createTool({
+    name: published.contract.name,
+    title: "Tool search",
+    summary: "Find tools",
+    tags: ["search"],
+    actions: ["search"],
+    targets: ["tools"],
+    priority: 100,
+    rootKind: "System",
+    loading: "Bootstrap",
+  });
+  tool.handler = { kind: "HostCapability", capability: published.contribution.capability };
+  tool.contract = {
+    digest: "ToolSearch.package-contract",
+    arguments: toolContracts.project(published.contract.inputSchema),
+    outputSchema: published.contract.outputSchema,
+  };
+  return tool;
+}
+
+async function runPackageValidatedToolSearch(
+  runtime: AgentToolSearchRuntime,
+  registry: AgentExtensionRegistryLike,
+  workspaceRoot: string,
+  arguments_: Record<string, unknown>,
+  context: AgentToolRunnerContext = {},
+) {
+  const capabilities = new AgentToolHostCapabilityRegistry().register("tool.search", runtime.createSearchHostHandler());
+  const runner = new AgentToolRunner(
+    {} as AgentSystemConfig,
+    workspaceRoot,
+    capabilities,
+    registry,
+    new SeneraLocalExecutionEnv({ workspaceRoot }),
+  );
+  try {
+    return await runner.run(packageToolSearch(), arguments_, context);
+  } finally {
+    await runner.close();
+  }
 }
 
 function hostToolContext(

@@ -1,8 +1,8 @@
 import { AgentEventKinds, type AgentEventKind } from "../Events/AgentEventCatalog.js";
 import type { AgentDomainEvent } from "../Events/AgentEvent.js";
-import type { AgentChannelAdapter, AgentChannelMedia, AgentChannelSource } from "./AgentChannelTypes.js";
+import type { AgentChannelAdapter, AgentChannelSource, AgentChannelSendReplyOptions } from "./AgentChannelTypes.js";
+import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import type { AgentChannelDelivery } from "./AgentChannelDelivery.js";
-import type { AgentChannelFinalResponseRewriter } from "./AgentChannelFinalResponse.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentResourceResolverLike } from "../Resources/AgentResourceResolver.js";
 import {
@@ -10,29 +10,19 @@ import {
   collectAgentChannelMarkdownResourceManifest,
   projectAgentChannelFinalParts,
 } from "./AgentChannelOutboundMedia.js";
-import type {
-  AgentChannelFinalPart,
-  AgentChannelOutboundMediaProjection,
-  AgentChannelOutboundSegment,
-} from "./AgentChannelOutboundMedia.js";
+import type { AgentChannelOutboundMediaProjection, AgentChannelOutboundSegment } from "./AgentChannelOutboundMedia.js";
 import {
   createAgentChannelActivity,
   type AgentChannelActivity,
   type AgentChannelActivityPart,
   type AgentChannelActivityDeliveryReceipt,
 } from "./AgentChannelActivity.js";
-import type { AgentChannelFinalizationRecord } from "./AgentChannelFinalizationTypes.js";
 import { createOpaqueId } from "../Core/AgentIds.js";
-import type { AgentModelTimingSink } from "../ModelEndpoints/AgentModelTiming.js";
 import {
   analyzeChannelMarkdownStructure,
   splitAgentChannelContent,
   splitChannelTextByParagraphs,
 } from "./AgentChannelText.js";
-import {
-  packAgentChannelFinalTextParts,
-  type AgentChannelFinalTextPackingPolicy,
-} from "./AgentChannelFinalTextPacking.js";
 
 export const AgentChannelRunRendererDefaults = Object.freeze({
   /** Throttle window for progressive edits (Telegram allows ~1 edit/s). */
@@ -56,23 +46,10 @@ export interface AgentChannelRunRendererOptions {
   readonly toolProgress?: (toolName: string) => string;
   /** Resolves canonical Senera resources before native media delivery. */
   readonly resourceResolver?: AgentResourceResolverLike;
-  /** Host-owned serializer used for every settled channel answer. */
-  readonly finalResponseRewriter?: AgentChannelFinalResponseRewriter;
-  /** Durable session identity used by the native serializer cache. */
-  readonly sessionId?: string;
   readonly requestId?: string;
-  readonly logicalCacheScope?: string;
-  /** Prior successful serializer projections for this channel session. */
-  readonly finalizationHistory?: readonly AgentChannelFinalizationRecord[];
-  /** Transport grouping for adjacent prose; media and code remain boundaries. */
-  readonly finalTextPacking?: AgentChannelFinalTextPackingPolicy;
   readonly now?: () => Date;
   readonly onPreviewFailed?: (error: unknown) => void;
   readonly onDeliveryFailed?: (error: unknown) => void;
-  readonly onFinalRewriteFailed?: (error: unknown) => void;
-  readonly onFinalRewriteTiming?: AgentModelTimingSink;
-  readonly onFinalizationPersistFailed?: (error: unknown) => void;
-  readonly onFinalized?: (record: AgentChannelFinalizationRecord) => void | Promise<void>;
 }
 
 type RendererPhase = "idle" | "running" | "terminal";
@@ -106,15 +83,16 @@ export class AgentChannelRunRenderer {
   private deliveredMedia = new Set<string>();
   private deliveryFailureReported = false;
   private disposed = false;
-  private readonly finalizationAbortController = new AbortController();
   /** Serializes event handling even when the provider invokes its sink
    * concurrently. This keeps tool media, previews, and terminal answers in
    * the same order as the event stream. */
   private eventChain: Promise<void> = Promise.resolve();
   private readonly now: () => Date;
+  private readonly deliveryScope: string;
 
   constructor(options: AgentChannelRunRendererOptions) {
     this.options = options;
+    this.deliveryScope = options.requestId ?? createOpaqueId("channel_reply");
     this.now = options.now ?? (() => new Date());
     if (options.editIntervalMs !== undefined && options.editIntervalMs < 0) {
       throw new Error("editIntervalMs must be non-negative.");
@@ -125,8 +103,13 @@ export class AgentChannelRunRenderer {
   }
 
   async handleEvent(event: AgentDomainEvent): Promise<void> {
-    if (this.disposed) return;
-    const current = this.eventChain.then(() => (this.disposed ? undefined : this.handleEventInternal(event)));
+    return this.enqueueEvent(() => this.handleEventInternal(event));
+  }
+
+  private enqueueEvent(operation: () => Promise<void>): Promise<void> {
+    if (this.disposed) return Promise.resolve();
+    const current = this.eventChain.then(() => (this.disposed ? undefined : operation()));
+    // The caller observes this operation's failure; later events keep their lane.
     this.eventChain = current.catch(() => undefined);
     return current;
   }
@@ -178,7 +161,6 @@ export class AgentChannelRunRenderer {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.finalizationAbortController.abort();
     this.clearPreviewTimer();
   }
 
@@ -223,7 +205,11 @@ export class AgentChannelRunRenderer {
       await this.ensurePreviewMessage();
       return;
     }
-    if (this.pendingPreview.length - this.lastEditedLength < threshold(this.options.bufferThreshold)) {
+    const interval = this.options.editIntervalMs ?? AgentChannelRunRendererDefaults.editIntervalMs;
+    if (
+      this.pendingPreview.length - this.lastEditedLength < threshold(this.options.bufferThreshold) ||
+      this.now().getTime() - this.lastEditAt < interval
+    ) {
       this.scheduleEdit();
       return;
     }
@@ -233,15 +219,17 @@ export class AgentChannelRunRenderer {
   private scheduleEdit(): void {
     if (this.editTimer || !this.previewMessageId) return;
     const interval = this.options.editIntervalMs ?? AgentChannelRunRendererDefaults.editIntervalMs;
+    const delay = Math.max(0, interval - (this.now().getTime() - this.lastEditAt));
     this.editTimer = setTimeout(() => {
       this.editTimer = undefined;
-      void this.editPreviewNow().catch(() => undefined);
-    }, interval);
+      void this.enqueueEvent(() => this.editPreviewNow()).catch((error) => this.reportPreviewFailure(error));
+    }, delay);
     this.editTimer.unref?.();
   }
 
   private async editPreviewNow(): Promise<void> {
-    if (!this.previewMessageId || !this.pendingPreview) return;
+    if (this.phase !== "running" || !this.previewMessageId || !this.pendingPreview) return;
+    this.clearPreviewTimer();
     const preview = this.pendingPreview;
     await this.editPreviewContent(preview);
   }
@@ -308,7 +296,7 @@ export class AgentChannelRunRenderer {
       this.disposePreviewMessage();
     }
     if (!delivered) {
-      const receipt = await this.options.delivery.enqueueAndWait(this.options.source, content);
+      const receipt = await this.deliverPayload(content);
       delivered = receipt.status === "sent";
       if (receipt.status === "failed") this.reportDeliveryFailure(receipt.error);
     }
@@ -397,7 +385,7 @@ export class AgentChannelRunRenderer {
   /**
    * Delivers a settled answer without requiring a live run event stream.
    * Scheduled and resident notifications use this same projection boundary so
-   * they preserve channel media ordering and the final-response rewrite rules.
+   * they preserve authored channel text and media ordering.
    */
   async deliverProactive(content: string): Promise<boolean> {
     if (this.disposed) return false;
@@ -447,7 +435,6 @@ export class AgentChannelRunRenderer {
 
   private async deliverFinal(content: string, intent: AgentChannelFinalDeliveryIntent): Promise<boolean> {
     if (this.disposed) return false;
-    const rewriter = this.options.finalResponseRewriter;
     // Resource selection is driven by the parsed manifest. A tool result alone
     // never enters this path, so merely creating an Artifact cannot publish it.
     const structure = analyzeChannelMarkdownStructure(content);
@@ -457,93 +444,28 @@ export class AgentChannelRunRenderer {
       intent.kind !== "host_notice" && needsResourceManifest
         ? await collectAgentChannelMarkdownResourceManifest(content, {
             resourceResolver: this.options.resourceResolver,
-          }).catch(() => undefined)
+          })
         : undefined;
-    // Every settled assistant answer uses the same host-owned serializer. This
-    // keeps paragraph boundaries, resource intent and finalization history
-    // consistent; local projection below is recovery only.
-    if (intent.kind !== "host_notice" && rewriter) {
-      try {
-        const delivery = await rewriter.rewrite({
-          content,
-          source: this.options.source,
-          requestId: this.options.requestId,
-          sessionId: this.options.sessionId,
-          logicalCacheScope: this.options.logicalCacheScope,
-          timingSink: this.options.onFinalRewriteTiming,
-          signal: this.finalizationAbortController.signal,
-          context: {
-            ...(resourceManifest ? { resourceManifest } : {}),
-            platformTruth: {
-              kind: this.options.adapter.kind,
-              chatType: this.options.source.chatType,
-              capabilities: this.options.adapter.capabilities,
-            },
-            history: this.options.finalizationHistory ?? [],
-          },
-        });
-        if (this.disposed) return false;
-        const parts = packAgentChannelFinalTextParts(delivery.parts, this.options.finalTextPacking);
-        const projection = await projectAgentChannelFinalParts(parts, {
-          resourceResolver: this.options.resourceResolver,
-          resourceManifest,
-        });
-        if (this.disposed) return false;
-        if (projection.segments.length > 0 || projection.caption.trim().length > 0) {
-          const accepted = await this.deliverFinalProjection(projection);
-          if (accepted) {
-            const history = projectFinalizationHistory(projection, content, parts);
-            await this.persistFinalization(history.content, history.parts, resourceManifest);
-          }
-          return accepted;
-        }
-        // An empty projection (e.g. whitespace-only parts) must not swallow
-        // the answer; fall through to the plain-text delivery path below.
-      } catch (error) {
-        this.options.onFinalRewriteFailed?.(error);
-      }
-    }
-    // If the model serializer is unavailable or rejected, keep the same
-    // resource/marker safety boundary locally instead of sending raw Markdown
-    // placeholders to the channel. This path is also useful for legacy callers
-    // that do not configure a rewriter.
     if (intent.kind !== "host_notice" && needsResourceManifest) {
-      try {
-        const projection = await projectAgentChannelFinalParts([{ kind: "text", text: content }], {
-          resourceResolver: this.options.resourceResolver,
-          resourceManifest,
-        });
-        if (projection.segments.length > 0 || projection.caption.trim().length > 0) {
-          return this.deliverFinalProjection(projection);
-        }
-      } catch (error) {
-        this.options.onFinalRewriteFailed?.(error);
-      }
-      // A content made entirely of internal placeholders has no safe visible
-      // fallback. Do not re-emit the original model projection after it has
-      // been deliberately removed by the channel boundary.
-      return true;
+      const projection = await projectAgentChannelFinalParts([{ kind: "text", text: content }], {
+        resourceResolver: this.options.resourceResolver,
+        resourceManifest,
+      });
+      return this.deliverFinalProjection(projection);
     }
     if (this.previewMessageId && this.options.adapter.capabilities.supportsEdit) {
       const previewLength = this.options.previewLength ?? AgentChannelRunRendererDefaults.previewLength;
-      const preview = clampPreview(content, previewLength);
-      try {
-        const edited = await this.options.adapter.edit?.(this.options.source, this.previewMessageId, preview);
-        if (edited?.kind === "edited" || edited?.kind === "sent") {
-          if (content.length > previewLength) {
-            this.disposePreviewMessage();
-            return this.enqueueText(content, previewLength);
-          }
-          return true;
+      if (await this.editPreviewContent(content)) {
+        if (content.length > previewLength) {
+          this.disposePreviewMessage();
+          return this.enqueueText(content, previewLength);
         }
-      } catch (error) {
-        this.reportPreviewFailure(error);
+        return true;
       }
+      this.disposePreviewMessage();
     }
     if (!this.previewMessageId && !this.deliveredAssistantContents.has(content.trim())) {
-      // Preserve fenced/resource syntax as one text payload when the model
-      // serializer produced no usable parts; paragraph splitting would break
-      // a code fence into unrelated messages.
+      // Preserve code fences as one transport payload.
       return structure.codeBlockCount > 0 ? this.enqueueText(content) : this.enqueueTextByParagraphs(content);
     }
     return true;
@@ -589,24 +511,15 @@ export class AgentChannelRunRenderer {
       const firstText = segments.findIndex((segment) => segment.kind === "text");
       const previewCaption =
         firstText >= 0 && segments[firstText]?.kind === "text" ? segments[firstText].content : "图片";
-      try {
-        const edited = await this.options.adapter.edit?.(
-          this.options.source,
-          previewMessageId!,
-          clampPreview(previewCaption, this.options.previewLength ?? AgentChannelRunRendererDefaults.previewLength),
+      if (await this.editPreviewContent(previewCaption)) {
+        consumedTextIndex = firstText;
+        consumedPreviewMessageId = previewMessageId;
+        consumedTextLength = Math.min(
+          previewCaption.length,
+          this.options.previewLength ?? AgentChannelRunRendererDefaults.previewLength,
         );
-        if (edited?.kind === "edited" || edited?.kind === "sent") {
-          consumedTextIndex = firstText;
-          consumedPreviewMessageId = previewMessageId;
-          consumedTextLength = Math.min(
-            previewCaption.length,
-            this.options.previewLength ?? AgentChannelRunRendererDefaults.previewLength,
-          );
-          this.disposePreviewMessage();
-        }
-      } catch (error) {
-        this.reportPreviewFailure(error);
       }
+      this.disposePreviewMessage();
     }
 
     let accepted = true;
@@ -640,7 +553,7 @@ export class AgentChannelRunRenderer {
         accepted = false;
         continue;
       }
-      const receipt = await this.options.delivery.enqueueAndWait(this.options.source, "", {
+      const receipt = await this.deliverPayload("", {
         chatType: this.options.source.chatType,
         media: [segment.media],
       });
@@ -654,30 +567,6 @@ export class AgentChannelRunRenderer {
       }
     }
     return { accepted, parts: receipts };
-  }
-
-  private async persistFinalization(
-    content: string,
-    parts: readonly import("./AgentChannelOutboundMedia.js").AgentChannelFinalPart[],
-    resourceManifest: import("./AgentChannelOutboundMedia.js").AgentChannelMarkdownResourceManifest | undefined,
-  ): Promise<void> {
-    if (!this.options.onFinalized) return;
-    const record: AgentChannelFinalizationRecord = {
-      id: this.options.requestId?.trim() || createOpaqueId("channel_finalization"),
-      ...(this.options.requestId?.trim() ? { requestId: this.options.requestId.trim() } : {}),
-      createdAt: this.now().toISOString(),
-      platform: this.options.source.platform,
-      chatType: this.options.source.chatType,
-      ...(this.options.logicalCacheScope ? { logicalCacheScope: this.options.logicalCacheScope } : {}),
-      content,
-      parts,
-      ...(resourceManifest ? { resourceManifest } : {}),
-    };
-    try {
-      await this.options.onFinalized(record);
-    } catch (error) {
-      this.options.onFinalizationPersistFailed?.(error);
-    }
   }
 
   private async enqueueText(content: string, skipPrefixLength = 0): Promise<boolean> {
@@ -701,7 +590,7 @@ export class AgentChannelRunRenderer {
     for (const chunk of pending) {
       if (this.disposed) return { accepted: false, messageIds, ...(code ? { code } : {}) };
       if (!chunk.trim()) continue;
-      const receipt = await this.options.delivery.enqueueAndWait(this.options.source, chunk);
+      const receipt = await this.deliverPayload(chunk);
       if (receipt.status === "sent") {
         this.deliveredAssistantContents.add(chunk.trim());
         messageIds.push(receipt.messageId);
@@ -727,6 +616,19 @@ export class AgentChannelRunRenderer {
     return accepted;
   }
 
+  private deliverPayload(content: string, options?: AgentChannelSendReplyOptions) {
+    return this.options.delivery.enqueueAndWait(this.options.source, content, {
+      ...options,
+      chatType: this.options.source.chatType,
+      deliveryId: sha256HexOfCanonicalJson({
+        scope: this.deliveryScope,
+        source: this.options.source,
+        content,
+        options,
+      }),
+    });
+  }
+
   private reportPreviewFailure(error: unknown): void {
     this.options.onPreviewFailed?.(error);
   }
@@ -749,44 +651,4 @@ function clampPreview(content: string, maxLength: number): string {
 function threshold(value: number | undefined): number {
   const resolved = value ?? AgentChannelRunRendererDefaults.bufferThreshold;
   return resolved < 1 ? 1 : resolved;
-}
-
-function projectFinalizationHistory(
-  projection: AgentChannelOutboundMediaProjection,
-  originalContent: string,
-  fallbackParts: readonly AgentChannelFinalPart[],
-): { content: string; parts: readonly AgentChannelFinalPart[] } {
-  if (projection.media.length === 0) return { content: originalContent, parts: fallbackParts };
-
-  const parts: AgentChannelFinalPart[] = [];
-  for (const segment of projection.segments) {
-    if (segment.kind === "text") {
-      if (segment.content.trim()) parts.push({ kind: "text", text: segment.content });
-      continue;
-    }
-    const uri = stableMediaReference(segment.media);
-    if (!uri) continue;
-    parts.push({
-      kind: "resource",
-      uri,
-      ...(segment.media.altText?.trim() ? { alt: segment.media.altText.trim() } : {}),
-      mediaKind: segment.media.kind,
-      ...(segment.media.contentType ? { mime: segment.media.contentType } : {}),
-      ...(segment.media.filename ? { fileName: segment.media.filename } : {}),
-    });
-  }
-  if (parts.length === 0) return { content: originalContent, parts: fallbackParts };
-
-  const content = parts
-    .map((part) => {
-      if (part.kind === "text") return part.text;
-      if (part.kind === "resource") return `![${part.alt ?? "resource"}](${part.uri})`;
-      return part.code;
-    })
-    .join("\n\n");
-  return { content, parts };
-}
-
-function stableMediaReference(media: AgentChannelMedia): string | undefined {
-  return media.resourceUri ?? media.url ?? media.path;
 }

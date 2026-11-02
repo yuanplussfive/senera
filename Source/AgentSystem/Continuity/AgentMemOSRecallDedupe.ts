@@ -6,9 +6,10 @@ import { DefaultAgentTimeZone } from "../Time/AgentTime.js";
 import { agentMemOSReference } from "./AgentMemOSReference.js";
 import {
   AgentMemOSTags,
-  agentMemOSDeliveryKey,
+  agentMemOSDedupeKey,
   projectAgentMemOSPeriod,
   projectAgentMemOSOccurredAt,
+  readAgentMemOSSemanticMetadata,
 } from "./AgentMemOSSemanticTypes.js";
 
 export interface AgentMemOSRecallDedupeConfig {
@@ -54,6 +55,7 @@ export class AgentMemOSRecallDedupe {
     private readonly options: {
       readonly memos: MemOS;
       readonly namespace: string;
+      readonly canonicalSubject?: (subject: string) => string;
       readonly config: () => AgentMemOSRecallDedupeConfig;
       readonly logger?: AgentLogger;
     },
@@ -94,19 +96,12 @@ export class AgentMemOSRecallDedupe {
     if (this.failure) throw this.failure.error;
   }
 
-  project(
-    memory: ScoredMemory,
-    excluded?: ReadonlySet<string>,
-  ): { readonly memory: ScoredMemory; readonly deliveryKeys: readonly string[] } | undefined {
+  project(memory: ScoredMemory): { readonly memory: ScoredMemory; readonly dedupeKeys: readonly string[] } {
     const node = memory.node;
-    const key = agentMemOSDeliveryKey(node);
-    if (excluded?.has(key)) return undefined;
+    const key = agentMemOSDedupeKey(node);
     const reference = agentMemOSReference(node.id);
     const coverage = this.groups.get(key);
-    // Previously covered identities with changed revisions are new information.
-    // Newly created paraphrases of an already covered current version are not.
-    if (!excluded?.has(reference) && coverage?.versions.some((version) => excluded?.has(version))) return undefined;
-    return { memory, deliveryKeys: coverage?.keys ?? [reference, key] };
+    return { memory, dedupeKeys: coverage?.keys ?? [reference, key] };
   }
 
   private schedule(): void {
@@ -154,7 +149,7 @@ export class AgentMemOSRecallDedupe {
         for (const id of [merge.kept, ...merge.removed]) {
           const node = nodes.get(id);
           if (!node) continue;
-          const scope = duplicateScope(node);
+          const scope = duplicateScope(node, this.options.canonicalSubject);
           if (scope === undefined) continue;
           const partition = partitions.get(scope) ?? [];
           partition.push(node);
@@ -162,7 +157,7 @@ export class AgentMemOSRecallDedupe {
         }
         for (const partition of partitions.values()) {
           if (partition.length < 2) continue;
-          const versions = partition.map(agentMemOSDeliveryKey);
+          const versions = partition.map(agentMemOSDedupeKey);
           const coverage = { versions, keys: [...partition.map((node) => agentMemOSReference(node.id)), ...versions] };
           for (const version of versions) groups.set(version, coverage);
         }
@@ -183,12 +178,16 @@ export class AgentMemOSRecallDedupe {
 }
 
 /** Use native type and calendar contracts, never text/keyword classification. */
-function duplicateScope(node: MemoryNode): string | undefined {
+function duplicateScope(node: MemoryNode, canonicalSubject?: (subject: string) => string): string | undefined {
   if (!node.tags.includes(AgentMemOSTags.semantic)) return undefined;
-  const period = projectAgentMemOSPeriod(node.tags);
+  const period = projectAgentMemOSPeriod(node);
   if (period) return JSON.stringify({ type: node.type, period });
   if (!node.tags.includes(AgentMemOSTags.knowledge)) return undefined;
+  const subject = readAgentMemOSSemanticMetadata(node)?.senera_subject_id;
+  if (!subject && canonicalSubject) return undefined;
   return JSON.stringify({
+    subject: canonicalSubject && subject ? canonicalSubject(subject) : subject,
+    task: node.type === "context" ? readAgentMemOSSemanticMetadata(node)?.senera_task_id : undefined,
     type: node.type,
     validTo: node.validTo,
     // Native context records describe time-bound episodes; preserve their calendar boundary.

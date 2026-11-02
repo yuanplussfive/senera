@@ -1,4 +1,6 @@
 import type { AgentDomainEvent } from "../Events/AgentEvent.js";
+import type { IncomingMessage } from "node:http";
+import type { WebSocket } from "ws";
 import type { AgentProfileRouteRegistry } from "../Conversation/AgentConversationSpace.js";
 
 /** Stable platform identities supported by the channel subsystem. */
@@ -6,6 +8,10 @@ export const AgentChannelKinds = {
   Telegram: "telegram",
   Discord: "discord",
   Qq: "qq",
+  /** Embedded Senera QQ client. */
+  OneBot11: "onebot11",
+  /** External OneBot 11 services such as SnowLuma. */
+  OneBot: "onebot",
 } as const;
 
 export type AgentChannelKind = (typeof AgentChannelKinds)[keyof typeof AgentChannelKinds];
@@ -36,6 +42,10 @@ export type AgentChannelBusyMessageMode =
 
 /** Platform-independent identity of one conversation lane on one channel. */
 export interface AgentChannelSource {
+  /** Adapter-verified namespace for application-scoped native account IDs. */
+  readonly authority?: string;
+  /** Host-selected recipient; never supplied by message text. */
+  readonly agentId?: string;
   readonly platform: AgentChannelKind;
   readonly chatType: AgentChannelChatType;
   readonly chatId: string;
@@ -48,7 +58,20 @@ export interface AgentChannelSource {
 /** A media attachment received from or sent to a channel. */
 export interface AgentChannelAttachment {
   readonly id?: string;
+  /** Opaque gateway locator, resolved by the originating adapter after durable admission. */
+  readonly nativeId?: string;
+  /** A file already uploaded to this workspace; reuse its identity and bytes. */
+  readonly resourceUri?: string;
   readonly url?: string;
+  /**
+   * Exact bytes supplied by a channel protocol. Inline bytes are never placed
+   * in model text: the channel ingestion boundary persists them as a normal
+   * Senera upload before a turn can consume them.
+   */
+  readonly inlineData?: {
+    readonly encoding: "base64";
+    readonly data: string;
+  };
   readonly filename?: string;
   readonly contentType?: string;
   /** Normalized platform media kind, when the channel exposes one. */
@@ -62,6 +85,16 @@ export interface AgentChannelAttachment {
   readonly transcript?: string;
   /** Provider-native WAV URL for voice messages that need local conversion. */
   readonly voiceWavUrl?: string;
+}
+
+/**
+ * A lossless, protocol-neutral message part. `text` remains available as the
+ * convenient conversational projection, while this sequence preserves rich
+ * platform semantics such as mentions, replies, media, cards and reactions.
+ */
+export interface AgentChannelMessageSegment {
+  readonly type: string;
+  readonly data: Readonly<Record<string, unknown>>;
 }
 
 /** Native media accepted by adapters that support uploads. */
@@ -79,6 +112,7 @@ export interface AgentChannelMedia {
   readonly data?: string;
   readonly filename?: string;
   readonly contentType?: string;
+  readonly size?: number;
   readonly altText?: string;
 }
 
@@ -109,11 +143,32 @@ export interface AgentChannelInteraction {
 }
 
 /** Normalized inbound message handed to the session pipeline. */
+export interface AgentChannelEvent {
+  readonly id: string;
+  readonly type: string;
+  readonly actorId: string;
+  readonly actorName?: string;
+  readonly targetId?: string;
+  readonly targetName?: string;
+  readonly messageId?: string;
+  readonly sentAt: string;
+}
+
 export interface AgentChannelInboundMessage {
   readonly source: AgentChannelSource;
+  /** Actual speaker; routing userId may identify the local client account. */
+  readonly senderId?: string;
+  /** Host-owned provenance for an Agent's explicit outgoing channel action. */
+  readonly task?: AgentChannelTask;
   readonly text: string;
+  readonly event?: AgentChannelEvent;
+  /** Complete ordered content parts when a platform supports rich messages. */
+  readonly segments?: readonly AgentChannelMessageSegment[];
   readonly attachments?: readonly AgentChannelAttachment[];
   readonly replyToMessageId?: string;
+  readonly replyToSenderId?: string;
+  /** The native dispatch explicitly addresses this bot, even if it omits its account ID. */
+  readonly addressedToSelf?: boolean;
   readonly command?: AgentChannelCommand;
   readonly sentAt?: string;
   readonly raw?: unknown;
@@ -137,11 +192,21 @@ export type AgentChannelSendResult =
   | { readonly kind: "unsupported" };
 
 export interface AgentChannelSendReplyOptions {
+  /** Host-owned idempotency identity for this exact transport payload. */
+  readonly deliveryId?: string;
+  readonly task?: AgentChannelTask;
   readonly replyToMessageId?: string;
   readonly chatType: AgentChannelChatType;
   readonly media?: readonly AgentChannelMedia[];
+  /** Ordered text/media when the adapter can deliver a native mixed message. */
+  readonly parts?: readonly AgentChannelOutboundSegment[];
+  /** Explicit protocol mentions; never parsed out of literal message text. */
+  readonly mentionIds?: readonly string[];
   readonly keyboard?: AgentChannelKeyboard;
 }
+
+export type AgentChannelOutboundSegment =
+  { readonly kind: "text"; readonly content: string } | { readonly kind: "media"; readonly media: AgentChannelMedia };
 
 /**
  * A platform webhook may answer a request without delivering a message.
@@ -175,10 +240,22 @@ export interface AgentChannelCapabilities {
   readonly commandPrefix: string;
   /** The platform accepts native rich media uploads. */
   readonly supportsMedia?: boolean;
+  readonly mediaKinds?: readonly AgentChannelMedia["kind"][];
+  readonly supportsPoke?: boolean;
+  readonly supportsMentions?: boolean;
+  /** Whether replying displays a native quote, rather than only authorizing a passive response. */
+  readonly supportsQuotedReplies?: boolean;
+  /** Native events available to model-selected wait conditions. */
+  readonly inboundEvents?: readonly import("./AgentChannelParticipation.js").AgentChannelWakeEvent[];
   /** The platform accepts native inline keyboards. */
   readonly supportsKeyboard?: boolean;
   /** The platform emits button interactions. */
   readonly supportsInteractions?: boolean;
+  /**
+   * Whether model events are automatically rendered to the channel.
+   * Explicit channels publish only through model-selected channel tools.
+   */
+  readonly automaticDelivery?: boolean;
 }
 
 export interface AgentChannelDefinition {
@@ -189,8 +266,39 @@ export interface AgentChannelDefinition {
 }
 
 export interface AgentChannelAdapter {
+  /** Verified identity authority; no display name, message text or model arguments participate. */
+  resolveActor?(
+    senderId: string,
+    source?: AgentChannelSource,
+  ):
+    | {
+        readonly authority: string;
+        readonly account: string;
+        readonly kind?: "user" | "agent";
+        readonly owner?: boolean;
+      }
+    | undefined;
+  /** Every participant may observe an event, independently of the initial activation policy. */
+  observeInbound?(message: AgentChannelInboundMessage): readonly AgentChannelSource[];
+  /** Current directory membership and enabled state, independent of an incoming message. */
+  canParticipate?(source: AgentChannelSource): boolean;
+  /** Rejects delayed ingestion after native recall, task removal, or conversation clearing. */
+  isHistoryEntryCurrent?(source: AgentChannelSource, key: string): boolean;
+  /** Selects host-owned recipient lanes from native mention/reply/event semantics. */
+  routeInbound?(message: AgentChannelInboundMessage): readonly AgentChannelSource[];
+  routeCommand?(message: AgentChannelInboundMessage): readonly AgentChannelSource[];
+  canExecuteCommand?(message: AgentChannelInboundMessage, command: AgentChannelCommand): boolean;
+  conversationContext?(
+    source: AgentChannelSource,
+  ): import("../Interaction/AgentInteractionContext.js").AgentInteractionConversation;
+  resolveMessageTasks?(source: AgentChannelSource, messageId: string): readonly AgentChannelTask[];
   readonly kind: AgentChannelKind;
   readonly capabilities: AgentChannelCapabilities;
+
+  /** Source-specific features when one protocol hosts several gateways. */
+  capabilitiesFor?(source: AgentChannelSource): AgentChannelCapabilities;
+  /** Whether the adapter itself journals successfully sent messages. */
+  recordsOutboundHistory?(source: AgentChannelSource): boolean;
 
   /** Starts the outbound connection (polling or websocket gateway). */
   connect(signal: AbortSignal): Promise<void>;
@@ -203,6 +311,27 @@ export interface AgentChannelAdapter {
     content: string,
     options?: AgentChannelSendReplyOptions,
   ): Promise<AgentChannelSendResult>;
+
+  /** Removes an already-delivered message when the platform supports it. */
+  deleteMessage?(target: AgentChannelSource, messageId: string): Promise<AgentChannelSendResult>;
+  /** Sends a native platform poke to the other participant in the current lane. */
+  poke?(target: AgentChannelSource, task?: AgentChannelTask, targetId?: string): Promise<void>;
+
+  bindHistory?(source: AgentChannelSource, key: string, task: AgentChannelTask, preserveExisting?: boolean): void;
+  resolveMessageTask?(source: AgentChannelSource, messageId: string): AgentChannelTask | undefined;
+  readClientTimeline?(
+    source: AgentChannelSource,
+    before?: number,
+    limit?: number,
+    sync?: AgentChannelTimelineSync,
+  ): Promise<AgentChannelTimelinePage>;
+  readClientConversations?(): Promise<readonly AgentChannelClientConversationSummary[]>;
+
+  /** Optional adapter-owned view of the current external conversation lane. */
+  readHistory?(
+    target: AgentChannelSource,
+    options?: { readonly limit?: number; readonly beforeMessageId?: string },
+  ): Promise<readonly AgentChannelHistoryMessage[]>;
 
   /** Advances a streaming preview when the platform supports edits. */
   edit?(target: AgentChannelSource, messageId: string, content: string): Promise<AgentChannelSendResult>;
@@ -229,27 +358,109 @@ export interface AgentChannelAdapter {
     attachment: AgentChannelAttachment,
     source: AgentChannelSource,
   ): Promise<Readonly<Record<string, string>> | undefined>;
+  resolveInboundAttachment?(
+    attachment: AgentChannelAttachment,
+    source: AgentChannelSource,
+    segments?: readonly AgentChannelMessageSegment[],
+  ): Promise<AgentChannelAttachment>;
 
   /** Called once after connect with the inbound pipeline bound. */
   bind(handlers: AgentChannelAdapterHandlers): void;
 
   /** Live transport state used by status surfaces and delivery guards. */
-  getConnectionState(): AgentChannelConnectionState;
+  getConnectionState(source?: AgentChannelSource): AgentChannelConnectionState;
+
+  /**
+   * Optional host-safe connection facts for settings surfaces. Credentials are
+   * intentionally excluded: this is presentation metadata, not a transport
+   * configuration export.
+   */
+  getConnectionInfo?(): AgentChannelConnectionInfo | undefined;
+
+  /** Resolves the authenticated local client's lane without trusting a caller-supplied sender ID. */
+  resolveClientSource?(conversation: AgentChannelClientConversation): AgentChannelSource;
+
+  /** Attaches a host-authenticated socket to an embedded channel protocol. */
+  connectClient?(socket: WebSocket, request: IncomingMessage): void;
+}
+
+export interface AgentChannelClientConversation {
+  readonly chatType: "direct" | "group";
+  readonly chatId: string;
+}
+
+export interface AgentChannelClientConversationSummary extends AgentChannelClientConversation {
+  readonly name: string;
+  readonly latest: AgentChannelTimelinePage["entries"][number];
+}
+
+export interface AgentChannelTask {
+  readonly sessionId: string;
+  readonly requestId: string;
+}
+
+export interface AgentChannelTimelineCursor {
+  readonly revision: number;
+  readonly sequence: number;
+}
+
+export interface AgentChannelTimelineSync {
+  readonly after: AgentChannelTimelineCursor;
+}
+
+export interface AgentChannelTimelinePage {
+  readonly entries: readonly {
+    readonly sequence: number;
+    readonly key: string;
+    readonly payload: Readonly<Record<string, unknown>>;
+    readonly task?: AgentChannelTask;
+  }[];
+  readonly before: number | null;
+  readonly sync?: {
+    readonly cursor: AgentChannelTimelineCursor;
+    readonly hasMore: boolean;
+    readonly reset: boolean;
+  };
+}
+
+/** A presentational external-message record. Senera session history remains authoritative. */
+export interface AgentChannelHistoryMessage {
+  readonly id: string;
+  readonly direction: "inbound" | "outbound";
+  readonly text: string;
+  /** Complete ordered content parts when the adapter retains rich history. */
+  readonly segments?: readonly AgentChannelMessageSegment[];
+  readonly sentAt: string;
+  readonly senderId?: string;
+  readonly displayName?: string;
 }
 
 export type AgentChannelConnectionState = "stopped" | "connecting" | "connected" | "reconnecting" | "degraded";
 
+export interface AgentChannelConnectionInfo {
+  /** Client endpoint after the adapter has completed its own identity setup. */
+  readonly endpoint?: string;
+  /** Public adapter/account identifier when the protocol exposes one. */
+  readonly accountId?: string;
+}
+
 export interface AgentChannelAdapterHandlers {
+  /** Local client management rewinds the authoritative task before altering its timeline. */
+  onRecall?(source: AgentChannelSource, messageId: string): Promise<void>;
   onMessage(message: AgentChannelInboundMessage): void | Promise<void>;
   onFatal(error: unknown, kind: AgentChannelKind): void;
   /** Emits transport state transitions that happen after connect() returns. */
   onConnectionStateChanged?(state: AgentChannelConnectionState): void;
+  /** Membership or Agent availability changed; reconcile durable participation immediately. */
+  onParticipantsChanged?(): void | Promise<void>;
   onInteraction?(interaction: AgentChannelInteraction): void | Promise<void>;
+  onEvent?(source: AgentChannelSource, event: AgentChannelEvent, task?: AgentChannelTask): void | Promise<void>;
 }
 
 /** Settings-driven configuration of one channel instance. */
 export interface AgentChannelConfig {
   readonly enabled: boolean;
+  readonly connection?: import("./Adapters/AgentOneBot11ConnectionConfig.js").AgentOneBot11ConnectionConfig;
   readonly token?: string;
   readonly appId?: string;
   readonly appSecret?: string;
@@ -287,6 +498,7 @@ export interface AgentChannelConfig {
   readonly busyMessageMode: AgentChannelBusyMessageMode;
   /** Optional OpenAI-compatible voice transcription fallback for QQ audio. */
   readonly stt?: Readonly<Record<string, unknown>>;
+  /** Extension-owned channel options without a typed runtime field. */
   readonly unknown?: Readonly<Record<string, unknown>>;
 }
 
@@ -295,11 +507,6 @@ export interface AgentChannelsConfig {
   readonly channels: Readonly<Record<AgentChannelKind, AgentChannelConfig>>;
   readonly enabled: boolean;
   readonly defaultApprovalMode?: "agent" | "always_ask" | "full_access";
-  /**
-   * Enables the model-backed final projection used only for external channel
-   * delivery. This is intentionally separate from the console Pi rewrite.
-   */
-  readonly finalResponseRewrite: boolean;
   /** Host-owned conversation routing, resolved from the extension configuration. */
   readonly profileRoutes?: AgentProfileRouteRegistry;
 }

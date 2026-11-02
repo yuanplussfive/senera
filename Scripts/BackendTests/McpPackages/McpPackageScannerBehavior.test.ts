@@ -27,17 +27,12 @@ describe("standard MCP package discovery", () => {
         servers: package_.servers.map((server) => server.name),
       })),
     ).toEqual([
-      { name: "imagen", descriptorKind: "mcpb", servers: ["imagen"] },
       { name: "weather", descriptorKind: "mcpb", servers: ["weather"] },
       { name: "zavora-computer-use", descriptorKind: "mcpb", servers: ["zavora-computer-use"] },
     ]);
     expect(packages.find((package_) => package_.name === "weather")?.configurationPath).toBe(
       path.resolve("McpServers", "weather", "manifest.json"),
     );
-    expect(packages.find((package_) => package_.name === "imagen")?.execution).toEqual({
-      targets: ["local", "sandbox"],
-      preferred: "local",
-    });
     expect(packages.find((package_) => package_.name === "weather")?.execution).toEqual({
       targets: ["local", "sandbox"],
       preferred: "local",
@@ -50,8 +45,7 @@ describe("standard MCP package discovery", () => {
     expect(packages.find((package_) => package_.name === "zavora-computer-use")?.requirements).toEqual({
       hostCapabilities: ["interactive-desktop"],
     });
-    expect(packages.map((package_) => ({ name: package_.name, presentation: package_.presentation }))).toEqual([
-      { name: "imagen", presentation: { icon: "image" } },
+    expect(packages.map((package_) => ({ name: package_.name, presentation: package_.presentation }))).toMatchObject([
       { name: "weather", presentation: { icon: "cloud-sun" } },
       { name: "zavora-computer-use", presentation: { icon: "computer-desktop" } },
     ]);
@@ -61,11 +55,29 @@ describe("standard MCP package discovery", () => {
         expect.objectContaining({ id: "WEATHER_UNIT", secret: false, choices: ["m", "i"] }),
       ]),
     );
-    expect(packages.find((package_) => package_.name === "imagen")?.servers[0]?.inputs).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: "IMAGEN_API_KEY", secret: true, provenance: "mcpb" }),
-        expect.objectContaining({ id: "IMAGEN_REQUEST_MODE", secret: false, choices: ["images", "chat"] }),
-      ]),
+  });
+
+  test.each([
+    null,
+    { modelName: true },
+    { durationUnit: "fortnights" },
+    { modelSelection: { valueKind: "model-name", capability: "Chat", unknown: true } },
+  ])("rejects invalid MCPB input presentation metadata %j", (presentation) => {
+    const root = fixtureRoot();
+    const packageRoot = path.join(root, "typed-input");
+    fs.mkdirSync(packageRoot);
+    fs.writeFileSync(
+      path.join(packageRoot, "manifest.json"),
+      JSON.stringify({
+        manifest_version: "0.3",
+        name: "typed-input",
+        version: "1.0.0",
+        server: { type: "node", entry_point: "server.mjs" },
+        user_config: { model: { type: "string", title: "Model", _meta: { "ai.senera/input": presentation } } },
+      }),
+    );
+    expect(() => new AgentMcpPackageScanner().readPackage(packageRoot, AgentMcpPackageSourceKinds.Workspace)).toThrow(
+      AgentMcpPackageValidationError,
     );
   });
 

@@ -320,6 +320,7 @@ function modelProvider(overrides: Partial<ResolvedAgentModelProviderConfig> = {}
     ApiKey: "test-key",
     ApiVersion: "",
     Model: "test-model",
+    Capabilities: { Chat: true, Vision: true },
     ToolPlanningMode: "baml",
     ContextWindowTokens: 128_000,
     Temperature: 0,

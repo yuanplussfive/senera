@@ -11,9 +11,9 @@ const authenticationApi = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../Frontend/src/api/authClient.ts", () => ({
+  initializeServerAuthentication: authenticationApi.read,
   loginServerAuthentication: authenticationApi.login,
   logoutServerAuthentication: authenticationApi.logout,
-  readServerAuthentication: authenticationApi.read,
   ServerAuthenticationError: class ServerAuthenticationError extends Error {
     constructor(status, message) {
       super(message);
@@ -25,6 +25,8 @@ vi.mock("../../../Frontend/src/api/authClient.ts", () => ({
 
 import { useServerAuthentication } from "../../../Frontend/src/app/useServerAuthentication.ts";
 import { ServerAuthenticationError } from "../../../Frontend/src/api/authClient.ts";
+import { ServerAuthenticationController } from "../../../Frontend/src/api/serverAuthentication.ts";
+import { waitForServerAuthorization } from "../../../Frontend/src/api/waitForServerAuthorization.ts";
 
 const HttpBaseUrl = "https://agent.example.test";
 
@@ -82,7 +84,7 @@ test("moves from a failed status through revalidation into an anonymous sign-in 
   expect(handleRef.current.state).toEqual({ status: "anonymous" });
 });
 
-test("keeps the startup surface loading while a transient server failure recovers", async () => {
+test("automatically reconnects while a transient startup failure recovers", async () => {
   vi.useFakeTimers();
   authenticationApi.read.mockRejectedValueOnce(new Error("server is still starting")).mockResolvedValueOnce({
     state: "anonymous",
@@ -91,11 +93,48 @@ test("keeps the startup surface loading while a transient server failure recover
 
   render(React.createElement(AuthenticationHarness, { handleRef }));
   await act(async () => {
-    await vi.advanceTimersByTimeAsync(250);
+    await vi.advanceTimersByTimeAsync(1_000);
   });
 
   expect(authenticationApi.read).toHaveBeenCalledTimes(2);
   expect(handleRef.current.state).toEqual({ status: "anonymous" });
+});
+
+test("recovers after a long server startup without requiring a page refresh", async () => {
+  vi.useFakeTimers();
+  authenticationApi.read.mockRejectedValue(new TypeError("server is not listening yet"));
+  const handleRef = { current: null };
+  const view = render(React.createElement(AuthenticationHarness, { handleRef }));
+
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(120_000);
+  });
+  expect(handleRef.current.state).toEqual({ status: "revalidating" });
+  expect(authenticationApi.read.mock.calls.length).toBeGreaterThan(6);
+
+  authenticationApi.read.mockResolvedValue({ state: "disabled" });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(15_000);
+  });
+  expect(handleRef.current.state).toEqual({ status: "authenticated", authentication: { state: "disabled" } });
+
+  view.unmount();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test("cancels pending startup retries on unmount", async () => {
+  vi.useFakeTimers();
+  authenticationApi.read.mockRejectedValue(new TypeError("offline"));
+  const view = render(React.createElement(AuthenticationHarness, { handleRef: { current: null } }));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  view.unmount();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(120_000);
+  });
+  expect(authenticationApi.read).toHaveBeenCalledTimes(1);
+  expect(vi.getTimerCount()).toBe(0);
 });
 
 test("does not retry an explicit authentication rejection during startup", async () => {
@@ -244,6 +283,59 @@ function AuthenticationHarness({ handleRef, lifecycle }) {
   }, [handle, handleRef]);
   return null;
 }
+
+test("channel mutations reuse the established authentication and coalesce background validation", async () => {
+  const authentication = authenticatedSession();
+  const validation = deferredPromise();
+  authenticationApi.read.mockResolvedValueOnce(authentication).mockReturnValueOnce(validation.promise);
+  const controller = new ServerAuthenticationController(HttpBaseUrl);
+  controller.start();
+  try {
+    await waitForServerAuthorization(controller);
+    for (let index = 0; index < 5; index++)
+      expect(controller.mutationHeaders()).toEqual({ "X-Senera-Csrf": authentication.csrfToken });
+    expect(authenticationApi.read).toHaveBeenCalledOnce();
+    const first = controller.revalidate();
+    expect(controller.revalidate()).toBe(first);
+    expect(controller.mutationHeaders()).toEqual({ "X-Senera-Csrf": authentication.csrfToken });
+    validation.resolve(authenticatedSession({ csrfToken: "renewed" }));
+    await first;
+    expect(controller.mutationHeaders()).toEqual({ "X-Senera-Csrf": "renewed" });
+    expect(authenticationApi.read).toHaveBeenCalledTimes(2);
+  } finally {
+    controller.stop();
+  }
+});
+
+test("resuming during startup retains retries instead of leaving authentication pending forever", async () => {
+  vi.useFakeTimers();
+  const initial = deferredPromise();
+  authenticationApi.read
+    .mockReturnValueOnce(initial.promise)
+    .mockRejectedValueOnce(new Error("offline"))
+    .mockResolvedValueOnce(authenticatedSession());
+  const controller = new ServerAuthenticationController(HttpBaseUrl);
+  controller.start();
+  try {
+    await expect(controller.revalidate()).resolves.toBe("unreachable");
+    await vi.advanceTimersByTimeAsync(1000);
+    await expect(waitForServerAuthorization(controller)).resolves.toMatchObject({ state: "authenticated" });
+    initial.resolve({ state: "anonymous" });
+    await Promise.resolve();
+    expect(controller.store.getState().status).toBe("authenticated");
+  } finally {
+    controller.stop();
+  }
+});
+
+test("stopping authentication releases a pending authorization waiter", async () => {
+  authenticationApi.read.mockReturnValue(new Promise(() => {}));
+  const controller = new ServerAuthenticationController(HttpBaseUrl);
+  controller.start();
+  const waiting = expect(waitForServerAuthorization(controller)).rejects.toMatchObject({ name: "AbortError" });
+  controller.stop();
+  await waiting;
+});
 
 function deferredPromise() {
   let resolve;

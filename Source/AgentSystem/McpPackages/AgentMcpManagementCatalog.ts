@@ -1,5 +1,4 @@
 import path from "node:path";
-import { listDefaultAgentHostCapabilityNames } from "../AgentDefaultHostCapabilities.js";
 import { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
 import {
   createAgentExtensionLocalizedText,
@@ -10,8 +9,7 @@ import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import { resolveAgentWorkspaceLayout } from "../Core/AgentWorkspaceLayout.js";
 import { projectAgentConfigFormOptions } from "../Config/AgentConfigFormOptionProjector.js";
 import { AgentConfigSecretContract } from "../Config/AgentConfigSecretContract.js";
-import { createAgentSystemTools } from "../SystemTools/AgentSystemTools.js";
-import { systemToolCapability } from "../SystemTools/AgentSystemToolCatalog.js";
+import { listAgentSystemExtensionHostCapabilityUniverse } from "../SystemTools/AgentSystemTools.js";
 import {
   AgentSystemExtensionCatalog,
   type AgentSystemExtensionSettingsItem,
@@ -22,8 +20,13 @@ import { AgentSkillCatalogProjector, type AgentSkillCatalogItem } from "../Skill
 import { AgentSkillScanner } from "../Skills/AgentSkillScanner.js";
 import { registerAgentSkillCatalog } from "../Skills/AgentSkillCatalogRegistration.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
+import type { AgentSelfSkillSource } from "../SelfService/AgentSelfServiceTypes.js";
 import { AgentMcpPackageScanner, assertUniqueAgentMcpServerNames } from "./AgentMcpPackageScanner.js";
 import { AgentMcpPackageSourceKinds, type AgentMcpPackage } from "./AgentMcpPackageTypes.js";
+import {
+  materializeToolContractArguments,
+  type AgentToolContractArgumentMaterialization,
+} from "../ToolRuntime/AgentToolSignatureArgumentValidator.js";
 
 export interface AgentSystemToolSettingsItem {
   readonly name: string;
@@ -61,6 +64,7 @@ interface CachedSystemCatalog {
   readonly catalog: AgentSystemExtensionCatalog;
   readonly snapshot: AgentSystemSettingsSnapshot;
   readonly skills: readonly AgentSkillCatalogItem[];
+  readonly registry: AgentExtensionRegistry;
 }
 
 /**
@@ -93,6 +97,42 @@ export class AgentMcpManagementCatalog {
 
   systemSkillCatalog(config: AgentSystemConfig): readonly AgentSkillCatalogItem[] {
     return this.systemCatalog(config).skills;
+  }
+
+  declaredSystemSkills(config: AgentSystemConfig) {
+    return this.systemCatalog(config)
+      .registry.listSkills()
+      .filter((skill) => skill.source.kind === "system");
+  }
+
+  /** The self-service reader sees the same enabled system packages as execution. */
+  systemSkillSources(config: AgentSystemConfig): readonly AgentSelfSkillSource[] {
+    const roots = new Map<string, AgentSelfSkillSource>();
+    for (const skill of this.systemCatalog(config).registry.listSkills()) {
+      if (skill.source.kind !== "system") continue;
+      const root = path.dirname(path.dirname(skill.descriptionFile));
+      const directory = path.basename(path.dirname(skill.descriptionFile));
+      const previous = roots.get(root);
+      roots.set(root, {
+        id: `system:${path.relative(this.options.resourcesRoot, root).split(path.sep).join("/")}`,
+        displayName: skill.source.displayName,
+        kind: "system",
+        root,
+        skillDirectories: [...(previous?.skillDirectories ?? []), directory],
+      });
+    }
+    return [...roots.values()];
+  }
+
+  /** Resolve package defaults without constructing or initializing a model runtime. */
+  materializeSystemToolArguments(
+    config: AgentSystemConfig,
+    name: string,
+    args: Readonly<Record<string, unknown>>,
+  ): AgentToolContractArgumentMaterialization {
+    const schema = this.systemCatalog(config).registry.getTool(name)?.contract?.arguments?.jsonSchema;
+    if (!schema) throw new Error(`System Tool ${name} has no registered argument contract.`);
+    return materializeToolContractArguments({ schema, args });
   }
 
   validateSystemExtensions(config: AgentSystemConfig): void {
@@ -145,11 +185,13 @@ export class AgentMcpManagementCatalog {
     });
     if (this.systemCache?.key === key) return this.systemCache;
 
-    const definitions = createAgentSystemTools(config);
+    const systemHostCapabilities = listAgentSystemExtensionHostCapabilityUniverse(config);
     const catalog = new AgentSystemExtensionCatalog();
     const registry = new AgentExtensionRegistry();
     catalog.registerRoot(registry, this.systemExtensionsRoot, {
-      capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...definitions.map(systemToolCapability)]),
+      capabilities: systemHostCapabilities,
+      capabilityUniverse: systemHostCapabilities,
+      requiredHostCapabilities: systemHostCapabilities,
       configurations: config.Extensions,
     });
     const skillDiagnostics = registerAgentSkillCatalog(registry, {
@@ -167,7 +209,7 @@ export class AgentMcpManagementCatalog {
             resolveAgentExtensionLocalizedText(right.label),
           ) || left.value.localeCompare(right.value),
       );
-    const extensions = catalog.listExtensions().map((extension) => ({
+    const extensions = catalog.listExtensions(registry.listSkills()).map((extension) => ({
       ...extension,
       ...(extension.configuration
         ? {
@@ -193,7 +235,7 @@ export class AgentMcpManagementCatalog {
       )
       .sort((left, right) => left.name.localeCompare(right.name));
     const snapshot = deepFreeze({ revision: key, extensions, tools });
-    this.systemCache = { key, catalog, snapshot, skills: deepFreeze(skills) };
+    this.systemCache = { key, catalog, registry, snapshot, skills: deepFreeze(skills) };
     return this.systemCache;
   }
 }

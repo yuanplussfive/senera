@@ -1,11 +1,13 @@
 import { createOpaqueId } from "../Core/AgentIds.js";
+import { DefaultAgentTimeZone } from "../Time/AgentTime.js";
+import { latestAgentScheduleOccurrence } from "./AgentScheduleDefinition.js";
 import type Database from "better-sqlite3";
 import type {
   ScheduledTask,
   ScheduledTaskRunHistoryEntry,
   ScheduledTaskType,
   TaskSchedulerScope,
-} from "@amaster.ai/pi-task-scheduler";
+} from "./AgentScheduleDefinition.js";
 import type { AgentOrchestrationDatabase } from "./AgentOrchestrationDatabase.js";
 import {
   AgentScheduledTaskDeliveryStatuses,
@@ -81,8 +83,7 @@ export class AgentSqliteScheduledTaskStore {
 
   list(scope: TaskSchedulerScope = {}): Promise<AgentScheduledTaskRecord[]> {
     const rows = this.listRows(scope);
-    const history = groupRunHistory(this.statements.listRuns.all());
-    return Promise.resolve(rows.map((row) => taskFromRow(row, history.get(row.id) ?? [])));
+    return Promise.resolve(rows.map((row) => taskFromRow(row, [])));
   }
 
   get(taskId: string, scope: TaskSchedulerScope = {}): Promise<AgentScheduledTaskRecord | undefined> {
@@ -90,8 +91,47 @@ export class AgentSqliteScheduledTaskStore {
     return Promise.resolve(row ? taskFromRow(row, this.runHistory(taskId)) : undefined);
   }
 
+  definition(taskId: string): AgentScheduledTaskRecord | undefined {
+    const row = this.selectRow(taskId, {});
+    return row ? taskFromRow(row, []) : undefined;
+  }
+
+  receiptHistory(taskId: string, ownerSessionId: string, limit: number, before?: string) {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)
+      throw new Error("Receipt history limit must be from 1 to 100.");
+    const task = this.definition(taskId);
+    if (!task || task.sessionId !== ownerSessionId) throw new Error("Schedule was not found in this session.");
+    const cursor = before
+      ? (this.database
+          .prepare("SELECT rowid FROM scheduled_task_runs WHERE id = ? AND task_id = ?")
+          .get(before, taskId) as { rowid: number } | undefined)
+      : undefined;
+    if (before && !cursor) throw new Error("Schedule receipt cursor was not found.");
+    const rows = (
+      cursor
+        ? this.database
+            .prepare("SELECT * FROM scheduled_task_runs WHERE task_id = ? AND rowid < ? ORDER BY rowid DESC LIMIT ?")
+            .all(taskId, cursor.rowid, limit + 1)
+        : this.database
+            .prepare("SELECT * FROM scheduled_task_runs WHERE task_id = ? ORDER BY rowid DESC LIMIT ?")
+            .all(taskId, limit + 1)
+    ) as AgentScheduledTaskRunRow[];
+    const records = rows.slice(0, limit).map(runFromRow);
+    return { records, ...(rows.length > limit ? { nextBefore: records.at(-1)!.id } : {}) };
+  }
+
   create(task: AgentScheduledTaskRecord): Promise<AgentScheduledTaskRecord> {
     return Promise.resolve(this.insertTask(task));
+  }
+
+  createAuthorized(task: AgentScheduledTaskRecord, toolNames: readonly string[]): Promise<AgentScheduledTaskRecord> {
+    return Promise.resolve(
+      this.database.transaction(() => {
+        const created = this.insertTask(task);
+        this.setAllowedToolNames(created.id, toolNames, created.createdAt);
+        return created;
+      })(),
+    );
   }
 
   update(
@@ -101,6 +141,23 @@ export class AgentSqliteScheduledTaskStore {
   ): Promise<AgentScheduledTaskRecord | undefined> {
     if (!this.selectRow(taskId, scope)) return Promise.resolve(undefined);
     return Promise.resolve(this.updateTask(taskId, task));
+  }
+
+  /** Definition and authority changes share one snapshot with scheduler claims. */
+  editAuthorized(
+    taskId: string,
+    ownerSessionId: string,
+    edit: (current: AgentScheduledTaskRecord) => AgentScheduledTaskRecord,
+    toolNames?: readonly string[],
+  ): AgentScheduledTaskRecord | undefined {
+    return this.database.transaction(() => {
+      const current = this.definition(taskId);
+      if (!current || current.sessionId !== ownerSessionId) return undefined;
+      const next = edit(current);
+      const updated = this.updateTask(taskId, next);
+      if (updated && toolNames !== undefined) this.setAllowedToolNames(taskId, toolNames, next.updatedAt);
+      return updated;
+    })();
   }
 
   delete(taskId: string, scope: TaskSchedulerScope = {}): Promise<boolean> {
@@ -144,6 +201,7 @@ export class AgentSqliteScheduledTaskStore {
         runToRow({
           id: runId,
           taskId: task.id,
+          instructionPrompt: task.prompt,
           scheduledFor,
           executionStatus: AgentScheduledTaskExecutionStatuses.Queued,
           deliveryStatus: AgentScheduledTaskDeliveryStatuses.Pending,
@@ -301,7 +359,7 @@ export class AgentSqliteScheduledTaskStore {
       const advanced = this.statements.advanceDueTask.run({
         id: task.id,
         now: options.now,
-        enabled: task.type === "once" ? 0 : 1,
+        enabled: task.type === "once" || !nextRunAt ? 0 : 1,
         next_run_at: nextRunAt ?? null,
         updated_at: options.now,
       });
@@ -314,7 +372,8 @@ export class AgentSqliteScheduledTaskStore {
         runToRow({
           id: runId,
           taskId: task.id,
-          scheduledFor: task.nextRunAt,
+          instructionPrompt: task.prompt,
+          scheduledFor: latestAgentScheduleOccurrence(task, task.nextRunAt, options.now),
           executionStatus: AgentScheduledTaskExecutionStatuses.Claimed,
           deliveryStatus: AgentScheduledTaskDeliveryStatuses.Pending,
           executionSessionId,
@@ -334,7 +393,7 @@ export class AgentSqliteScheduledTaskStore {
 
   private claimExistingRun(runId: string, now: string, claimUntil: string): AgentScheduledTaskRunClaim | undefined {
     const claimId = createOpaqueId("scheduledclaim");
-    const executionSessionId = createOpaqueId("scheduled_session");
+    const executionSessionId = this.requireRun(runId).executionSessionId;
     const changed = this.statements.claimExistingRun.run({
       id: runId,
       claim_id: claimId,
@@ -346,6 +405,20 @@ export class AgentSqliteScheduledTaskStore {
     if (changed.changes === 0) return undefined;
     const run = this.requireRun(runId);
     return { task: this.require(run.taskId), run };
+  }
+
+  /** This receipt acknowledges inbox admission, never a model execution outcome. */
+  completeAdmission(runId: string, claimId: string, admittedAt: string): boolean {
+    return this.database.transaction(() => {
+      const completed = this.completeSuccess(runId, claimId, "Instruction accepted by the session inbox.", admittedAt);
+      if (!completed) return false;
+      this.database
+        .prepare(
+          `UPDATE scheduled_task_runs SET delivery_status = 'delivered', delivered_at = ?, updated_at = ? WHERE id = ?`,
+        )
+        .run(admittedAt, admittedAt, runId);
+      return true;
+    })();
   }
 
   private complete(
@@ -441,7 +514,7 @@ export class AgentSqliteScheduledTaskStore {
   private require(taskId: string): AgentScheduledTaskRecord {
     const row = this.statements.select.get(taskId);
     if (!row) throw new Error(`Scheduled task does not exist after persistence: ${taskId}`);
-    return taskFromRow(row, this.runHistory(taskId));
+    return taskFromRow(row, []);
   }
 
   private requireRun(runId: string): AgentScheduledTaskRunRecord {
@@ -464,6 +537,9 @@ function taskToRow(task: AgentScheduledTaskRecord) {
     user_id: task.userId ?? null,
     workspace_id: task.workspaceId ?? null,
     session_id: task.sessionId,
+    time_zone: task.timeZone ?? DefaultAgentTimeZone,
+    target_mode: task.target ?? "this_session",
+    target_session_id: task.targetSessionId ?? null,
     source_request_id: task.sourceRequestId ?? null,
     execution_mode: resolveAgentScheduledTaskExecutionMode(task),
     name: task.name ?? null,
@@ -498,6 +574,9 @@ function taskFromRow(row: AgentScheduledTaskRow, runHistory: ScheduledTaskRunHis
     ...(row.user_id ? { userId: row.user_id } : {}),
     ...(row.workspace_id ? { workspaceId: row.workspace_id } : {}),
     sessionId: row.session_id,
+    timeZone: row.time_zone,
+    target: readScheduleTarget(row.target_mode),
+    ...(row.target_session_id ? { targetSessionId: row.target_session_id } : {}),
     ...(row.source_request_id ? { sourceRequestId: row.source_request_id } : {}),
     executionMode: readExecutionMode(row.execution_mode),
     ...(row.name ? { name: row.name } : {}),
@@ -531,6 +610,7 @@ function taskFromRow(row: AgentScheduledTaskRow, runHistory: ScheduledTaskRunHis
 function runToRow(run: AgentScheduledTaskRunRecord) {
   return {
     id: run.id,
+    instruction_prompt: run.instructionPrompt ?? null,
     task_id: run.taskId,
     scheduled_for: run.scheduledFor,
     execution_status: run.executionStatus,
@@ -558,6 +638,7 @@ function runToRow(run: AgentScheduledTaskRunRecord) {
 function runFromRow(row: AgentScheduledTaskRunRow): AgentScheduledTaskRunRecord {
   return {
     id: row.id,
+    ...(row.instruction_prompt !== null ? { instructionPrompt: row.instruction_prompt } : {}),
     taskId: row.task_id,
     scheduledFor: row.scheduled_for,
     executionStatus: readExecutionStatus(row.execution_status),
@@ -593,16 +674,6 @@ function runHistoryFromRow(row: AgentScheduledTaskRunRow): ScheduledTaskRunHisto
     sessionId: row.execution_session_id,
     ...(message ? { message } : {}),
   };
-}
-
-function groupRunHistory(rows: readonly AgentScheduledTaskRunRow[]): Map<string, ScheduledTaskRunHistoryEntry[]> {
-  const grouped = new Map<string, ScheduledTaskRunHistoryEntry[]>();
-  for (const row of rows) {
-    const entries = grouped.get(row.task_id) ?? [];
-    entries.push(runHistoryFromRow(row));
-    grouped.set(row.task_id, entries);
-  }
-  return grouped;
 }
 
 function readTaskType(value: string): ScheduledTaskType {
@@ -643,4 +714,9 @@ function readDeliveryStatus(value: string): AgentScheduledTaskRunRecord["deliver
     return value as AgentScheduledTaskRunRecord["deliveryStatus"];
   }
   throw new Error(`Stored scheduled task delivery status is invalid: ${value}`);
+}
+
+function readScheduleTarget(value: string): NonNullable<ScheduledTask["target"]> {
+  if (value === "this_session" || value === "new_once" || value === "new") return value;
+  throw new Error(`Invalid stored schedule target: ${value}`);
 }

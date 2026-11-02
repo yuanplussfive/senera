@@ -4,6 +4,7 @@ import type { AgentExecutionApprovalMode } from "../Safety/AgentExecutionApprova
 import type { AgentPinnedSkillReference } from "../Skills/AgentSkillActivation.js";
 import type { AgentConversationEntryMetadata, AgentSessionOwnership } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
+import type { AgentUploadAttachment } from "../Uploads/AgentUploadTypes.js";
 
 export interface AgentSystemPromptLayer {
   readonly mode: "append" | "replace";
@@ -21,10 +22,12 @@ export interface AgentRunDispatchRequest {
   readonly sessionId: string;
   readonly requestId: string;
   readonly input: string;
+  readonly attachments?: AgentUploadAttachment[];
   readonly approvalMode: AgentExecutionApprovalMode;
   readonly modelProviderId?: string;
   readonly systemPromptLayer?: AgentSystemPromptLayer;
   readonly allowedToolNames?: readonly string[];
+  readonly executionScope?: "session" | "turn";
   readonly pinnedSkills?: readonly AgentPinnedSkillReference[];
   readonly thinkingLevel?: ModelThinkingLevel;
   readonly inheritProjectContext?: boolean;
@@ -71,6 +74,7 @@ export interface AgentRunDispatchPort {
     onEvent?: AgentEventSink,
     requestId?: string,
     metadata?: AgentConversationEntryMetadata,
+    queueMode?: "steer" | "follow_up",
   ): Promise<boolean>;
   /** Ask the active Pi turn to stop investigating and consolidate its current evidence. */
   interrupt?(sessionId: string, instruction: string): Promise<boolean>;
@@ -113,8 +117,12 @@ export class AgentRunDispatchGateway implements AgentRunDispatchPort {
     onEvent?: AgentEventSink,
     requestId?: string,
     metadata?: AgentConversationEntryMetadata,
+    queueMode?: "steer" | "follow_up",
   ): Promise<boolean> {
-    return this.requireDelegate().followUp?.(sessionId, input, onEvent, requestId, metadata) ?? Promise.resolve(false);
+    return (
+      this.requireDelegate().followUp?.(sessionId, input, onEvent, requestId, metadata, queueMode) ??
+      Promise.resolve(false)
+    );
   }
 
   interrupt(sessionId: string, instruction: string): Promise<boolean> {

@@ -6,6 +6,7 @@ import type { AgentSession } from "./AgentSession.js";
 import type { AgentSessionMessageQueueMode } from "./AgentSessionMessageQueueMode.js";
 import type { AgentConversationEntryMetadata } from "../ModelEndpoints/AgentModelMetadata.js";
 import type { AgentExplicitActivationSet } from "../Activation/AgentActivationTypes.js";
+import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 
 export function cloneAgentSessionState(session: AgentSession): AgentSession {
   return structuredClone(session);
@@ -32,8 +33,10 @@ export function projectSessionUserEntry(
     queue?: {
       parentRequestId: string;
       mode: AgentSessionMessageQueueMode;
+      status?: import("./AgentSessionQueuedInput.js").AgentSessionInputState;
     };
     metadata?: AgentConversationEntryMetadata;
+    interaction?: AgentInteractionContext;
     activations?: AgentExplicitActivationSet;
   },
   timestamp: string,
@@ -42,9 +45,10 @@ export function projectSessionUserEntry(
     requestId,
     request.input,
     timestamp,
-    request.queue || request.activations
+    request.queue || request.activations || request.interaction?.event
       ? {
           ...request.metadata,
+          ...(request.interaction?.event ? { channelEvent: structuredClone(request.interaction.event) } : {}),
           ...(request.queue ? { queue: request.queue } : {}),
           ...(request.activations ? { activation: structuredClone(request.activations) } : {}),
         }

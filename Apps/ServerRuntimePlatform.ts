@@ -10,6 +10,7 @@ import { AgentPluginHost } from "../Source/AgentSystem/Plugins/AgentPluginHost.j
 import { AgentPluginSourceKinds } from "../Source/AgentSystem/Plugins/AgentPluginTypes.js";
 import type { AgentPluginDiscoverySource } from "../Source/AgentSystem/Plugins/AgentPluginDiscovery.js";
 import { AgentSelfHttpApi } from "../Source/AgentSystem/SelfService/AgentSelfHttpApi.js";
+import { AgentSelfCliRuntime } from "../Source/AgentSystem/SelfService/AgentSelfCliRuntime.js";
 import {
   AgentApprovalTransportRegistry,
   createHttpApprovalTransport,
@@ -21,6 +22,7 @@ import type {
 } from "../Source/AgentSystem/SelfService/AgentSelfServiceTypes.js";
 import { AgentRuntimeManifestStore } from "../Source/AgentSystem/Runtime/AgentRuntimeManifest.js";
 import { createSeneraSelfServicePort } from "./SeneraSelfServiceHost.js";
+import type { AgentDirectory } from "../Source/AgentSystem/Profile/AgentDirectory.js";
 
 export interface SeneraServerRuntimePlatform {
   readonly pluginHost: AgentPluginHost;
@@ -33,13 +35,18 @@ export interface SeneraServerRuntimePlatform {
 }
 
 export interface SeneraServerRuntimePlatformInput {
+  readonly diaries?: AgentSelfServicePort["diaries"];
   readonly resourceRoot: string;
   readonly workspaceRoot: string;
   readonly workspaceLayout: AgentWorkspaceLayout;
   readonly configPath: string;
   readonly configSnapshot: () => AgentSystemConfig;
+  readonly systemSkillSources: () => readonly AgentSelfSkillSource[];
   readonly configService: AgentConfigService;
   readonly sessionStore: AgentSessionStore;
+  /** Canonical ownership resolver shared with per-Agent runtime selection. */
+  readonly resolveSessionAgentId: (sessionId: string) => string | undefined;
+  readonly agentDirectory: AgentDirectory;
   readonly logStore: AgentWorkspaceLogStore;
   readonly logger: Pick<AgentLogger, "error" | "warn">;
 }
@@ -65,29 +72,31 @@ export async function createSeneraServerRuntimePlatform(
     if (entry.error) input.logger.warn("plugin.load.failed", { pluginId: entry.id, error: entry.error });
   }
 
-  const selfService = createSeneraSelfServicePort({
-    workspaceRoot: input.workspaceRoot,
-    configPath: input.configPath,
-    configSnapshot: input.configSnapshot,
-    configService: input.configService,
-    sessionStore: input.sessionStore,
-    logStore: input.logStore,
-    pluginHost,
-    skillSources: [
-      {
-        id: "system",
-        displayName: "Senera system Skills",
-        kind: "system",
-        root: path.join(input.resourceRoot, "System", "Skills"),
-      } satisfies AgentSelfSkillSource,
-      {
-        id: "workspace",
-        displayName: "Workspace Skills",
-        kind: "workspace",
-        root: input.workspaceLayout.skillRoot,
-      } satisfies AgentSelfSkillSource,
-    ],
-  });
+  const cli = new AgentSelfCliRuntime(input.workspaceRoot);
+  const selfService: AgentSelfServicePort = {
+    cli,
+    ...createSeneraSelfServicePort({
+      diaries: input.diaries,
+      workspaceRoot: input.workspaceRoot,
+      configPath: input.configPath,
+      configSnapshot: input.configSnapshot,
+      configService: input.configService,
+      sessionStore: input.sessionStore,
+      resolveSessionAgentId: input.resolveSessionAgentId,
+      agentDirectory: input.agentDirectory,
+      logStore: input.logStore,
+      pluginHost,
+      skillSources: () => [
+        ...input.systemSkillSources(),
+        {
+          id: "workspace",
+          displayName: "Workspace Skills",
+          kind: "workspace",
+          root: input.workspaceLayout.skillRoot,
+        } satisfies AgentSelfSkillSource,
+      ],
+    }),
+  };
   const selfHttpApi = new AgentSelfHttpApi(selfService, {
     approvals: approvalTransports.preferred(),
   });
@@ -108,10 +117,16 @@ export async function createSeneraServerRuntimePlatform(
       }
       const { token } = runtimeManifestStore.start({ host, port, workspaceId });
       selfHttpApi.bindToken(token);
+      cli.bindEndpoint(host, port, workspaceId);
     },
     stop: () =>
       (stopPromise ??= (async () => {
         const failures: unknown[] = [];
+        try {
+          await cli.dispose();
+        } catch (error) {
+          failures.push(error);
+        }
         try {
           await pluginHost.shutdown();
         } catch (error) {

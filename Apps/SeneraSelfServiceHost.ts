@@ -14,8 +14,10 @@ import { resolveAgentSessionModelProviderId } from "../Source/AgentSystem/ModelE
 import { resolveServerConfig } from "../Source/AgentSystem/AgentDefaults.js";
 import { resolveAgentChannelsConfig } from "../Source/AgentSystem/Channels/AgentChannelsConfig.js";
 import { createAgentSelfPromptPresetsPort } from "../Source/AgentSystem/SelfService/AgentSelfPromptPresets.js";
+import type { AgentDirectory } from "../Source/AgentSystem/Profile/AgentDirectory.js";
 
 export interface SeneraSelfServicePortInput {
+  readonly diaries?: AgentSelfServicePort["diaries"];
   readonly workspaceRoot: string;
   readonly configSnapshot: () => AgentSystemConfig;
   readonly configService: AgentConfigService;
@@ -23,12 +25,15 @@ export interface SeneraSelfServicePortInput {
   readonly configPath?: string;
   /** Session store for `senera sessions list`. */
   readonly sessionStore?: AgentSessionStore;
+  /** Resolves session ownership, including host-specific child-session ancestry. */
+  readonly resolveSessionAgentId?: (sessionId: string) => string | undefined;
+  readonly agentDirectory?: AgentDirectory;
   /** Workspace-local structured log store for `senera logs`. */
   readonly logStore?: AgentWorkspaceLogStore;
   /** Plugin host for `senera plugins list`. */
   readonly pluginHost?: AgentPluginHost;
-  /** Ordered Skill roots; earlier sources win only when a name is unique. */
-  readonly skillSources?: readonly AgentSelfSkillSource[];
+  /** Live registered Skill roots; conflicting names remain explicit errors. */
+  readonly skillSources?: readonly AgentSelfSkillSource[] | (() => readonly AgentSelfSkillSource[]);
 }
 
 /** Builds the self-service port from the live host services. Optional service
@@ -36,6 +41,7 @@ export interface SeneraSelfServicePortInput {
 export function createSeneraSelfServicePort(input: SeneraSelfServicePortInput): AgentSelfServicePort {
   return {
     workspaceRoot: input.workspaceRoot,
+    diaries: input.diaries,
     configPath: input.configPath,
     config: {
       getSnapshot: () => input.configService.snapshot(),
@@ -43,17 +49,20 @@ export function createSeneraSelfServicePort(input: SeneraSelfServicePortInput): 
       history: () => input.configService.history(),
       readRevision: (revision) => input.configService.readRevision(revision),
     },
-    sessions: input.sessionStore ? createSessionsPort(input.sessionStore) : undefined,
+    sessions: input.sessionStore ? createSessionsPort(input.sessionStore, input.resolveSessionAgentId) : undefined,
     status: {
       manifest: () => readAgentRuntimeManifest(input.workspaceRoot),
     },
     logs: input.logStore ? createLogsPort(input.logStore) : undefined,
     plugins: input.pluginHost ? createPluginsPort(input.pluginHost) : undefined,
     skills: input.skillSources ? createAgentSelfSkillsPort(input.skillSources) : undefined,
-    promptPresets: createAgentSelfPromptPresetsPort(
-      input.workspaceRoot,
-      resolveServerConfig(input.configSnapshot()).RequestMaxBytes,
-    ),
+    promptPresets: input.agentDirectory
+      ? createAgentSelfPromptPresetsPort(
+          input.workspaceRoot,
+          resolveServerConfig(input.configSnapshot()).RequestMaxBytes,
+          input.agentDirectory,
+        )
+      : undefined,
     channels: {
       snapshot: () => resolveAgentChannelsConfig(input.configSnapshot()),
     },
@@ -67,7 +76,10 @@ function createPluginsPort(host: AgentPluginHost): NonNullable<AgentSelfServiceP
   };
 }
 
-function createSessionsPort(store: AgentSessionStore): NonNullable<AgentSelfServicePort["sessions"]> {
+function createSessionsPort(
+  store: AgentSessionStore,
+  resolveSessionAgentId: (sessionId: string) => string | undefined = (sessionId) => store.getSessionAgentId(sessionId),
+): NonNullable<AgentSelfServicePort["sessions"]> {
   return {
     list: (): readonly AgentSelfSessionSummary[] =>
       store.listSessions().map((session) => {
@@ -85,6 +97,7 @@ function createSessionsPort(store: AgentSessionStore): NonNullable<AgentSelfServ
     getModelRuntime: (sessionId) => store.getSessionModelRuntime(sessionId),
     setModelPreference: (sessionId, modelProviderId, source) =>
       store.setSessionModelPreference(sessionId, modelProviderId, source),
+    resolveAgentId: resolveSessionAgentId,
     snapshot: (sessionId) => store.getSessionSnapshot(sessionId),
   };
 }

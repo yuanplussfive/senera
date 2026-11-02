@@ -1,4 +1,4 @@
-import type { ScheduledTask } from "@amaster.ai/pi-task-scheduler";
+import type { ScheduledTask } from "./AgentScheduleDefinition.js";
 
 export const AgentScheduledTaskExecutionModes = {
   AtDueTime: "at_due_time",
@@ -46,6 +46,8 @@ export type AgentScheduledTaskDeliveryStatus =
 
 export interface AgentScheduledTaskRunRecord {
   readonly id: string;
+  /** Immutable occurrence input. Absent only on runs persisted before instruction snapshots. */
+  readonly instructionPrompt?: string;
   readonly taskId: string;
   readonly scheduledFor: string;
   readonly executionStatus: AgentScheduledTaskExecutionStatus;
@@ -81,6 +83,29 @@ export interface AgentScheduledTaskDeliveryRequest {
 
 export interface AgentScheduledTaskDeliveryPort {
   deliver(request: AgentScheduledTaskDeliveryRequest): Promise<"delivered" | "busy" | "missing">;
+}
+
+export interface AgentScheduledInstructionPort {
+  admit(
+    task: AgentScheduledTaskRecord,
+    run: AgentScheduledTaskRunRecord,
+    allowedToolNames: readonly string[],
+  ): Promise<"accepted" | "missing">;
+}
+
+export class AgentScheduledInstructionGateway implements AgentScheduledInstructionPort {
+  private delegate?: AgentScheduledInstructionPort;
+  bind(delegate: AgentScheduledInstructionPort): () => void {
+    if (this.delegate) throw new Error("Scheduled instruction gateway is already bound.");
+    this.delegate = delegate;
+    return () => {
+      if (this.delegate === delegate) this.delegate = undefined;
+    };
+  }
+  admit(task: AgentScheduledTaskRecord, run: AgentScheduledTaskRunRecord, allowedToolNames: readonly string[]) {
+    if (!this.delegate) throw new Error("Scheduled instruction gateway is not bound.");
+    return this.delegate.admit(task, run, allowedToolNames);
+  }
 }
 
 /** Resolves a fork point for records created before source context was persisted. */

@@ -11,11 +11,15 @@ import { AgentPiTerminalToolObservationProjector } from "./AgentPiTerminalToolOb
 import { projectAgentPiToolResultStatus } from "./AgentPiToolResultPolicy.js";
 import type { AgentPiDiagnosticSink } from "./AgentPiDiagnostics.js";
 import type { AgentToolResultObservationCompressor } from "../ToolRuntime/AgentToolResultObservationCompressor.js";
+import { projectAgentPiMemorySystemPrompt } from "./AgentPiMemoryBoundary.js";
+import { AgentEventKinds, emitAgentEvent } from "../Events/AgentEvent.js";
+import { readAgentPiCommittedReceipts } from "./AgentPiInputBoundary.js";
+import { AgentPiToolCompositionState } from "./AgentPiToolCompositionState.js";
 
 export interface AgentPiRuntimeExtensionFactoryOptions {
   readonly diagnostics?: AgentPiDiagnosticSink;
   readonly beforeCompaction?: (sessionId: string) => Promise<void>;
-  readonly afterCompaction?: (sessionId: string) => Promise<void> | void;
+  readonly afterCompaction?: (sessionId: string, boundaryKey?: string) => Promise<void> | void;
   readonly observationCompressor: AgentToolResultObservationCompressor;
   readonly observationTokenBudget: number;
 }
@@ -38,8 +42,33 @@ export class AgentPiRuntimeExtensionFactory {
   constructor(private readonly options: AgentPiRuntimeExtensionFactoryOptions) {}
 
   create(frame: AgentPiMutableSessionFrame, sessionManager: SessionManager): AgentPiRuntimeExtensionRegistration {
+    frame.setCompositionState(new AgentPiToolCompositionState(sessionManager));
     let extensionApi: ExtensionAPI | undefined;
     let pendingCompaction: AgentPiCompactionIndexes | undefined;
+    let memoryProjection: { revision: number; previousHostPrompt: string; currentHostPrompt: string } | undefined;
+    let lastCompactionId: string | undefined;
+    const previousPreparer = frame.snapshot().prepareModelInput;
+    frame.setModelInputPreparer(async (context) => {
+      await inputBoundary("observe");
+      const prepared = previousPreparer ? await previousPreparer(context) : context;
+      return memoryProjection?.revision === frame.revision()
+        ? projectAgentPiMemorySystemPrompt(
+            prepared,
+            memoryProjection.previousHostPrompt,
+            memoryProjection.currentHostPrompt,
+          )
+        : prepared;
+    });
+    const inputBoundary = async (phase: import("./AgentPiInputBoundary.js").AgentPiInputBoundary["phase"]) => {
+      const snapshot = frame.snapshot();
+      if (!snapshot.inputBoundary) return;
+      const { inputs: committedInputs, toolCalls: committedToolCalls } = readAgentPiCommittedReceipts(sessionManager);
+      await snapshot.inputBoundary({
+        phase,
+        committedInputs,
+        committedToolCalls,
+      });
+    };
     const clearPendingCompaction = () => {
       pendingCompaction = undefined;
     };
@@ -66,8 +95,10 @@ export class AgentPiRuntimeExtensionFactory {
       },
       factory: (pi) => {
         extensionApi = pi;
-        pi.on("before_agent_start", (event) => {
+        pi.on("before_agent_start", async (event) => {
+          await inputBoundary("start");
           const snapshot = frame.snapshot();
+          memoryProjection = undefined;
           return {
             systemPrompt: [
               snapshot.systemPrompt ?? "",
@@ -78,13 +109,56 @@ export class AgentPiRuntimeExtensionFactory {
               .join("\n\n"),
           };
         });
-        pi.on("tool_call", (event) =>
-          frame.snapshot().preflight({
+        pi.on("turn_end", async (event) => {
+          await inputBoundary(event.outcome === "completed" ? "steer" : "observe");
+        });
+        pi.on("agent_before_settle", async (event) => {
+          await inputBoundary(event.outcome === "completed" ? "follow_up" : "observe");
+        });
+        pi.on("tool_call", async (event) => {
+          const snapshot = frame.snapshot();
+          if (event.parentToolCallId) {
+            const state = snapshot.turnState;
+            if (!state) throw new Error("Nested tool execution requires an active turn.");
+            const batchId = state.registerNestedToolCall(event.parentToolCallId, {
+              toolCallId: event.toolCallId,
+              toolName: event.toolName,
+              input: event.input,
+            });
+            await state.beginWorkspaceChangeBatch(batchId, [
+              { toolCallId: event.toolCallId, toolName: event.toolName, input: event.input },
+            ]);
+            await emitAgentEvent(snapshot.onEvent, {
+              kind: AgentEventKinds.ToolCallsPlanned,
+              context: {
+                sessionId: snapshot.sessionId,
+                requestId: snapshot.requestId ?? state.context.requestId,
+                step: snapshot.step ?? state.context.step,
+                scope: { parentToolCallId: event.parentToolCallId },
+              },
+              data: {
+                toolCount: 1,
+                tools: [event.toolName],
+                batchId,
+                calls: [
+                  {
+                    callId: event.toolCallId,
+                    toolName: event.toolName,
+                    origin: snapshot.toolOriginLookup?.(event.toolName),
+                  },
+                ],
+                status: "planned",
+                executionMode: "parallel",
+              },
+            });
+          }
+          return snapshot.preflight({
             toolCallId: event.toolCallId,
             toolName: event.toolName,
             input: event.input,
-          }),
-        );
+            parentToolCallId: event.parentToolCallId,
+          });
+        });
         pi.on("tool_result", (event) => projectAgentPiToolResultStatus(event.details));
         pi.on("tool_execution_end", (event) => terminalToolObservations.settle(frame.snapshot().turnState, event));
         pi.on("message_end", (event) => {
@@ -107,9 +181,42 @@ export class AgentPiRuntimeExtensionFactory {
           return undefined;
         });
         pi.on("session_compact", async (event) => {
+          if (lastCompactionId === event.compactionEntry.id) return;
+          const committedFrame = frame.snapshot();
+          if (committedFrame.sessionId) {
+            await emitAgentEvent(committedFrame.onEvent, {
+              kind: AgentEventKinds.SessionCompacted,
+              context: {
+                sessionId: committedFrame.sessionId,
+                requestId: committedFrame.requestId,
+                step: committedFrame.step,
+              },
+              data: {
+                sessionId: committedFrame.sessionId,
+                tokensBefore: event.compactionEntry.tokensBefore,
+                boundaryId: event.compactionEntry.id,
+              },
+            });
+          }
           const indexes = takePendingCompaction();
           if (indexes) compactionController.appendIndexes(sessionManager, indexes);
-          await this.invalidateAfterCompaction(frame.snapshot().sessionId);
+          await this.invalidateAfterCompaction(frame.snapshot().sessionId, event.compactionEntry.id);
+          const snapshot = frame.snapshot();
+          const revision = frame.revision();
+          if (!snapshot.signal?.aborted && snapshot.refreshMemoryBoundary) {
+            const previousHostPrompt =
+              memoryProjection?.revision === revision
+                ? memoryProjection.previousHostPrompt
+                : (snapshot.systemPrompt ?? "");
+            await frame.refreshMemoryBoundary({ id: event.compactionEntry.id, summary: event.compactionEntry.summary });
+            if (revision === frame.revision())
+              memoryProjection = {
+                revision,
+                previousHostPrompt,
+                currentHostPrompt: frame.snapshot().systemPrompt ?? "",
+              };
+          }
+          lastCompactionId = event.compactionEntry.id;
           void compactionController.emitDiagnostic(frame, "compaction.native.completed", {
             reason: event.reason,
             fromExtension: event.fromExtension,
@@ -138,9 +245,9 @@ export class AgentPiRuntimeExtensionFactory {
     await this.options.beforeCompaction(sessionId);
   }
 
-  private async invalidateAfterCompaction(sessionId: string | undefined): Promise<void> {
+  private async invalidateAfterCompaction(sessionId: string | undefined, boundaryKey: string): Promise<void> {
     if (!this.options.afterCompaction) return;
     if (!sessionId) throw new Error("Pi compaction requires a continuity session identity.");
-    await this.options.afterCompaction(sessionId);
+    await this.options.afterCompaction(sessionId, boundaryKey);
   }
 }

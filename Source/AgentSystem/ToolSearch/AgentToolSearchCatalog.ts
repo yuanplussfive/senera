@@ -11,12 +11,15 @@ import { isAgentToolAvailableForInteraction } from "../ToolRuntime/AgentToolInte
 import { resolveAvailableAgentToolExecutionTargets } from "../ToolRuntime/AgentToolExecutionPlan.js";
 import {
   isAgentToolDirectlyInvocable,
-  isAgentToolDynamicallyDiscoverable,
   isAgentToolSupportedByPlanningMode,
 } from "../ToolRuntime/AgentToolInvocationRouting.js";
 import { isAgentSkillModelInvocable } from "../Skills/AgentSkillInvocation.js";
 import type { AgentToolResourceDiscoveryReader } from "../ToolRuntime/AgentToolResourceDiscovery.js";
-import { AgentCapabilitySearchIndex, type AgentCapabilityEmbeddingClient } from "./AgentCapabilitySearchIndex.js";
+import {
+  AgentCapabilitySearchIndex,
+  AgentCapabilityIndexClosedError,
+  type AgentCapabilityEmbeddingClient,
+} from "./AgentCapabilitySearchIndex.js";
 import type { AgentCapabilityEmbeddingCacheStore } from "./AgentCapabilityEmbeddingCache.js";
 import {
   buildSkillCapabilityDocument,
@@ -29,7 +32,7 @@ import { isAgentMcpServiceAuthorized, type AgentToolAccessGrant } from "../ToolR
 import type { AgentMcpServiceDiscoveryEntry } from "../McpPackages/AgentMcpPackageTypes.js";
 import { agentMcpPackageToolName } from "../McpPackages/AgentMcpPackageIdentity.js";
 import { AgentToolSearchDocumentBuilder } from "./AgentToolSearchDocumentBuilder.js";
-import { AgentToolSearchIndex } from "./AgentToolSearchIndex.js";
+import { AgentToolSearchIndex, type AgentToolSearchCatalogScope } from "./AgentToolSearchIndex.js";
 import { AgentToolSearchTokenizer } from "./AgentToolSearchTokenizer.js";
 import {
   createAgentCapabilityCatalogRevision,
@@ -40,7 +43,7 @@ import {
 import { AgentCapabilityEmbeddingCachePolicy } from "./AgentToolSearchRuntimePolicies.js";
 import { isAgentToolMetaToolName } from "./AgentToolSearchRuntimeTypes.js";
 import { isAgentToolExecutable } from "../ToolRuntime/AgentToolAvailability.js";
-import { throwIfAborted } from "../Core/AgentCancellation.js";
+import { AgentCancellationError, awaitWithAbortSignal, throwIfAborted } from "../Core/AgentCancellation.js";
 import { AgentToolSearchDiagnostics, type AgentToolSearchDiagnostic } from "./AgentToolSearchTypes.js";
 
 export interface AgentToolSearchCatalogOptions {
@@ -58,6 +61,12 @@ export interface AgentToolSearchCatalogOptions {
   readonly resourceDiscovery?: AgentToolResourceDiscoveryReader;
 }
 
+export class AgentToolSearchCatalogClosedError extends AgentCancellationError {
+  constructor() {
+    super("Tool search catalog has been closed.");
+  }
+}
+
 export interface AgentAuthorizedDynamicTools {
   readonly tools: readonly RegisteredTool[];
   readonly directToolNames: readonly string[];
@@ -65,6 +74,7 @@ export interface AgentAuthorizedDynamicTools {
 }
 
 export interface AgentToolSearchSnapshot {
+  readonly scope: AgentToolSearchCatalogScope;
   readonly revision: string;
   readonly index: AgentToolSearchIndex;
 }
@@ -76,8 +86,7 @@ export interface AgentToolSearchSnapshot {
  */
 export class AgentToolSearchCatalog {
   private toolCatalog?: AgentToolCatalogSnapshot;
-  private index?: AgentToolSearchIndex;
-  private searchIndexIdentity?: string;
+  private readonly indexes = new Map<AgentToolSearchCatalogScope, AgentToolSearchSnapshot>();
   private capabilities?: AgentCapabilitySearchIndex;
   private capabilityCatalogIdentity?: string;
   private capabilityRegistryRevision?: number;
@@ -88,6 +97,9 @@ export class AgentToolSearchCatalog {
     AgentCapabilityEmbeddingCachePolicy.MinimumEntries,
   );
   private capabilityPrewarm?: AgentCapabilityPrewarmState;
+  private readonly lifetime = new AbortController();
+  private closePromise?: Promise<void>;
+  private readonly retiringIndexes = new Set<Promise<void>>();
 
   constructor(private readonly options: AgentToolSearchCatalogOptions) {}
 
@@ -118,29 +130,31 @@ export class AgentToolSearchCatalog {
       .map((tool) => tool.name);
   }
 
-  searchIndex(): AgentToolSearchIndex {
+  searchIndex(scope: AgentToolSearchCatalogScope = "deferred"): AgentToolSearchIndex {
     const catalog = this.toolCatalogSnapshot();
-    if (this.index && this.searchIndexIdentity === catalog.identity) return this.index;
+    const cached = this.indexes.get(scope);
+    if (cached?.revision === catalog.identity) return cached.index;
     const capabilities = this.capabilitySearchIndex(catalog);
-    this.index = new AgentToolSearchIndex(
+    const index = new AgentToolSearchIndex(
       { listTools: () => [...catalog.tools] },
       this.options.config,
       capabilities,
       this.options.resourceDiscovery,
+      scope,
     );
-    this.searchIndexIdentity = catalog.identity;
-    return this.index;
+    this.indexes.set(scope, { scope, revision: catalog.identity, index });
+    return index;
   }
 
   /** Captures the immutable index and the revision that produced it. */
-  searchSnapshot(): AgentToolSearchSnapshot {
+  searchSnapshot(scope: AgentToolSearchCatalogScope = "deferred"): AgentToolSearchSnapshot {
     const catalog = this.toolCatalogSnapshot();
-    return { revision: catalog.identity, index: this.searchIndex() };
+    return { scope, revision: catalog.identity, index: this.searchIndex(scope) };
   }
 
   isSearchSnapshotCurrent(snapshot: AgentToolSearchSnapshot): boolean {
     const catalog = this.toolCatalogSnapshot();
-    return catalog.identity === snapshot.revision && this.searchIndexIdentity === snapshot.revision;
+    return catalog.identity === snapshot.revision && this.indexes.get(snapshot.scope)?.index === snapshot.index;
   }
 
   capabilityIndex(): AgentCapabilitySearchIndex {
@@ -170,10 +184,7 @@ export class AgentToolSearchCatalog {
     const tokenizer = new AgentToolSearchTokenizer();
     const lexicalQuery = tokenizer
       .tokenizeContent(query)
-      .filter(
-        (token) =>
-          tokenizer.isIndependentContentToken(token) && !this.options.config.Tokenize.Stopwords.includes(token),
-      )
+      .filter((token) => tokenizer.isIndependentContentToken(token))
       .join(" ");
     const names = new Set(
       index.lexical(lexicalQuery, AgentCapabilityKinds.Service, allowed).map((match) => match.name),
@@ -221,13 +232,23 @@ export class AgentToolSearchCatalog {
 
   /** Start or join catalog vector preparation without mutating session state. */
   async prewarm(signal?: AbortSignal): Promise<void> {
+    signal = signal ? AbortSignal.any([signal, this.lifetime.signal]) : this.lifetime.signal;
+    throwIfAborted(signal);
     if (!this.options.config.Embedding.Enabled || !this.options.embedding) return;
     while (true) {
+      throwIfAborted(signal);
       const snapshot = this.captureCapabilityPrewarmSnapshot();
       const current = this.capabilityPrewarm;
       const preparation =
         current?.key === snapshot.key ? current.promise : this.startCapabilityPrewarm(snapshot, signal);
-      await preparation;
+      try {
+        await awaitWithAbortSignal(preparation, signal);
+      } catch (error) {
+        throwIfAborted(signal);
+        if (!(error instanceof AgentCapabilityIndexClosedError) || this.isCapabilityPrewarmSnapshotCurrent(snapshot)) {
+          throw error;
+        }
+      }
       // A refresh may occur after the worker completes. Re-read the complete
       // snapshot before reporting success so the next foreground query never
       // joins a promise that only prepared an obsolete catalog.
@@ -235,22 +256,27 @@ export class AgentToolSearchCatalog {
     }
   }
 
-  async close(): Promise<void> {
-    await this.capabilities?.close();
+  close(): Promise<void> {
+    if (this.closePromise) return this.closePromise;
+    this.lifetime.abort(new AgentToolSearchCatalogClosedError());
+    return (this.closePromise = (async () => {
+      await Promise.all([this.capabilities?.close(), ...this.retiringIndexes]);
+      await this.capabilityPrewarm?.promise.catch(() => {});
+    })());
   }
 
   refresh(): void {
+    if (this.lifetime.signal.aborted) return;
     const previousCapabilities = this.capabilities;
     this.toolCatalog = undefined;
-    this.index = undefined;
-    this.searchIndexIdentity = undefined;
+    this.indexes.clear();
     this.capabilities = undefined;
     this.capabilityCatalogIdentity = undefined;
     this.capabilityRegistryRevision = undefined;
     this.capabilityToolCatalogIdentity = undefined;
     this.capabilityServiceCatalogIdentity = undefined;
     this.capabilityCatalogGeneration += 1;
-    if (previousCapabilities) void previousCapabilities.close();
+    if (previousCapabilities) this.retireIndex(previousCapabilities);
   }
 
   private availableTools(): readonly RegisteredTool[] {
@@ -267,6 +293,7 @@ export class AgentToolSearchCatalog {
   }
 
   private capabilitySearchIndex(catalog = this.toolCatalogSnapshot()): AgentCapabilitySearchIndex {
+    this.assertOpen();
     const serviceDocuments = (this.options.mcpServices?.() ?? []).map(buildMcpServiceCapabilityDocument);
     const serviceIdentity = createAgentCapabilityCatalogRevision(serviceDocuments);
     if (
@@ -280,7 +307,7 @@ export class AgentToolSearchCatalog {
     }
     const documentBuilder = new AgentToolSearchDocumentBuilder(this.options.resourceDiscovery);
     const toolDocuments = catalog.tools
-      .filter((tool) => isAgentToolDynamicallyDiscoverable(tool) && !isAgentToolMetaToolName(tool.name))
+      .filter((tool) => !isAgentToolMetaToolName(tool.name))
       .map((tool) => buildToolCapabilityDocument(tool, documentBuilder.build(tool)));
     const skillDocuments = this.options.registry
       .listSkills()
@@ -297,6 +324,7 @@ export class AgentToolSearchCatalog {
           }
         : undefined;
     refreshAgentCapabilityEmbeddingCache(this.capabilityEmbeddingCache, capabilityDocuments, embedding?.model);
+    const previousCapabilities = this.capabilities;
     this.capabilities = new AgentCapabilitySearchIndex(capabilityDocuments, {
       tokenizer: new AgentToolSearchTokenizer(),
       embeddingCache: this.capabilityEmbeddingCache,
@@ -313,11 +341,12 @@ export class AgentToolSearchCatalog {
           catalogRevision: identity,
         }),
     });
+    if (previousCapabilities) this.retireIndex(previousCapabilities);
     this.capabilityCatalogIdentity = identity;
     this.capabilityRegistryRevision = catalog.registryRevision;
     this.capabilityToolCatalogIdentity = catalog.identity;
     this.capabilityServiceCatalogIdentity = serviceIdentity;
-    this.index = undefined;
+    this.indexes.clear();
     return this.capabilities;
   }
 
@@ -342,7 +371,9 @@ export class AgentToolSearchCatalog {
     const startedAt = Date.now();
     const preparation = Promise.resolve()
       .then(async () => {
+        throwIfAborted(signal);
         await snapshot.capabilities.prewarm(signal);
+        throwIfAborted(signal);
         // Keep the lexical derivative warm alongside embeddings; the first
         // explicit search should not rebuild either catalog representation.
         this.searchIndex();
@@ -361,6 +392,7 @@ export class AgentToolSearchCatalog {
   }
 
   private isCapabilityPrewarmSnapshotCurrent(snapshot: AgentCapabilityPrewarmSnapshot): boolean {
+    if (this.lifetime.signal.aborted) return false;
     if (this.capabilityCatalogGeneration !== snapshot.generation) return false;
     const catalog = this.toolCatalogSnapshot();
     if (catalog.identity !== snapshot.catalogRevision) return false;
@@ -369,6 +401,7 @@ export class AgentToolSearchCatalog {
   }
 
   private toolCatalogSnapshot(): AgentToolCatalogSnapshot {
+    this.assertOpen();
     const registryRevision = readAgentRegistryRevision(this.options.registry.revision);
     const runtimeTargets = this.options.availableExecutionTargets();
     const runtimeTargetsKey = [...new Set(runtimeTargets)].sort().join("\u0000");
@@ -392,6 +425,20 @@ export class AgentToolSearchCatalog {
     } satisfies AgentToolCatalogSnapshot;
     if (registryRevision !== undefined) this.toolCatalog = snapshot;
     return snapshot;
+  }
+
+  private assertOpen(): void {
+    if (this.lifetime.signal.aborted) throw new AgentToolSearchCatalogClosedError();
+  }
+
+  private retireIndex(index: AgentCapabilitySearchIndex): void {
+    const retirement = index.close();
+    this.retiringIndexes.add(retirement);
+    void retirement
+      .finally(() => this.retiringIndexes.delete(retirement))
+      .catch((error: unknown) => {
+        this.options.logger?.warn("routing.embedding.close_failed", { message: errorMessage(error) });
+      });
   }
 }
 

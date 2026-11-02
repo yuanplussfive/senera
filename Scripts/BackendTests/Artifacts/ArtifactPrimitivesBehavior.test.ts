@@ -1,5 +1,5 @@
-import path from "node:path";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
+import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
 import {
   createAgentArtifactLocator,
   normalizeAgentArtifactUri,
@@ -11,6 +11,11 @@ import {
   stableArtifactStringify,
 } from "../../../Source/AgentSystem/Artifacts/AgentArtifactStableJson.js";
 import { ToolArtifactPolicySchema } from "../../../Source/AgentSystem/Schemas/AgentArtifactContractSchema.js";
+
+const roots: string[] = [];
+afterEach(() => {
+  for (const root of roots.splice(0)) removeDirectory(root);
+});
 
 describe("artifact primitive contracts", () => {
   test("redacts nested key patterns and exact array paths without mutating input", () => {
@@ -83,8 +88,10 @@ describe("artifact primitive contracts", () => {
   });
 
   test("normalizes safe artifact locations and rejects configured root traversal", () => {
+    const workspaceRoot = createTemporaryDirectory("senera-artifact-locator");
+    roots.push(workspaceRoot);
     const locator = createAgentArtifactLocator({
-      workspaceRoot: path.resolve("workspace"),
+      workspaceRoot,
       requestId: "Request / unsafe",
       step: 2,
       callIndex: 3,
@@ -99,7 +106,7 @@ describe("artifact primitive contracts", () => {
     expect(normalizeAgentArtifactUri(`urn:senera:artifact:${locator.artifactId}`)).toBe(locator.artifactUri);
     expect(() =>
       createAgentArtifactLocator({
-        workspaceRoot: path.resolve("workspace"),
+        workspaceRoot,
         rootDir: "../outside",
         step: 0,
         callId: "call-outside",

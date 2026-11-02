@@ -41,13 +41,12 @@ describe("Imagen MCP artifact boundary", () => {
       expect.objectContaining({
         ok: true,
         result: expect.objectContaining({
-          text: "Generated image",
           content: expect.arrayContaining([expect.objectContaining({ type: "text", text: "Generated image" })]),
           resources: [
             expect.objectContaining({
               source: {
                 kind: "local_path",
-                path: expect.stringMatching(/^\.senera\/uploads\/upl_[a-f0-9]{32}\/original\.png$/u),
+                path: expect.stringMatching(/^\.senera\/uploads\/[0-9a-hjkmnp-tv-z]{6}\/original\.png$/u),
               },
               mime: "image/png",
             }),
@@ -55,7 +54,8 @@ describe("Imagen MCP artifact boundary", () => {
         }),
       }),
     );
-    expect(JSON.stringify(execution.response)).not.toMatch(/senera:\/\/resource\/upl_/u);
+    expect(JSON.stringify(execution.response).match(/Generated image/gu)).toHaveLength(1);
+    expect(JSON.stringify(execution.response)).not.toMatch(/senera:\/\/resource\//u);
     expect(execution.artifactPayload?.assets).toBeUndefined();
     expect(execution.artifactPayload?.evidence).toEqual(
       expect.arrayContaining([
@@ -66,7 +66,7 @@ describe("Imagen MCP artifact boundary", () => {
       ]),
     );
     expect(JSON.stringify(execution.artifactPayload?.rawResponse)).not.toContain(imageBase64);
-    expect(JSON.stringify(execution.artifactPayload?.rawResponse)).toContain("senera://resource/upl_");
+    expect(JSON.stringify(execution.artifactPayload?.rawResponse)).toContain("senera://resource/");
   });
 
   test("publishes MCP binary content before model projection and removes temporary identities", async () => {
@@ -90,27 +90,26 @@ describe("Imagen MCP artifact boundary", () => {
     const result = execution.response && "result" in execution.response ? execution.response.result : undefined;
     expect(result).toEqual(
       expect.objectContaining({
-        text: "Generated image",
         content: expect.arrayContaining([expect.objectContaining({ type: "text", text: "Generated image" })]),
         resources: [
           expect.objectContaining({
             source: {
               kind: "local_path",
-              path: expect.stringMatching(/^\.senera\/uploads\/upl_[a-f0-9]{32}\/original\.png$/u),
+              path: expect.stringMatching(/^\.senera\/uploads\/[0-9a-hjkmnp-tv-z]{6}\/original\.png$/u),
             },
             mime: "image/png",
           }),
         ],
       }),
     );
-    expect(JSON.stringify(result)).not.toMatch(/senera:\/\/resource\/upl_/u);
+    expect(JSON.stringify(result)).not.toMatch(/senera:\/\/resource\//u);
     expect(execution.artifactPayload?.assets).toBeUndefined();
     expect(JSON.stringify(execution.artifactPayload?.rawResponse)).not.toContain(imageBase64);
 
     const resourceUri = (
       execution.artifactPayload?.rawResponse as { content: Array<{ resource?: { uri?: string } }> }
     ).content.find((item) => item.resource?.uri)?.resource?.uri;
-    expect(resourceUri).toMatch(/^senera:\/\/resource\/upl_[a-f0-9]{32}$/u);
+    expect(resourceUri).toMatch(/^senera:\/\/resource\/[0-9a-hjkmnp-tv-z]{6}$/u);
     if (!resourceUri) throw new Error("MCP resource URI was not projected.");
     const resolved = await uploadStore.resolve(resourceUri);
     expect(resolved?.manifest).toEqual(
@@ -132,7 +131,7 @@ describe("Imagen MCP artifact boundary", () => {
             expect.objectContaining({
               source: {
                 kind: "local_path",
-                path: expect.stringMatching(/^\.senera\/uploads\/upl_[a-f0-9]{32}\/original\.png$/u),
+                path: expect.stringMatching(/^\.senera\/uploads\/[0-9a-hjkmnp-tv-z]{6}\/original\.png$/u),
               },
               mime: "image/png",
             }),
@@ -161,7 +160,7 @@ describe("Imagen MCP artifact boundary", () => {
               expect.objectContaining({
                 source: {
                   kind: "local_path",
-                  path: expect.stringMatching(/^\.senera\/uploads\/upl_[a-f0-9]{32}\/original\.png$/u),
+                  path: expect.stringMatching(/^\.senera\/uploads\/[0-9a-hjkmnp-tv-z]{6}\/original\.png$/u),
                 },
                 mime: "image/png",
               }),
@@ -183,8 +182,8 @@ describe("Imagen MCP artifact boundary", () => {
     });
 
     expect(JSON.stringify(execution.response)).not.toContain(encoded);
-    expect(JSON.stringify(execution.response)).toMatch(/\.senera\/uploads\/upl_[a-f0-9]{32}\/original\.png/u);
-    expect(JSON.stringify(execution.response)).not.toMatch(/senera:\/\/resource\/upl_/u);
+    expect(JSON.stringify(execution.response)).toMatch(/\.senera\/uploads\/[0-9a-hjkmnp-tv-z]{6}\/original\.png/u);
+    expect(JSON.stringify(execution.response)).not.toMatch(/senera:\/\/resource\//u);
   });
 
   test("materializes structured Base64 only when magic bytes identify media", async () => {
@@ -207,13 +206,13 @@ describe("Imagen MCP artifact boundary", () => {
         ok: true,
         result: {
           output: {
-            image: expect.stringMatching(/^\.senera\/uploads\/upl_[a-f0-9]{32}\/original\.png$/u),
+            image: expect.stringMatching(/^\.senera\/uploads\/[0-9a-hjkmnp-tv-z]{6}\/original\.png$/u),
           },
           resources: [
             expect.objectContaining({
               source: {
                 kind: "local_path",
-                path: expect.stringMatching(/^\.senera\/uploads\/upl_[a-f0-9]{32}\/original\.png$/u),
+                path: expect.stringMatching(/^\.senera\/uploads\/[0-9a-hjkmnp-tv-z]{6}\/original\.png$/u),
               },
               mime: "image/png",
             }),
@@ -259,7 +258,7 @@ describe("Imagen MCP artifact boundary", () => {
             expect.objectContaining({
               source: {
                 kind: "local_path",
-                path: expect.stringMatching(/^\.senera\/uploads\/upl_[a-f0-9]{32}\/original\.wav$/u),
+                path: expect.stringMatching(/^\.senera\/uploads\/[0-9a-hjkmnp-tv-z]{6}\/original\.wav$/u),
               },
               mime: "audio/wav",
             }),
@@ -273,7 +272,7 @@ describe("Imagen MCP artifact boundary", () => {
         expect.objectContaining({ kind: "mcp-content", locator: "$.content[0]" }),
         expect.objectContaining({
           kind: "resource",
-          locator: expect.stringMatching(/^senera:\/\/resource\/upl_[a-f0-9]{32}$/u),
+          locator: expect.stringMatching(/^senera:\/\/resource\/[0-9a-hjkmnp-tv-z]{6}$/u),
         }),
         expect.objectContaining({ kind: "mcp-content", locator: "$.content[2]" }),
       ]),
@@ -311,7 +310,7 @@ describe("Imagen MCP artifact boundary", () => {
       expect.arrayContaining([
         expect.objectContaining({
           kind: "resource",
-          locator: expect.stringMatching(/^senera:\/\/resource\/upl_[a-f0-9]{32}$/u),
+          locator: expect.stringMatching(/^senera:\/\/resource\/[0-9a-hjkmnp-tv-z]{6}$/u),
         }),
       ]),
     );
@@ -396,14 +395,15 @@ describe("Imagen MCP artifact boundary", () => {
               },
             ],
           },
-          result: { attachment: "senera://resource/response" },
+          result: { attachment: "asset:response/" },
           outcome: AgentToolSuccessOutcome,
         },
       ],
     });
 
     expect(recorded?.result).toEqual({
-      attachment: expect.stringMatching(/^senera:\/\/resource\/res_[a-f0-9]{32}$/u),
+      attachment: expect.stringMatching(/^senera:\/\/resource\/[0-9a-hjkmnp-tv-z]{6}$/u),
+      workspacePath: expect.stringMatching(/assets\/response\.json$/u),
     });
     expect(recorded?.artifact?.assets).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "response", fileName: "response.json" })]),
@@ -470,7 +470,7 @@ function registeredMcpTool(): RegisteredTool {
       readOnly: false,
     },
     execution: { Targets: ["Local"], Network: "Allow", Workspace: "ReadOnly" },
-    runtime: { Lifecycle: "Persistent", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
+    runtime: { Lifecycle: "Persistent", ResultAssessment: "ProcessExit" },
     sources: [],
     childGrant: "inherit",
     evidenceCapabilities: [],

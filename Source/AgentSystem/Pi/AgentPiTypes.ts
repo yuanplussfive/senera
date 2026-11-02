@@ -1,4 +1,4 @@
-import type { AgentToolResult, AgentToolUpdateCallback, AgentTool } from "@earendil-works/pi-agent-core";
+import type { AgentToolResult, AgentToolUpdateCallback } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
 import type { TSchema } from "typebox";
 import type { AgentEventSink } from "../Events/AgentEvent.js";
@@ -16,6 +16,8 @@ import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentToolResourceLeaseOwner } from "../ToolRuntime/AgentToolResourceScheduler.js";
 import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
+import type { ToolDefinition, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
+import type { AgentToolComposition, AgentToolCompositionState } from "../ToolRuntime/AgentToolComposition.js";
 
 export {
   AgentPiToolResultStatuses,
@@ -24,7 +26,18 @@ export {
 } from "./AgentPiToolResultDetails.js";
 
 export type AgentPiToolSchema = TSchema & Record<string, unknown>;
-export type AgentPiToolDefinition = AgentTool<AgentPiToolSchema, AgentPiToolDetails>;
+export type AgentPiToolDefinition = Pick<
+  ToolDefinition<AgentPiToolSchema, AgentPiToolDetails>,
+  "name" | "label" | "description" | "parameters" | "executionMode" | "exposure"
+> & {
+  execute(
+    toolCallId: string,
+    params: Record<string, unknown>,
+    signal?: AbortSignal,
+    onUpdate?: AgentPiToolUpdate,
+    context?: ExtensionToolContext,
+  ): Promise<AgentPiToolResult>;
+};
 export type AgentPiToolResult = AgentToolResult<AgentPiToolDetails>;
 export type AgentPiToolUpdate = AgentToolUpdateCallback<AgentPiToolDetails>;
 
@@ -49,9 +62,7 @@ export interface AgentPiToolProjectionContext {
   /** Assignment owner, present only for child-run sessions with a lease. */
   resourceOwner?: AgentToolResourceLeaseOwner;
   reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[];
-  /** Cross-request evidence lookup accepted by the execution bridge for
-   * dynamic tools confirmed earlier in this session. */
-  reusableCapabilityLookup?: (toolName: string) => AgentToolCapabilityCacheEntry | undefined;
+  compositionState?: AgentToolCompositionState;
 }
 
 export interface AgentPiToolExecutionInput {
@@ -62,6 +73,7 @@ export interface AgentPiToolExecutionInput {
   context: AgentPiToolProjectionContext;
   /** Host-visible note appended to the observation, e.g. dropped wrapper keys. */
   notice?: string;
+  composition?: AgentToolComposition;
 }
 
 export type AgentPiModelApi = "senera-planning" | AgentNativeToolApi;

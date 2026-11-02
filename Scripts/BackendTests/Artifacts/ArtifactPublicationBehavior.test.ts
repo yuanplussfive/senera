@@ -26,6 +26,191 @@ afterEach(() => {
 });
 
 describe("artifact publication", () => {
+  test("publishes declared inline tool images as one durable resource without retaining their Base64 payload", async () => {
+    const { recorder } = createRecorder();
+    const imageBytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+    const imageData = imageBytes.toString("base64");
+    const image = { type: "image", data: imageData, mimeType: "image/png" };
+    const input: RecordToolArtifactsInput = {
+      requestId: "request-inline-image",
+      step: 1,
+      results: [
+        {
+          callId: "call-inline-image",
+          name: "InlineImageTool",
+          arguments: { prompt: "diagram" },
+          process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
+          result: { content: [{ type: "text", text: "diagram" }, image] },
+          artifactPayload: { rawResponse: { content: [image] } },
+          outcome: AgentToolSuccessOutcome,
+          artifactPolicy: {},
+        },
+      ],
+    };
+    const [recorded] = await recorder.record(input);
+
+    const artifact = requireArtifact(recorded?.artifact);
+    expect(artifact.assets).toHaveLength(1);
+    const asset = artifact.assets![0]!;
+    expect(asset).toMatchObject({
+      fileName: expect.stringMatching(/^inline-image-[a-f0-9]{32}\.png$/),
+      mediaType: "image/png",
+      byteLength: imageBytes.byteLength,
+      resourceUri: expect.stringMatching(/^senera:\/\/resource\/[0-9a-hjkmnp-tv-z]{6}$/),
+      workspacePath: expect.stringContaining(".senera/artifacts/"),
+    });
+    await expect(fs.readFile(path.join(artifact.artifactPath, asset.relativePath))).resolves.toEqual(imageBytes);
+
+    expect(recorded?.result).toMatchObject({
+      content: [
+        { type: "text", text: "diagram" },
+        {
+          type: "resource",
+          resource: {
+            uri: asset.resourceUri,
+            name: asset.fileName,
+            mimeType: "image/png",
+            size: imageBytes.byteLength,
+            sha256: asset.sha256,
+            workspacePath: asset.workspacePath,
+          },
+        },
+      ],
+    });
+
+    const [raw, rawResponse] = await Promise.all([
+      fs.readFile(artifact.files.raw, "utf8"),
+      fs.readFile(artifact.files.rawResponse, "utf8"),
+    ]);
+    expect(raw).not.toContain(imageData);
+    expect(rawResponse).not.toContain(imageData);
+    expect(raw).toContain(asset.resourceUri);
+    expect(rawResponse).toContain(asset.resourceUri);
+
+    const [recovered] = await recorder.record(input);
+    expect(recovered?.artifact?.artifactId).toBe(artifact.artifactId);
+    expect(recovered?.result).toMatchObject({
+      content: [
+        { type: "text", text: "diagram" },
+        { type: "resource", resource: { uri: asset.resourceUri, workspacePath: asset.workspacePath } },
+      ],
+    });
+    expect(JSON.stringify(recovered?.result)).not.toContain(imageData);
+  });
+
+  test("replaces an invalid declared inline image with an explicit unavailable-media result", async () => {
+    const { recorder } = createRecorder();
+    const invalidPayload = "not valid base64";
+    const [recorded] = await recorder.record({
+      requestId: "request-invalid-inline-image",
+      step: 1,
+      results: [
+        {
+          callId: "call-invalid-inline-image",
+          name: "InlineImageTool",
+          arguments: {},
+          process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
+          result: { content: [{ type: "image", data: invalidPayload, mimeType: "image/png" }] },
+          artifactPayload: {
+            rawResponse: { content: [{ type: "image", data: invalidPayload, mimeType: "image/png" }] },
+          },
+          outcome: AgentToolSuccessOutcome,
+          artifactPolicy: {},
+        },
+      ],
+    });
+
+    const artifact = requireArtifact(recorded?.artifact);
+    expect(artifact.assets).toBeUndefined();
+    expect(recorded?.result).toEqual({
+      content: [
+        {
+          type: "media_unavailable",
+          reason: "invalid_inline_image",
+          message: "The tool returned an inline image that could not be published as a durable resource.",
+          mediaType: "image/png",
+        },
+      ],
+    });
+    const [raw, rawResponse] = await Promise.all([
+      fs.readFile(artifact.files.raw, "utf8"),
+      fs.readFile(artifact.files.rawResponse, "utf8"),
+    ]);
+    expect(raw).not.toContain(invalidPayload);
+    expect(rawResponse).not.toContain(invalidPayload);
+    expect(raw).toContain("invalid_inline_image");
+    expect(rawResponse).toContain("invalid_inline_image");
+  });
+
+  test("does not infer an image resource from a provider-specific image-shaped value", async () => {
+    const { recorder } = createRecorder();
+    const providerValue = { type: "image", url: "https://example.test/provider-image" };
+    const [recorded] = await recorder.record({
+      requestId: "request-provider-image-shape",
+      step: 1,
+      results: [
+        {
+          callId: "call-provider-image-shape",
+          name: "ProviderShapedTool",
+          arguments: {},
+          process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
+          result: { content: [providerValue] },
+          outcome: AgentToolSuccessOutcome,
+          artifactPolicy: {},
+        },
+      ],
+    });
+
+    expect(recorded?.artifact?.assets).toBeUndefined();
+    expect(recorded?.result).toEqual({ content: [providerValue] });
+  });
+
+  test("does not expose a pending inline-image resource when Artifact publication fails", async () => {
+    const { recorder } = createRecorder();
+    const imageData = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString("base64");
+    const [recorded] = await recorder.record({
+      requestId: "request-inline-image-publication-failure",
+      step: 1,
+      results: [
+        {
+          callId: "call-inline-image-publication-failure",
+          name: "InlineImageTool",
+          arguments: {},
+          process: { exitCode: 0, signal: null, stdout: "", stderr: "" },
+          result: { content: [{ type: "image", data: imageData, mimeType: "image/png" }] },
+          artifactPayload: {
+            // A malformed declared asset makes the Artifact transaction fail
+            // after inline-image normalization but before publication commits.
+            assets: [
+              {
+                id: "invalid-existing-asset",
+                fileName: "invalid.bin",
+                mediaType: "application/octet-stream",
+                dataBase64: "not valid base64",
+              },
+            ],
+          },
+          outcome: AgentToolSuccessOutcome,
+          artifactPolicy: {},
+        },
+      ],
+    });
+
+    expect(recorded).toMatchObject({
+      artifactAvailability: { status: "unavailable", reason: "recording_failed" },
+      result: {
+        content: [
+          {
+            type: "media_unavailable",
+            reason: "artifact_recording_failed",
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(recorded?.result)).not.toContain(imageData);
+    expect(JSON.stringify(recorded?.result)).not.toContain("inline-image-");
+  });
+
   test("does not add placeholder evidence for structured tool output", async () => {
     const { recorder } = createRecorder();
     const [recorded] = await recorder.record({
@@ -400,7 +585,7 @@ describe("artifact publication", () => {
     expect(patchAsset).toMatchObject({
       fileName: "workspace.patch",
       mediaType: "text/x-diff",
-      resourceUri: expect.stringMatching(/^senera:\/\/resource\/res_[a-f0-9]{32}$/),
+      resourceUri: expect.stringMatching(/^senera:\/\/resource\/[0-9a-hjkmnp-tv-z]{6}$/),
     });
     expect(recorded?.presentation?.resources).toContainEqual(
       expect.objectContaining({

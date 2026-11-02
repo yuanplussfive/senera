@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import { Jieba, TfIdf } from "@node-rs/jieba";
+import { AgentToolSearchStopwords } from "./AgentToolSearchLexicon.js";
 
 const nodeRequire = createRequire(import.meta.url);
 const { dict, idf } = nodeRequire("@node-rs/jieba/dict") as {
@@ -110,16 +111,17 @@ export class AgentToolSearchTokenizer {
   }
 
   /**
-   * Tokenizes and drops function words via jieba POS tags instead of a
-   * hand-maintained stopword list. English words are tagged as x by jieba and
-   * must survive the tag filter on their own merits.
+   * Tokenizes and drops function words through two jieba-native signals: the
+   * POS tags emitted by the segmenter and the curated stopword resources in
+   * `Lexicon/`. Latin words survive the POS filter as `eng` entries, so those
+   * resource lists are what remove function words from English queries.
    */
   tokenizeContent(text: string): string[] {
     const words = this.taggedTokens(text);
     const tokens = words
       .filter((word) => !isStopPartOfSpeech(word.tag))
       .map((word) => this.normalizeToken(word.word))
-      .filter((token) => SearchCharacterPattern.test(token));
+      .filter((token) => SearchCharacterPattern.test(token) && !AgentToolSearchStopwords.has(token));
     return [...new Set(tokens)];
   }
 
@@ -218,6 +220,10 @@ export class AgentToolSearchTokenizer {
     };
   }
 
+  /**
+   * The native binding rejects `TfIdf.setConfig({ stopWords })`, so the same
+   * curated resources filter the extracted keyword view here.
+   */
   keywords(text: string): string[] {
     const normalized = this.normalize(text);
     const tokenLimit = this.tokenize(normalized).length;
@@ -228,7 +234,7 @@ export class AgentToolSearchTokenizer {
     const keywords = this.keywordExtractor
       .extractKeywords(this.segmenter, normalized, tokenLimit)
       .map((entry) => this.normalizeToken(entry.keyword))
-      .filter((token) => SearchCharacterPattern.test(token));
+      .filter((token) => SearchCharacterPattern.test(token) && !AgentToolSearchStopwords.has(token));
     return [...new Set(keywords)];
   }
 

@@ -1,14 +1,19 @@
 import { MemOS, type MemoryNode, type ScoredMemory } from "@mem-os/sdk";
+import {
+  agentMemorySubject,
+  agentMemorySubjectOwns,
+  type AgentMemoryLearningLedger,
+  type AgentMemoryQuality,
+} from "./AgentMemoryLearningLedger.js";
+import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import { AgentMemOSEmbeddingRuntime } from "./AgentMemOSEmbeddingRuntime.js";
 import { AgentMemOSRecallDedupe, type AgentMemOSRecallDedupeConfig } from "./AgentMemOSRecallDedupe.js";
-import { agentMemOSReference } from "./AgentMemOSReference.js";
 import {
   AgentStateCardHistoryLayers,
   type AgentStateCardHistoryTurn,
   AgentStateCardSchemaVersion,
   AgentStateCardToolHistorySchema,
 } from "../StateCard/AgentStateCardTypes.js";
-import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
 import type { AgentEmbeddingClient } from "../Vector/AgentEmbeddingContract.js";
 import type { AgentMemoryCompletedTurnSink, AgentMemoryDeletionSink } from "../Memory/AgentMemoryService.js";
@@ -18,12 +23,31 @@ import type { AgentBackgroundLearningRequestLedger } from "../Memory/AgentBackgr
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import type { AgentToolSearchEpisode } from "../ToolSearch/AgentToolSearchMemoryTypes.js";
+import { agentMemoryRelevance } from "./AgentMemoryRecallRanking.js";
+import {
+  agentMemoryIsActive,
+  agentMemoryRetention,
+  type AgentMemoryRetention,
+  type AgentMemoryRetentionPolicy,
+} from "./AgentMemoryRetention.js";
+import { createAgentMemoryProvenanceRecovery } from "./AgentMemoryProvenanceRecovery.js";
 import {
   AgentMemOSSemanticLearningRuntime,
   type AgentMemOSSemanticLearningFlushOptions,
   type AgentMemOSSemanticLearningConfig,
+  type AgentMemOSSemanticLearningRuntimeOptions,
 } from "./AgentMemOSSemanticLearningRuntime.js";
-import { AgentMemOSTags, projectAgentMemOSOccurredAt, projectAgentMemOSPeriod } from "./AgentMemOSSemanticTypes.js";
+import {
+  AgentMemOSTags,
+  createAgentMemOSToolRoutingMetadata,
+  isAgentMemOSCurrentSchemaNode,
+  isAgentMemOSAutomaticPromptMemory,
+  migrateAgentMemOSLegacySemanticMetadata,
+  projectAgentMemOSOccurredAt,
+  projectAgentMemOSPeriod,
+  readAgentMemOSToolRoutingMetadata,
+  stripAgentMemOSLegacyProvenanceTags,
+} from "./AgentMemOSSemanticTypes.js";
 
 const MemOSTags = {
   ToolRouting: [AgentMemOSTags.toolRouting, AgentMemOSTags.stateCard, AgentStateCardSchemaVersion],
@@ -31,8 +55,9 @@ const MemOSTags = {
 
 export interface AgentContinuityMemOSSearchResult {
   readonly memory: ScoredMemory;
-  readonly memoryKey: string;
-  readonly deliveryKeys?: readonly string[];
+  readonly dedupeKeys?: readonly string[];
+  readonly quality?: AgentMemoryQuality;
+  readonly retention?: AgentMemoryRetention;
 }
 
 export interface AgentContinuityMemOSToolRoutingMemory {
@@ -43,6 +68,7 @@ export interface AgentContinuityMemOSToolRoutingMemory {
 }
 
 export interface AgentContinuityMemOSRuntimeOptions {
+  readonly canonicalSubject?: (subject: string) => string;
   readonly databasePath: string;
   readonly namespace: string;
   readonly embeddingClient: AgentEmbeddingClient;
@@ -51,6 +77,7 @@ export interface AgentContinuityMemOSRuntimeOptions {
   readonly recallDedupeConfig: () => AgentMemOSRecallDedupeConfig;
   readonly sourceRepository: AgentMemorySourceRepository;
   readonly learningRequests: AgentBackgroundLearningRequestLedger;
+  readonly learningLedger?: AgentMemoryLearningLedger;
   readonly semanticModelProvider: () => ResolvedAgentModelProviderConfig;
   readonly semanticPolicy: () => {
     readonly enabled: boolean;
@@ -60,8 +87,11 @@ export interface AgentContinuityMemOSRuntimeOptions {
     readonly maxJobsPerDrain: number;
   };
   readonly semanticConfig: () => AgentMemOSSemanticLearningConfig;
+  readonly diary: AgentMemOSSemanticLearningRuntimeOptions["diary"];
   readonly semanticScopeKey: string;
-  readonly identityDisplayValues?: () => AgentIdentityDisplayValues;
+  readonly retentionPolicy: () => AgentMemoryRetentionPolicy;
+  readonly retentionInputTokenBudget: () => number;
+  readonly identityDisplayValues?: (sessionId?: string) => AgentIdentityDisplayValues;
   readonly logger?: AgentLogger;
   /** Dedicated stream for semantic-learning queue, extraction and promotion. */
   readonly learningLogger?: AgentLogger;
@@ -102,26 +132,34 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
       { id: embeddingProviderId, model: embeddingModel, dimensions: embeddingDimensions },
     );
     this.recallDedupe = new AgentMemOSRecallDedupe({
+      canonicalSubject: options.canonicalSubject,
       memos: this.memos,
       namespace: this.namespace,
       config: options.recallDedupeConfig,
       logger: options.logger,
     });
     this.semanticLearning = new AgentMemOSSemanticLearningRuntime({
+      canonicalSubject: options.canonicalSubject,
       memos: this.memos,
       namespace: this.namespace,
       sourceRepository: options.sourceRepository,
       learningRequests: options.learningRequests,
+      learningLedger: options.learningLedger,
       modelProvider: options.semanticModelProvider,
       policy: options.semanticPolicy,
       config: options.semanticConfig,
+      retentionPolicy: options.retentionPolicy,
+      retentionInputTokenBudget: options.retentionInputTokenBudget,
+      diary: options.diary,
       cacheScopeKey: options.semanticScopeKey,
       identityDisplayValues: options.identityDisplayValues,
       logger: options.learningLogger,
     });
     this.ready = this.memos
       .init()
-      .then(() => {
+      .then(async () => {
+        await this.migrateLegacyMetadata();
+        await this.initializeKnowledgeScores();
         this.recallDedupe.start();
         this.semanticLearning.start();
       })
@@ -144,15 +182,17 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
       });
   }
 
-  readStateCardHistory(sessionId: string): readonly AgentStateCardHistoryTurn[] {
+  readStateCardHistory(sessionId: string, excludedRequestId?: string): readonly AgentStateCardHistoryTurn[] {
     return this.options.sourceRepository
       .listEpisodes(sessionId)
+      .filter((episode) => episode.requestId !== excludedRequestId)
       .sort((left, right) => left.completedAtMs - right.completedAtMs)
       .slice(-this.options.semanticConfig().fragmentHistoryTurns)
       .map((episode) => {
         try {
           const toolHistory = AgentStateCardToolHistorySchema.optional().parse(episode.metadata.toolHistory);
           return {
+            requestId: episode.requestId,
             request: episode.rawUserText,
             assistant: episode.assistantText,
             layer: AgentStateCardHistoryLayers.Fine,
@@ -168,6 +208,7 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
             message: errorMessage(error),
           });
           return {
+            requestId: episode.requestId,
             request: episode.rawUserText,
             assistant: episode.assistantText,
             layer: AgentStateCardHistoryLayers.Fine,
@@ -183,25 +224,29 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
     requireNonEmpty(memory.sessionId, "MemOS routing session");
     requireNonEmpty(memory.requestId, "MemOS routing request");
     const episode = memory.episode;
-    const routingTag = toolRoutingTag(memory);
     this.enqueue(async () => {
       const query = episode.query.trim();
       const content = JSON.stringify(episode);
-      const existing = await this.findRoutingTag(routingTag);
+      const metadata = createAgentMemOSToolRoutingMetadata({
+        projectId,
+        sessionId: memory.sessionId,
+        requestId: memory.requestId,
+      });
+      const existing = await this.findRoutingMetadata(metadata);
       if (existing?.content === content) return;
       const finalScore = episode.finalScore;
       if (!Number.isFinite(finalScore) || finalScore < 0 || finalScore > 1) {
         throw new Error("Tool routing finalScore must be between 0 and 1.");
       }
-      const tags = [
-        ...MemOSTags.ToolRouting,
-        `project:${encodeURIComponent(projectId)}`,
-        routingTag,
-        toolRoutingSessionTag(memory.sessionId),
-        toolRoutingRequestTag(memory.requestId),
-      ];
+      const tags = [...MemOSTags.ToolRouting];
       if (existing) {
-        const updated = await this.memos.update(existing.id, { content, summary: query, trustScore: finalScore, tags });
+        const updated = await this.memos.update(existing.id, {
+          content,
+          summary: query,
+          trustScore: finalScore,
+          tags,
+          metadata,
+        });
         if (!updated) throw new Error(`MemOS routing node ${existing.id} disappeared before update.`);
         return;
       }
@@ -213,6 +258,7 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
         namespace: this.namespace,
         validFrom: episode.timestamp,
         tags,
+        metadata,
       });
     });
   }
@@ -229,12 +275,18 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
     const results = await this.memos.search({
       query: query.trim() || undefined,
       namespace: this.namespace,
-      tags: [...MemOSTags.ToolRouting, `project:${encodeURIComponent(normalizedProjectId)}`],
-      limit: resolvedLimit,
+      tags: [...MemOSTags.ToolRouting],
+      // The SDK's text-query cache intentionally keys only semantic query
+      // fields. Filter project identity after a complete routing scan so a
+      // cached query from another project can never leak into this project.
+      limit: Math.max(this.memos.count, 1),
       sortBy: query.trim() ? "relevance" : "createdAt",
       sortOrder: "desc",
     });
-    return results.map((memory) => ({ memory, memoryKey: memoryKey(memory) }));
+    return results
+      .filter(({ node }) => readAgentMemOSToolRoutingMetadata(node)?.senera_project_id === normalizedProjectId)
+      .slice(0, resolvedLimit)
+      .map((memory) => ({ memory }));
   }
 
   async listToolRouting(projectId: string, limit: number): Promise<AgentContinuityMemOSSearchResult[]> {
@@ -244,34 +296,38 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
     if (!(await this.awaitReadable())) return [];
     const results = await this.memos.search({
       namespace: this.namespace,
-      tags: [...MemOSTags.ToolRouting, `project:${encodeURIComponent(normalizedProjectId)}`],
+      tags: [...MemOSTags.ToolRouting],
+      metadata: { senera_project_id: normalizedProjectId },
       limit: resolvedLimit,
       sortBy: "createdAt",
       sortOrder: "desc",
     });
-    return results.map((memory) => ({ memory, memoryKey: memoryKey(memory) }));
+    return results.map((memory) => ({ memory }));
   }
 
   async search(
     query: string,
-    options: { readonly excludedKeys?: ReadonlySet<string> } = {},
+    subject?: import("./AgentMemoryLearningLedger.js").AgentMemorySubject,
   ): Promise<AgentContinuityMemOSSearchResult[]> {
     const normalized = query.trim();
     if (!normalized) return [];
-    return this.readRecall(() => this.searchSemantic(normalized), options.excludedKeys);
+    return this.readRecall(() => this.searchAutomaticSemantic(normalized, subject));
   }
 
-  /** Returns the newest MemOS memories for an empty-query turn. */
+  readStateCardTasks(sessionId: string, interaction?: AgentInteractionContext) {
+    return this.options.learningLedger?.resumableTasks(sessionId, agentMemorySubject(interaction)) ?? [];
+  }
+
+  /** Unqueried catalog for subject isolation and explicitly reserved global preferences. */
   async searchRecent(
-    options: {
-      readonly excludedKeys?: ReadonlySet<string>;
-    } = {},
+    subject?: import("./AgentMemoryLearningLedger.js").AgentMemorySubject,
   ): Promise<AgentContinuityMemOSSearchResult[]> {
-    return this.readRecall(() => this.searchSemantic(""), options.excludedKeys);
+    return this.readRecall(() => this.searchAutomaticSemantic("", subject));
   }
 
   /** Filter before token selection; exact references bypass ranked search. */
   async recall(input: {
+    readonly subject?: import("./AgentMemoryLearningLedger.js").AgentMemorySubject;
     readonly query?: string;
     readonly nodeIds?: readonly string[];
     readonly range?: { readonly startMs: number; readonly endMs: number };
@@ -284,7 +340,10 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
           await Promise.all(
             nodeIds.map(async (nodeId) => {
               const node = await this.memos.retrieve(nodeId);
-              return node && node.namespace === this.namespace && node.tags.includes(AgentMemOSTags.semantic)
+              return node &&
+                node.namespace === this.namespace &&
+                node.tags.includes(AgentMemOSTags.semantic) &&
+                isExplicitSemanticRecallNode(node)
                 ? { node, score: node.trustScore }
                 : undefined;
             }),
@@ -300,11 +359,12 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
           sortBy: input.query?.trim() ? "relevance" : "createdAt",
           sortOrder: "desc",
         });
-      } else results = await this.searchSemantic(input.query?.trim() ?? "");
+      } else results = await this.searchExplicitSemantic(input.query?.trim() ?? "");
       const range = input.range;
       const selected = results.filter(({ node }) => {
+        if (input.subject && !agentMemorySubjectOwns(input.subject, node.metadata?.senera_subject_id)) return false;
         if (!range) return true;
-        const period = projectAgentMemOSPeriod(node.tags);
+        const period = projectAgentMemOSPeriod(node);
         if (period) return Date.parse(period.start) < range.endMs && Date.parse(period.end) > range.startMs;
         const occurredAt = Date.parse(projectAgentMemOSOccurredAt(node));
         return occurredAt >= range.startMs && occurredAt < range.endMs;
@@ -319,38 +379,119 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
     };
     if (nodeIds.length > 0) {
       if (!(await this.awaitReadable())) return [];
-      return (await read()).map((memory) => ({ memory, memoryKey: memoryKey(memory) }));
+      return (await read()).map((memory) => ({
+        memory,
+        quality: this.options.learningLedger?.quality(memory.node.id),
+        retention: agentMemoryRetention(memory.node, this.options.retentionPolicy()),
+      }));
     }
     return this.readRecall(read);
   }
 
-  private projectRecall(
-    results: readonly ScoredMemory[],
-    excluded?: ReadonlySet<string>,
-  ): AgentContinuityMemOSSearchResult[] {
+  private projectRecall(results: readonly ScoredMemory[]): AgentContinuityMemOSSearchResult[] {
     return results.flatMap((memory) => {
-      const projected = this.recallDedupe.project(memory, excluded);
-      return projected ? [{ ...projected, memoryKey: memoryKey(memory) }] : [];
+      return [
+        {
+          ...this.recallDedupe.project(memory),
+          quality: this.options.learningLedger?.quality(memory.node.id),
+          retention: agentMemoryRetention(memory.node, this.options.retentionPolicy()),
+        },
+      ];
     });
   }
 
+  /** Task state is selected by the durable task identity, never query keywords. */
+  async taskMemory(taskId: string, query = "", sessionId?: string): Promise<AgentContinuityMemOSSearchResult[]> {
+    return this.readRecall(async () => {
+      const records = await this.memos.search({
+        namespace: this.namespace,
+        tags: [AgentMemOSTags.semantic, AgentMemOSTags.knowledge],
+        type: "context",
+        metadata: { senera_task_id: taskId },
+        limit: Math.max(this.memos.count, 1),
+        sortBy: "createdAt",
+        sortOrder: "desc",
+      });
+      const nodes = records.filter(
+        ({ node }) =>
+          node.metadata?.senera_task_id === taskId &&
+          agentMemoryIsActive(node, this.options.retentionPolicy(), { taskId, sessionId }),
+      );
+      if (!query.trim() || nodes.length === 0) return nodes;
+      // SDK query caches omit metadata. Query the namespace once, then join
+      // relevance onto the already isolated task records by immutable node ID.
+      const matches = await this.memos.search({
+        query,
+        namespace: this.namespace,
+        tags: [AgentMemOSTags.semantic, AgentMemOSTags.knowledge],
+        limit: Math.max(this.memos.count, 1),
+      });
+      const relevance = new Map(matches.map((match) => [match.node.id, match]));
+      return nodes.map((entry) => {
+        const match = relevance.get(entry.node.id);
+        return {
+          ...entry,
+          score: match ? agentMemoryRelevance(match) : 0,
+          scores: { ...match?.scores, relevance: match ? agentMemoryRelevance(match) : 0 },
+        };
+      });
+    });
+  }
+
+  private async initializeKnowledgeScores(): Promise<void> {
+    const ledger = this.options.learningLedger;
+    if (!ledger) return;
+    const nodes = await this.memos.search({
+      namespace: this.namespace,
+      tags: [AgentMemOSTags.semantic, AgentMemOSTags.knowledge],
+      includeHistorical: true,
+      limit: Math.max(this.memos.count, 1),
+    });
+    for (const { node } of nodes) {
+      ledger.register(node.id);
+    }
+  }
+
   /** Background learning can update a node while the hybrid query awaits its encoder. */
-  private async readRecall(
-    read: () => Promise<ScoredMemory[]>,
-    excluded?: ReadonlySet<string>,
-  ): Promise<AgentContinuityMemOSSearchResult[]> {
+  private async readRecall(read: () => Promise<ScoredMemory[]>): Promise<AgentContinuityMemOSSearchResult[]> {
     let results: ScoredMemory[];
     let generation: number;
     do {
-      if (!(await this.awaitReadable())) return [];
+      await this.awaitReadable({ requireReadiness: true });
       await this.recallDedupe.synchronize();
       generation = this.recallDedupe.generation;
       results = await read();
     } while (generation !== this.recallDedupe.generation);
-    return this.projectRecall(results, excluded);
+    return this.projectRecall(results);
   }
 
-  private async searchSemantic(query: string): Promise<ScoredMemory[]> {
+  private async searchAutomaticSemantic(
+    query: string,
+    subject?: import("./AgentMemoryLearningLedger.js").AgentMemorySubject,
+  ): Promise<ScoredMemory[]> {
+    const results = await this.memos.search({
+      query: query || undefined,
+      namespace: this.namespace,
+      tags: [AgentMemOSTags.semantic, AgentMemOSTags.knowledge],
+      // Metadata is checked after search because the SDK's FTS cache does not
+      // include metadata in its key. The scan remains namespace/category bound.
+      limit: Math.max(this.memos.count, 1),
+      sortBy: query ? "relevance" : "createdAt",
+      sortOrder: "desc",
+    });
+    return this.sortSemantic(
+      results.filter(
+        ({ node }) =>
+          (!subject || agentMemorySubjectOwns(subject, node.metadata?.senera_subject_id)) &&
+          isAgentMemOSAutomaticPromptMemory(node) &&
+          agentMemoryIsActive(node, this.options.retentionPolicy()),
+      ),
+      query,
+    );
+  }
+
+  /** Explicit MemoryRecall may inspect all semantic knowledge and period digests. */
+  private async searchExplicitSemantic(query: string): Promise<ScoredMemory[]> {
     const limit = Math.max(this.memos.count, 1);
     const groups = await Promise.all(
       [AgentMemOSTags.knowledge, AgentMemOSTags.dailyDigest, AgentMemOSTags.monthlyDigest].map((kind) =>
@@ -364,14 +505,16 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
         }),
       ),
     );
-    return groups
-      .flat()
-      .sort((left, right) =>
-        query
-          ? right.score - left.score || left.node.id.localeCompare(right.node.id)
-          : Date.parse(projectAgentMemOSOccurredAt(right.node)) - Date.parse(projectAgentMemOSOccurredAt(left.node)) ||
-            left.node.id.localeCompare(right.node.id),
-      );
+    return this.sortSemantic(groups.flat(), query);
+  }
+
+  private sortSemantic(results: readonly ScoredMemory[], query: string): ScoredMemory[] {
+    return [...results].sort((left, right) =>
+      query
+        ? right.score - left.score || left.node.id.localeCompare(right.node.id)
+        : Date.parse(projectAgentMemOSOccurredAt(right.node)) - Date.parse(projectAgentMemOSOccurredAt(left.node)) ||
+          left.node.id.localeCompare(right.node.id),
+    );
   }
 
   deleteSources(impact: AgentMemoryDeletionImpact): void {
@@ -386,10 +529,13 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
       .then(() => this.ready)
       .then(async () => {
         await this.semanticLearning.deleteSources(impact.episodeUris, impact.sourceUris);
+        await this.initializeKnowledgeScores();
         const requestIds = [
           ...new Set([...(impact.requestIds ?? []), ...(impact.requestId ? [impact.requestId] : [])]),
         ];
-        await this.deleteRoutingTags(requestIds.map(toolRoutingRequestTag));
+        await Promise.all(
+          requestIds.map((requestId) => this.deleteRoutingByMetadata({ senera_request_id: requestId })),
+        );
       })
       .catch((error) => {
         this.writeError ??= toError(error);
@@ -404,7 +550,7 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
     if (!normalized) return;
     this.semanticCommandTail = this.semanticCommandTail
       .then(() => this.ready)
-      .then(() => this.deleteRoutingTags([toolRoutingSessionTag(normalized)]))
+      .then(() => this.deleteRoutingByMetadata({ senera_session_id: normalized }))
       .catch((error) => {
         this.writeError ??= toError(error);
         this.options.learningLogger?.warn("memory.memos.routing_learning.delete_failed", {
@@ -484,9 +630,52 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
       });
   }
 
-  private async awaitReadable(options: { readonly surfaceFailures?: boolean } = {}): Promise<boolean> {
+  private async migrateLegacyMetadata(): Promise<void> {
+    const recoverProvenance = createAgentMemoryProvenanceRecovery(
+      this.options.sourceRepository,
+      this.options.learningLedger,
+    );
+    const nodes = await this.memos.search({
+      namespace: this.namespace,
+      limit: Math.max(this.memos.count, 1),
+      includeHistorical: true,
+      sortBy: "createdAt",
+      sortOrder: "asc",
+    });
+    for (const entry of nodes) {
+      let node = entry.node;
+      const semanticMetadata = migrateAgentMemOSLegacySemanticMetadata(node);
+      if (semanticMetadata) {
+        const updated = await this.memos.update(node.id, {
+          metadata: semanticMetadata,
+          tags: stripAgentMemOSLegacyProvenanceTags(node.tags),
+        });
+        if (!updated) throw new Error(`MemOS legacy node ${node.id} disappeared during metadata migration.`);
+        node = updated;
+      }
+      const attribution = recoverProvenance(node);
+      const metadata = attribution ?? node.metadata;
+      if (node.tags.includes(AgentMemOSTags.semantic) && metadata.senera_retention === undefined) {
+        await this.memos.update(node.id, {
+          metadata: { ...metadata, senera_retention: agentMemoryRetention(node, this.options.retentionPolicy()) },
+        });
+      } else if (attribution) await this.memos.update(node.id, { metadata: attribution });
+      if (node.tags.includes(AgentMemOSTags.toolRouting) && !isAgentMemOSCurrentSchemaNode(node)) {
+        // Old routing tags only retain hashes for session/request identity. They
+        // cannot meet the direct-provenance contract and are derived caches.
+        await this.memos.forget(node.id);
+      }
+    }
+  }
+
+  private async awaitReadable(
+    options: { readonly surfaceFailures?: boolean; readonly requireReadiness?: boolean } = {},
+  ): Promise<boolean> {
     const surfaceFailures = options.surfaceFailures === true;
-    if (!(await this.awaitReady(surfaceFailures))) return false;
+    // A real read must distinguish unavailable storage from an empty corpus.
+    // Detached write/document-embedding failures remain independently reported.
+    const requireReadiness = surfaceFailures || options.requireReadiness === true;
+    if (!(await this.awaitReady(requireReadiness))) return false;
     await this.writeTail;
     if (this.writeError) {
       const error = this.writeError;
@@ -497,7 +686,7 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
     try {
       await this.memos.flushEmbeddings();
     } catch (error) {
-      if (surfaceFailures) throw error;
+      if (requireReadiness) throw error;
       this.options.logger?.warn("memory.memos.embedding_flush_failed", { message: errorMessage(error) });
       return false;
     }
@@ -520,26 +709,28 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
     }
   }
 
-  private async findRoutingTag(routingTag: string): Promise<MemoryNode | undefined> {
+  private async findRoutingMetadata(
+    metadata: ReturnType<typeof createAgentMemOSToolRoutingMetadata>,
+  ): Promise<MemoryNode | undefined> {
     const existing = await this.memos.search({
       namespace: this.namespace,
-      tags: [...MemOSTags.ToolRouting, routingTag],
+      tags: [...MemOSTags.ToolRouting],
+      metadata,
       limit: 1,
     });
     return existing[0]?.node;
   }
 
-  private async deleteRoutingTags(tags: readonly string[]): Promise<void> {
+  private async deleteRoutingByMetadata(metadata: Readonly<Record<string, unknown>>): Promise<void> {
     const limit = this.memos.count;
     if (limit === 0) return;
-    for (const tag of tags) {
-      const matches = await this.memos.search({
-        namespace: this.namespace,
-        tags: [...MemOSTags.ToolRouting, tag],
-        limit,
-      });
-      await Promise.all(matches.map((match) => this.memos.forget(match.node.id)));
-    }
+    const matches = await this.memos.search({
+      namespace: this.namespace,
+      tags: [...MemOSTags.ToolRouting],
+      metadata: { ...metadata },
+      limit,
+    });
+    await Promise.all(matches.map((match) => this.memos.forget(match.node.id)));
   }
 
   private assertEmbeddingsHealthy(): void {
@@ -570,25 +761,12 @@ export class AgentContinuityMemOSRuntime implements AgentMemoryCompletedTurnSink
   }
 }
 
-function memoryKey(memory: ScoredMemory): string {
-  return agentMemOSReference(memory.node.id);
-}
-
-function toolRoutingTag(memory: AgentContinuityMemOSToolRoutingMemory): string {
-  const digest = sha256HexOfCanonicalJson({
-    projectId: memory.projectId,
-    sessionId: memory.sessionId,
-    requestId: memory.requestId,
-  }).slice(0, 32);
-  return `routing:${digest}`;
-}
-
-function toolRoutingSessionTag(sessionId: string): string {
-  return `routing-session:${sha256HexOfCanonicalJson(sessionId).slice(0, 32)}`;
-}
-
-function toolRoutingRequestTag(requestId: string): string {
-  return `routing-request:${sha256HexOfCanonicalJson(requestId).slice(0, 32)}`;
+function isExplicitSemanticRecallNode(node: MemoryNode): boolean {
+  return (
+    node.tags.includes(AgentMemOSTags.knowledge) ||
+    node.tags.includes(AgentMemOSTags.dailyDigest) ||
+    node.tags.includes(AgentMemOSTags.monthlyDigest)
+  );
 }
 
 function positiveLimit(value: number): number {

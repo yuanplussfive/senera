@@ -31,17 +31,7 @@ export default class TypeBuilder {
     
     ActionRunState: ClassViewer<'ActionRunState', "currentStep" | "loadedTools" | "progress" | "warnings" | "calls">;
     
-    AuxiliaryImageAnalysis: ClassViewer<'AuxiliaryImageAnalysis', "analysis">;
-    
     AuxiliarySummary: ClassViewer<'AuxiliarySummary', "summary">;
-    
-    ChannelCodePart: ClassViewer<'ChannelCodePart', "kind" | "language" | "code">;
-    
-    ChannelDelivery: ClassViewer<'ChannelDelivery', "parts">;
-    
-    ChannelResourcePart: ClassViewer<'ChannelResourcePart', "kind" | "uri" | "alt" | "mediaKind" | "mime" | "fileName">;
-    
-    ChannelTextPart: ClassViewer<'ChannelTextPart', "kind" | "text">;
     
     DirectDecision: ClassViewer<'DirectDecision', "kind" | "response">;
     
@@ -49,7 +39,19 @@ export default class TypeBuilder {
     
     ExecuteDecision: ClassViewer<'ExecuteDecision', "kind" | "fragment">;
     
-    MemOSFragment: ClassBuilder<'MemOSFragment', "topic" | "summary" | "type">;
+    MemOSFragment: ClassBuilder<'MemOSFragment', "topic" | "summary" | "type" | "assessments">;
+    
+    MemOSMemoryAssessment: ClassViewer<'MemOSMemoryAssessment', "candidate" | "usefulness" | "reason">;
+    
+    MemOSSkipDecision: ClassViewer<'MemOSSkipDecision', "action" | "assessments">;
+    
+    MemoryDiary: ClassViewer<'MemoryDiary', "title" | "body">;
+    
+    MemoryRelevanceAssessment: ClassViewer<'MemoryRelevanceAssessment', "records">;
+    
+    MemoryRelevanceRecord: ClassViewer<'MemoryRelevanceRecord', "recordId" | "relevant" | "score">;
+    
+    MemoryRetention: ClassViewer<'MemoryRetention', "days">;
     
     PiToolArgumentsDraft: ClassViewer<'PiToolArgumentsDraft', "arguments" | "missingInputs" | "assumptions">;
     
@@ -77,9 +79,7 @@ export default class TypeBuilder {
     
     RepeatedCallWarning: ClassViewer<'RepeatedCallWarning', "toolName" | "argsHash" | "count" | "lastStep">;
     
-    ResidentSpeechProjection: ClassViewer<'ResidentSpeechProjection', "utterance">;
-    
-    StateCardRewrite: ClassViewer<'StateCardRewrite', "topicRelation" | "standaloneRequest">;
+    StateCardRewrite: ClassViewer<'StateCardRewrite', "topicRelation" | "standaloneRequest" | "resumeRequestId">;
     
     ToolCapabilityFacets: ClassViewer<'ToolCapabilityFacets', "Actions" | "Targets" | "Inputs" | "Outputs" | "Evidence" | "Effects">;
     
@@ -112,7 +112,7 @@ export default class TypeBuilder {
     constructor() {
         this.tb = new _TypeBuilder({
           classes: new Set([
-            "ActionPlanInput","ActionRunState","AuxiliaryImageAnalysis","AuxiliarySummary","ChannelCodePart","ChannelDelivery","ChannelResourcePart","ChannelTextPart","DirectDecision","EvidenceSlot","ExecuteDecision","MemOSFragment","PiToolArgumentsDraft","PlanFragment","PlannedToolCall","PlannerActiveSkill","PlannerCurrentUserTurn","PlannerEvidenceMemoryItem","PlannerEvidenceRequirement","PlannerEvidenceStateItem","PlannerJournalItem","PlannerTimelineTurn","PlannerToolCallStateItem","ProgressSignals","RepeatedCallWarning","ResidentSpeechProjection","StateCardRewrite","ToolCapabilityFacets","ToolCapabilityItem","ToolCapabilityRisk","ToolCatalogItem","ToolCatalogSummaryItem","ToolEvidenceCapabilityItem","ToolRiskAudit",
+            "ActionPlanInput","ActionRunState","AuxiliarySummary","DirectDecision","EvidenceSlot","ExecuteDecision","MemOSFragment","MemOSMemoryAssessment","MemOSSkipDecision","MemoryDiary","MemoryRelevanceAssessment","MemoryRelevanceRecord","MemoryRetention","PiToolArgumentsDraft","PlanFragment","PlannedToolCall","PlannerActiveSkill","PlannerCurrentUserTurn","PlannerEvidenceMemoryItem","PlannerEvidenceRequirement","PlannerEvidenceStateItem","PlannerJournalItem","PlannerTimelineTurn","PlannerToolCallStateItem","ProgressSignals","RepeatedCallWarning","StateCardRewrite","ToolCapabilityFacets","ToolCapabilityItem","ToolCapabilityRisk","ToolCatalogItem","ToolCatalogSummaryItem","ToolEvidenceCapabilityItem","ToolRiskAudit",
           ]),
           enums: new Set([
             "DirectDecisionKind","ExecuteDecisionKind","ExecutionDeltaOp","ToolCallStatus","ToolRiskAuditDecision","ToolRiskLevel",
@@ -128,28 +128,8 @@ export default class TypeBuilder {
           "currentStep","loadedTools","progress","warnings","calls",
         ]);
         
-        this.AuxiliaryImageAnalysis = this.tb.classViewer("AuxiliaryImageAnalysis", [
-          "analysis",
-        ]);
-        
         this.AuxiliarySummary = this.tb.classViewer("AuxiliarySummary", [
           "summary",
-        ]);
-        
-        this.ChannelCodePart = this.tb.classViewer("ChannelCodePart", [
-          "kind","language","code",
-        ]);
-        
-        this.ChannelDelivery = this.tb.classViewer("ChannelDelivery", [
-          "parts",
-        ]);
-        
-        this.ChannelResourcePart = this.tb.classViewer("ChannelResourcePart", [
-          "kind","uri","alt","mediaKind","mime","fileName",
-        ]);
-        
-        this.ChannelTextPart = this.tb.classViewer("ChannelTextPart", [
-          "kind","text",
         ]);
         
         this.DirectDecision = this.tb.classViewer("DirectDecision", [
@@ -165,7 +145,31 @@ export default class TypeBuilder {
         ]);
         
         this.MemOSFragment = this.tb.classBuilder("MemOSFragment", [
-          "topic","summary","type",
+          "topic","summary","type","assessments",
+        ]);
+        
+        this.MemOSMemoryAssessment = this.tb.classViewer("MemOSMemoryAssessment", [
+          "candidate","usefulness","reason",
+        ]);
+        
+        this.MemOSSkipDecision = this.tb.classViewer("MemOSSkipDecision", [
+          "action","assessments",
+        ]);
+        
+        this.MemoryDiary = this.tb.classViewer("MemoryDiary", [
+          "title","body",
+        ]);
+        
+        this.MemoryRelevanceAssessment = this.tb.classViewer("MemoryRelevanceAssessment", [
+          "records",
+        ]);
+        
+        this.MemoryRelevanceRecord = this.tb.classViewer("MemoryRelevanceRecord", [
+          "recordId","relevant","score",
+        ]);
+        
+        this.MemoryRetention = this.tb.classViewer("MemoryRetention", [
+          "days",
         ]);
         
         this.PiToolArgumentsDraft = this.tb.classViewer("PiToolArgumentsDraft", [
@@ -220,12 +224,8 @@ export default class TypeBuilder {
           "toolName","argsHash","count","lastStep",
         ]);
         
-        this.ResidentSpeechProjection = this.tb.classViewer("ResidentSpeechProjection", [
-          "utterance",
-        ]);
-        
         this.StateCardRewrite = this.tb.classViewer("StateCardRewrite", [
-          "topicRelation","standaloneRequest",
+          "topicRelation","standaloneRequest","resumeRequestId",
         ]);
         
         this.ToolCapabilityFacets = this.tb.classViewer("ToolCapabilityFacets", [

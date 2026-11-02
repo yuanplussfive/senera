@@ -2,8 +2,6 @@ import { createBrowserE2eHarness, expect, test } from "../browserE2eTest.mjs";
 
 let harness;
 
-test.describe.configure({ mode: "serial" });
-
 test.describe("workspace resilience and error boundary", () => {
   test.beforeAll(async () => {
     harness = await createBrowserE2eHarness({ authenticationMode: "disabled" });
@@ -128,32 +126,7 @@ test.describe("workspace resilience and error boundary", () => {
     await expect(drawerDock).toBeVisible();
     await expect(drawerDock.getByRole("tab", { name: "执行" })).toBeVisible();
   });
-
-  test("keeps keyboard focus when toggling the profile menu open and closed @smoke", async ({ page }) => {
-    await page.goto(harness.httpOrigin);
-    await expect(workspaceComposer(page)).toBeVisible();
-
-    const trigger = page.locator("[data-session-sidebar]:visible").getByRole("button").filter({ hasText: "用户" });
-    await trigger.focus();
-    await expect(trigger).toBeFocused();
-
-    await trigger.press("Enter");
-    const menu = page.getByRole("menu");
-    await expect(menu).toBeVisible();
-    const userSettings = menu.getByRole("menuitem", { name: "个人资料" });
-    await expectPortaledOutsideSessionSidebar(menu);
-    await expect(userSettings).toBeFocused();
-
-    await page.keyboard.press("Escape");
-    await expect(menu).toBeHidden();
-    await expect(trigger).toBeFocused();
-  });
 });
-
-async function expectPortaledOutsideSessionSidebar(surface) {
-  await expect(surface).toBeVisible();
-  expect(await surface.evaluate((element) => element.closest("[data-session-sidebar]") === null)).toBe(true);
-}
 
 async function openProfileMenu(page) {
   await page.locator("[data-session-sidebar]:visible").getByRole("button").filter({ hasText: "用户" }).click();

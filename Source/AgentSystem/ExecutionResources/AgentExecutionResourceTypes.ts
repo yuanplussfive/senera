@@ -20,6 +20,14 @@ export const AgentExecutionResourceStates = {
 export type AgentExecutionResourceState =
   (typeof AgentExecutionResourceStates)[keyof typeof AgentExecutionResourceStates];
 
+export function isTerminalResourceState(state: AgentExecutionResourceState): boolean {
+  return (
+    state === AgentExecutionResourceStates.Completed ||
+    state === AgentExecutionResourceStates.Failed ||
+    state === AgentExecutionResourceStates.Cancelled
+  );
+}
+
 export const AgentExecutionResourceSignals = {
   Interrupt: "interrupt",
   Terminate: "terminate",

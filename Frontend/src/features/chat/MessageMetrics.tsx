@@ -3,6 +3,7 @@ import type { ModelProviderMetadata, ModelUsageMetadata } from "../../api/eventT
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import { getFrontendLocale } from "../../i18n/frontendLocaleStore";
 import { cn, formatInteger } from "../../lib/util";
+import { formatModelCost } from "../../lib/modelCost";
 import type { RunRecord, TimelineStep } from "../../store/sessionStore";
 import { AppIcon, Tooltip } from "../../shared/ui";
 
@@ -238,6 +239,11 @@ function UsageDetails({
       {rows.map((row) => (
         <span key={row}>{row}</span>
       ))}
+      {usage.cost ? (
+        <span>
+          {frontendMessage("observability.diagnostic.usage.cost")}: {formatModelCost(usage.cost.total)}
+        </span>
+      ) : null}
       {!providerName ? <span>{frontendMessage("chat.metrics.source", { source })}</span> : null}
       {estimated ? <span>{frontendMessage("chat.metrics.estimated", { fields: estimated })}</span> : null}
     </span>

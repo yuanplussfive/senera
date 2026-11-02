@@ -1,4 +1,5 @@
 import type { AgentEventChannel, AgentEventKind, AgentEventLayer, AgentEventPhase } from "./AgentEventCatalog.js";
+import type { AgentChannelKind } from "../Channels/AgentChannelTypes.js";
 
 export interface AgentEventEnvelope<TKind extends string = AgentEventKind, TData = unknown> {
   /** Stable identity used for idempotent persistence and replay. */
@@ -19,7 +20,7 @@ export interface AgentEventEnvelope<TKind extends string = AgentEventKind, TData
 
 export interface AgentEventScope {
   /** Origin channel for events emitted by a non-console adapter. */
-  channel?: "console" | "qq" | "telegram" | "discord";
+  channel?: "console" | AgentChannelKind;
   parentSessionId?: string;
   parentRequestId?: string;
   parentAgentStep?: number;

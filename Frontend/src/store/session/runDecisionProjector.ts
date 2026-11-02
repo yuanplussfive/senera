@@ -8,7 +8,6 @@ import {
   readContinuityRecallQueryData,
   readContinuityRecallSettledData,
   readContinuitySnapshotData,
-  readExecutionEventData,
   readPromptHarnessComposedData,
   readTodoSnapshotEventData,
 } from "../../api/continuityExecutionEventValidation";
@@ -27,12 +26,6 @@ export const runDecisionEventHandlers = {
     run.continuity = snapshot;
     run.revision += 1;
   },
-
-  [EventKinds.ExecutionCreated]: projectExecutionEvent,
-  [EventKinds.ExecutionStepStarted]: projectExecutionEvent,
-  [EventKinds.ExecutionStepCompleted]: projectExecutionEvent,
-  [EventKinds.ExecutionBlocked]: projectExecutionEvent,
-  [EventKinds.ExecutionCompleted]: projectExecutionEvent,
 
   [EventKinds.TodoListWritten]: (state, env) => {
     const data = readTodoSnapshotEventData(env.data);
@@ -140,15 +133,6 @@ function projectRecallStep(
     detailJson: data,
     modelName: undefined,
   };
-}
-
-function projectExecutionEvent(state: StoreState, env: EventEnvelope): void {
-  const data = readExecutionEventData(env.data);
-  if (!data) return;
-  const run = readCurrentRun(state, env);
-  if (!run) return;
-  run.execution = data.snapshot;
-  run.revision += 1;
 }
 
 function projectTodo(state: StoreState, data: { snapshot: TodoSnapshotData }, env: EventEnvelope): void {

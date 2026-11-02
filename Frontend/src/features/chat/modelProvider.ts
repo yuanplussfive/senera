@@ -1,6 +1,10 @@
 import type { ModelProviderListItem, ModelProviderMetadata } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { inferModelProviderEndpointIcon, inferModelProviderIcon } from "./ModelProviderIcon";
+import { resolveModelIcon } from "../../shared/models/ModelSelect";
+import {
+  agentModelMeetsRequirements,
+  AgentModelPlanningRequirements,
+} from "../../api/generatedModelCapabilityContract";
 
 export function readSelectedModelProvider(
   models: ModelProviderListItem[],
@@ -10,20 +14,25 @@ export function readSelectedModelProvider(
 }
 
 export function readChatModelProviders(models: readonly ModelProviderListItem[]): ModelProviderListItem[] {
-  return models.filter((model) => model.capabilities.Chat === true);
+  return models.filter((model) =>
+    agentModelMeetsRequirements(
+      { ...model.capabilities, Stream: model.stream },
+      AgentModelPlanningRequirements[model.toolPlanningMode],
+    ),
+  );
 }
 
 /**
- * Returns a selected model only while it is present in the current chat
- * catalog. Persisted selections can outlive a deleted or reconfigured model;
- * omitting those stale IDs lets the backend resolve the current configuration.
+ * Retains an explicit configured choice even when its capabilities changed.
+ * The backend rejects incompatible invocations; only deleted model identities
+ * are omitted so a configuration error cannot silently select another model.
  */
 export function readConfiguredChatModelProviderId(
   models: readonly ModelProviderListItem[],
   selectedId: string | null | undefined,
 ): string | undefined {
   if (!selectedId) return undefined;
-  return readChatModelProviders(models).some((model) => model.id === selectedId) ? selectedId : undefined;
+  return models.some((model) => model.id === selectedId) ? selectedId : undefined;
 }
 
 export function formatModelProviderName(provider?: ModelProviderMetadata | ModelProviderListItem): string {
@@ -34,14 +43,5 @@ export function formatModelProviderName(provider?: ModelProviderMetadata | Model
 
 export function readModelProviderIcon(provider?: ModelProviderMetadata | ModelProviderListItem): string | undefined {
   if (!provider) return undefined;
-  // A model's identity is more useful than the endpoint it happens to use.
-  // Endpoint icons are only a fallback for custom/unknown model names.
-  const modelIcon = inferModelProviderIcon(provider.model, false);
-  if (modelIcon) return modelIcon;
-  if ("icon" in provider && provider.icon?.trim()) return provider.icon;
-  for (const candidate of [provider.id, provider.baseUrl, provider.kind]) {
-    const icon = inferModelProviderEndpointIcon(candidate, false);
-    if (icon) return icon;
-  }
-  return inferModelProviderIcon(provider.model);
+  return resolveModelIcon(provider);
 }

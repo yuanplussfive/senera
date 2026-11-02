@@ -13,6 +13,7 @@ const { AgentExecutionFeed, AgentExecutionStageFeed, AgentExecutionStageFold } =
   await import("../../../Frontend/src/features/workflow/AgentExecutionFeed.tsx");
 const { projectToolBatchActivity } = await import("../../../Frontend/src/features/workflow/ToolBatchActivity.tsx");
 const { ChildRunBoard } = await import("../../../Frontend/src/features/workflow/ChildRunBoard.tsx");
+const { ChildRunNavigationContext } = await import("../../../Frontend/src/features/workflow/ChildRunNavigation.tsx");
 const { ToolActivityGroup } = await import("../../../Frontend/src/features/workflow/ToolActivityGroup.tsx");
 const { projectToolStagePresentation } =
   await import("../../../Frontend/src/features/workflow/toolStagePresentation.ts");
@@ -120,7 +121,10 @@ function removeRadixPortalResidue() {
   document.body.removeAttribute("data-scroll-locked");
 }
 
-test("tool inspector keeps web search output in the generic result surface", () => {
+test("tool inspector keeps web search output in the generic result surface", async () => {
+  const user = userEvent.setup();
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", { clipboard: { writeText } });
   const step = createStep({
     id: "web-search-step",
     kind: "tool",
@@ -156,6 +160,10 @@ test("tool inspector keeps web search output in the generic result surface", () 
   expect(screen.queryByText("Found 2 web result(s) for React security guidance.")).not.toBeInTheDocument();
   expect(document.querySelector("[data-web-search-activity]")).not.toBeInTheDocument();
   expect(screen.queryByText("React security overview")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "复制动作" }));
+  expect(writeText).toHaveBeenLastCalledWith(JSON.stringify(step.toolArgs, null, 2));
+  await user.click(screen.getByRole("button", { name: "复制结果" }));
+  expect(writeText).toHaveBeenLastCalledWith(JSON.stringify(step.toolResult, null, 2));
 });
 
 test("conversation tool rounds use the same compact batch activity for web results", () => {
@@ -544,7 +552,7 @@ test("conversation tool stage mappings classify semantic and mixed tool batches"
   expect(screen.queryByText("1 项失败")).not.toBeInTheDocument();
 });
 
-test("tool activity labels stay action-focused and show concise safe arguments", () => {
+test("tool activity labels show declared targets without dumping undeclared arguments", () => {
   const longQuery = "agentic-ui ".repeat(16).trim();
   const failedSearch = projectToolActivityInspection({
     toolName: "WebSearch",
@@ -562,9 +570,8 @@ test("tool activity labels stay action-focused and show concise safe arguments",
     status: "completed",
     arguments: { owner: "yuanplussfive", repo: "senera", path: "Frontend/src/App.tsx", apiKey: "must-not-display" },
   });
-  expect(mcp.label).toContain("Call · github · get_file");
-  expect(mcp.label).toContain("owner=yuanplussfive");
-  expect(mcp.label).toContain("repo=senera");
+  expect(mcp.label).toBe("Call · github · get_file");
+  expect(mcp.argumentPreviewParts).toEqual([]);
   expect(mcp.label).not.toContain("must-not-display");
 
   const shell = projectToolActivityInspection({
@@ -580,21 +587,22 @@ test("tool activity labels stay action-focused and show concise safe arguments",
     status: "failed",
     arguments: { path: "Source/AgentSystem", depth: 2, token: "must-not-display" },
   });
-  expect(system.label).toContain("Use · CustomSystemTool · path=Source/AgentSystem · depth=2");
+  expect(system.label).toBe("Use · CustomSystemTool");
+  expect(system.argumentPreviewParts).toEqual([]);
   expect(system.label).not.toContain("执行失败");
   expect(system.label).not.toContain("must-not-display");
 });
 
 test("tool activity targets use one arrow and link icons instead of dot separators", () => {
-  const run = createToolBatchRun(["SeneraCommand"]);
-  const step = run.steps.find((entry) => entry.toolName === "SeneraCommand");
-  step.toolArgs = { command: "skills", action: "read", name: "frontend-experience-inspection" };
+  const run = createToolBatchRun(["GitInspect"]);
+  const step = run.steps.find((entry) => entry.toolName === "GitInspect");
+  step.toolArgs = { operation: "diff", repository: "project", paths: ["README.md"] };
 
   renderWithFrontendProviders(React.createElement(AgentExecutionStageFeed, { run }));
 
   const label = document.querySelector("[data-tool-batch-activity-title]");
   expect(label).toBeInTheDocument();
-  expect(label).toHaveTextContent("管理skillsreadfrontend-experience-inspection");
+  expect(label).toHaveTextContent("查看diffprojectREADME.md");
   expect(label).not.toHaveTextContent("·");
   expect(label?.querySelectorAll("[data-tool-activity-arrow]")).toHaveLength(1);
   expect(label?.querySelectorAll("[data-tool-activity-link]")).toHaveLength(2);
@@ -696,7 +704,7 @@ test("large mixed tool batches use one compact semantic batch activity", () => {
         "WorkspaceFind",
         "GitInspect",
         "ShellCommandTool",
-        "AgentSpawn",
+        "subagent",
       ]),
     ),
   ).toMatchObject({
@@ -707,7 +715,7 @@ test("large mixed tool batches use one compact semantic batch activity", () => {
       "WorkspaceFind",
       "GitInspect",
       "ShellCommandTool",
-      "AgentSpawn",
+      "subagent",
     ]),
   });
 
@@ -719,7 +727,7 @@ test("large mixed tool batches use one compact semantic batch activity", () => {
         "WorkspaceFind",
         "GitInspect",
         "ShellCommandTool",
-        "AgentSpawn",
+        "subagent",
       ]),
     }),
   );
@@ -804,16 +812,16 @@ test("conversation tool stages use runtime provenance for shell and MCP wording"
     title: `${systemToolAction("GitInspect")} · diff`,
   });
 
-  const agentRun = createToolBatchRun(["AgentSpawn"]);
+  const agentRun = createToolBatchRun(["subagent"]);
   Object.assign(
     agentRun.steps.find((step) => step.toolName),
     {
-      toolOrigin: systemToolOrigin("AgentSpawn"),
-      toolArgs: { task: "Review the workflow", agent: "reviewer" },
+      toolOrigin: systemToolOrigin("subagent"),
+      toolArgs: { description: "Review the workflow", prompt: "Review the workflow", agent: "reviewer" },
     },
   );
   expect(projectToolStagePresentation(agentRun)).toMatchObject({
-    title: `${systemToolAction("AgentSpawn")} · Review the workflow · reviewer`,
+    title: `${systemToolAction("subagent")} · Review the workflow · reviewer`,
   });
 });
 
@@ -912,7 +920,14 @@ test("delegated child traces stay separate from task lists shown in the workflow
     ],
   });
 
-  renderWithFrontendProviders(React.createElement(AgentExecutionFeed, { run }));
+  const openChildRun = vi.fn();
+  const view = renderWithFrontendProviders(
+    React.createElement(
+      ChildRunNavigationContext.Provider,
+      { value: { open: openChildRun } },
+      React.createElement(AgentExecutionFeed, { run }),
+    ),
+  );
 
   const card = document.querySelector("[data-child-run-card]");
   expect(card).toBeInTheDocument();
@@ -921,11 +936,10 @@ test("delegated child traces stay separate from task lists shown in the workflow
   expect(screen.queryByText("子代理正在定位相关实现。")).not.toBeInTheDocument();
   expect(card.querySelector("[data-child-run-status-text]")).not.toHaveClass("motion-safe:animate-text-shimmer");
   expect(card.querySelector("[data-child-run-glyph] .senera-loading-pulse")).not.toBeInTheDocument();
-  expect(card.querySelector("[data-child-run-live-update]")).not.toHaveClass("motion-safe:animate-text-shimmer");
-  expect(card.querySelector("[data-child-run-live-update] [data-text-shimmer='true']")).toBeInTheDocument();
+  expect(card.querySelector("[data-child-run-live-update] [data-text-shimmer='true']")).not.toBeInTheDocument();
 
   // Task plans belong to the workflow panel, not to the conversation trace.
-  expect(card.querySelector("[data-child-run-glyph]")).toBeInTheDocument();
+  expect(card.querySelector("[data-execution-status-icon='running']")).toBeInTheDocument();
   expect(card).not.toHaveTextContent(/1\/3/);
   expect(screen.queryByText(frontendMessage("chat.todoProgress.title"))).not.toBeInTheDocument();
   expect(screen.queryByText("读取配置入口")).not.toBeInTheDocument();
@@ -936,7 +950,13 @@ test("delegated child traces stay separate from task lists shown in the workflow
   expect(screen.queryByText("WorkspaceGrep")).not.toBeInTheDocument();
   expect(document.querySelector("[data-child-run-final-report]")).not.toBeInTheDocument();
 
-  await user.click(card.querySelector("[data-child-run-card-trigger]"));
+  expect(screen.queryByText("正在检查配置入口。")).not.toBeInTheDocument();
+  expect(card.querySelector(".senera-activity-status-spin")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: frontendMessage("workflow.childRun.viewDetails") }));
+  expect(openChildRun).toHaveBeenCalledWith("child-1");
+  expect(document.querySelector("[data-child-run-activity-details]")).not.toBeInTheDocument();
+  view.unmount();
+  renderWithFrontendProviders(React.createElement(ChildRunBoard, { run, focusedChildRunId: "child-1" }));
 
   await waitFor(() => expect(document.querySelector("[data-child-run-activity-details]")).toBeVisible());
   expect(document.querySelector("[data-child-run-todo]")).not.toBeInTheDocument();
@@ -951,7 +971,7 @@ test("delegated child traces stay separate from task lists shown in the workflow
     [...body.querySelectorAll("[data-child-run-trace-item]")].map((item) =>
       item.getAttribute("data-child-run-trace-item"),
     ),
-  ).toEqual(["tools", "thinking", "tools"]);
+  ).toEqual(["tools", "thinking", "tools", "message"]);
 });
 
 test("stage feed isolates child-run tools into cards so the parent batch stays readable", () => {
@@ -1022,7 +1042,7 @@ test("stage feed isolates child-run tools into cards so the parent batch stays r
   expect(batchActivity).not.toHaveTextContent("WorkspaceGrep");
 });
 
-test("all unfinished child agents shimmer independently in the workflow board", () => {
+test("child agents keep quiet previews and explicit lifecycle icons in the workflow board", () => {
   const childRunStep = (id, name, status) =>
     createStep({
       id: `child-run:${id}`,
@@ -1047,15 +1067,16 @@ test("all unfinished child agents shimmer independently in the workflow board", 
 
   renderWithFrontendProviders(React.createElement(ChildRunBoard, { run }));
 
-  const liveActivities = [...document.querySelectorAll("[data-child-run-item] [data-live-activity-text]")];
-  expect(liveActivities).toHaveLength(2);
-  liveActivities.forEach((activity) => {
-    expect(activity).toHaveClass("motion-safe:animate-text-shimmer");
+  const previews = [...document.querySelectorAll("[data-child-run-item] [data-child-run-preview]")];
+  expect(previews).toHaveLength(2);
+  previews.forEach((preview) => {
+    expect(preview).not.toHaveClass("motion-safe:animate-text-shimmer");
   });
+  expect(document.querySelector("[data-execution-status-icon='running']")).toBeInTheDocument();
+  expect(document.querySelector("[data-execution-status-icon='pending']")).toBeInTheDocument();
 });
 
-test("completed child run surfaces its final report inside the card", async () => {
-  const user = userEvent.setup();
+test("completed child run keeps its final report in the agent dock", async () => {
   const childScope = {
     parentSessionId: "session-a",
     parentRequestId: "run-done",
@@ -1101,12 +1122,14 @@ test("completed child run surfaces its final report inside the card", async () =
     ],
   });
 
-  renderWithFrontendProviders(React.createElement(AgentExecutionFeed, { run }));
+  const view = renderWithFrontendProviders(React.createElement(AgentExecutionFeed, { run }));
   const card = document.querySelector("[data-child-run-card]");
   expect(card).toHaveAttribute("data-child-run-status", "completed");
   expect(document.querySelector("[data-child-run-final-report]")).not.toBeInTheDocument();
 
-  await user.click(card.querySelector("[data-child-run-card-trigger]"));
+  expect(card).not.toHaveTextContent("世界书入口共 3 处");
+  view.unmount();
+  renderWithFrontendProviders(React.createElement(ChildRunBoard, { run, focusedChildRunId: "child-done" }));
 
   // 完成后最终反馈写入卡片专属区域。
   await waitFor(() => expect(document.querySelector("[data-child-run-final-report]")).toBeInTheDocument());

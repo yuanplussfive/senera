@@ -11,6 +11,7 @@ import type {
   ExecutedToolCallArtifact,
   ExecutedToolCallResult,
 } from "../Source/AgentSystem/Types/ToolRuntimeTypes.js";
+import { projectAgentToolResultForHistory } from "../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 import { AgentExecutionErrorCodes } from "../Source/AgentSystem/Xml/AgentXmlStatus.js";
 import { createAgentToolAccessGrant } from "../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
 import {
@@ -25,6 +26,7 @@ import { AgentPiToolPlanCoordinator } from "../Source/AgentSystem/PiShared/Agent
 import { AgentPiToolObservationProtocol } from "../Source/AgentSystem/PiShared/AgentPiToolObservationProtocol.js";
 import { AgentTurnTokenBudget } from "../Source/AgentSystem/Text/AgentTurnTokenBudget.js";
 import { AgentToolResultObservationCompressor } from "../Source/AgentSystem/ToolRuntime/AgentToolResultObservationCompressor.js";
+import { createAgentToolExecutionDigest } from "../Source/AgentSystem/ToolContracts/AgentToolContractIdentity.js";
 
 const observationTokenBudget = 2_048;
 const observationCompressor = new AgentToolResultObservationCompressor({
@@ -95,7 +97,7 @@ async function verifyToolResultProjection(): Promise<void> {
     arguments: {
       text: "hello",
     },
-    expectedContractDigest: null,
+    expectedExecutionDigest: createAgentToolExecutionDigest(tool),
     callId: "call_echo",
     index: 0,
   });
@@ -152,7 +154,9 @@ async function verifyLargeToolResultRemainsCanonical(): Promise<void> {
   assert.equal(observation.artifact_uri, artifact.artifactUri);
   assert.equal(observation.observation_view?.complete, false);
   assert.notEqual(observation.detail?.result?.text, hugeText);
-  assert.deepEqual(captured?.result, {
+  assert.ok(captured);
+  assert.deepEqual(captured.result, { text: hugeText });
+  assert.deepEqual(projectAgentToolResultForHistory(captured).result, {
     type: "senera.artifact_backed_tool_result.v1",
     version: 1,
     artifactUri: artifact.artifactUri,
@@ -232,7 +236,7 @@ function createToolFixture(name: string): RegisteredTool {
       Network: "Deny",
       Workspace: "ReadOnly",
     },
-    runtime: { Lifecycle: "Immediate", ProtocolVersion: 2, ResultAssessment: "ProcessExit" },
+    runtime: { Lifecycle: "Immediate", ResultAssessment: "ProcessExit" },
   };
 }
 

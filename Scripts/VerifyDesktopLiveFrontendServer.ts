@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import { probeDesktopLiveFrontend } from "../Apps/Desktop/DesktopLiveFrontendServer.js";
+import { AgentDevelopmentFrontendBase } from "../Source/AgentSystem/WebSocket/AgentDevelopmentFrontend.js";
+
+const frontendHtml = ["@vite/client", "senera-runtime-config.js", "src/main.tsx"]
+  .map((entry) => `<script type="module" src="${AgentDevelopmentFrontendBase}${entry}"></script>`)
+  .join("\n");
 
 await withFrontendServer(
   {
-    body: [
-      '<script type="module" src="/@vite/client"></script>',
-      '<script src="/senera-runtime-config.js"></script>',
-      '<script type="module" src="/src/main.tsx"></script>',
-    ].join("\n"),
+    body: frontendHtml,
     statusCode: 200,
   },
   async (url) => {
@@ -43,11 +44,7 @@ await withFrontendServer(
 
 await withFrontendServer(
   {
-    body: [
-      '<script type="module" src="/@vite/client"></script>',
-      '<script src="/senera-runtime-config.js"></script>',
-      '<script type="module" src="/src/main.tsx"></script>',
-    ].join("\n"),
+    body: frontendHtml,
     statusCode: 404,
   },
   async (url) => {
@@ -67,7 +64,8 @@ async function withFrontendServer(
   },
   verify: (url: string) => Promise<void>,
 ): Promise<void> {
-  const server = http.createServer((_request, serverResponse) => {
+  const server = http.createServer((request, serverResponse) => {
+    assert.equal(request.url, AgentDevelopmentFrontendBase);
     serverResponse.writeHead(response.statusCode, {
       "content-type": response.contentType ?? "text/html",
     });

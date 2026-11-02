@@ -164,14 +164,12 @@ describe("createModelDraft with models.dev metadata", () => {
 });
 
 describe("defaultModelCapabilities with models.dev metadata", () => {
-  it("gives models.dev priority over template and heuristics", () => {
-    expect(
-      defaultModelCapabilities(template, "gpt-4o", "openai", metadata({ toolCall: false, reasoning: true })),
-    ).toMatchObject({
+  it("gives explicit models.dev metadata priority over the template", () => {
+    expect(defaultModelCapabilities(template, metadata({ toolCall: false, reasoning: true }))).toMatchObject({
       ToolCalling: false,
       Reasoning: true,
     });
-    expect(defaultModelCapabilities(template, "gpt-4o", "openai")).toMatchObject({
+    expect(defaultModelCapabilities(template)).toMatchObject({
       ToolCalling: true,
       Reasoning: false,
     });

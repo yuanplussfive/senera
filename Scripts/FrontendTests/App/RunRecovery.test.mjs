@@ -21,7 +21,9 @@ function failedSession() {
   useStore
     .getState()
     .ingest(createEvent(EventKinds.RunFailed, { message: "模型超时", recoveryModes: ["retry", "continue"] }));
-  return useStore.getState().sessions[TestSessionId].messages[0];
+  const message = useStore.getState().sessions[TestSessionId].messages.find((item) => item.role === "system");
+  if (!message) throw new Error("Expected the failed run notice.");
+  return message;
 }
 
 function commands(send = vi.fn(() => true)) {
@@ -97,7 +99,7 @@ test.each([EventKinds.RunFailed, EventKinds.SessionBusy, EventKinds.RequestInval
     expect(session.runs[0].recoveryAttempt).toMatchObject({ status: "rejected", message: "仍有任务执行" });
     expect(session.runs[0].recoveryModes).toEqual(["retry", "continue"]);
     expect(readSupersededFailureIds(session).size).toBe(0);
-    expect(session.messages).toHaveLength(1);
+    expect(session.messages.filter((message) => message.role === "system")).toHaveLength(1);
     act(() => hook.result.current.continueRun(message));
     expect(hook.send).toHaveBeenCalledTimes(2);
   },
@@ -147,7 +149,7 @@ test("history provides actions for old failures with no action field and replays
   expect(session.runs.every((run) => run.recoveryModes?.length === 2)).toBe(true);
   expect(readSupersededFailureIds(session)).toEqual(new Set([TestRequestId]));
   const visibleFailures = session.messages.filter(
-    (message) => !isSupersededFailure(message, readSupersededFailureIds(session)),
+    (message) => message.role === "system" && !isSupersededFailure(message, readSupersededFailureIds(session)),
   );
   expect(visibleFailures).toHaveLength(1);
   expect(visibleFailures[0].requestId).toBe("recovered");

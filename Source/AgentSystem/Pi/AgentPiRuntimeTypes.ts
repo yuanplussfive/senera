@@ -15,6 +15,8 @@ import type {
 import type { ImageContent, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import type { AgentWorkspaceChangeObserverPort } from "../Artifacts/AgentWorkspaceChangeObserver.js";
+import type { AgentPiMemoryBoundaryRefresh } from "./AgentPiMemoryBoundary.js";
+import type { AgentPiWorkspaceTurnContext } from "./AgentPiWorkspaceContextTypes.js";
 
 export type AgentPiSessionEventListener = (event: AgentSessionEvent) => void | Promise<void>;
 
@@ -25,13 +27,13 @@ export interface AgentPiSessionOptions extends Omit<AgentPiToolProjectionContext
   systemPrompt?: string;
   /** Frozen host context persisted with the user message for this turn. */
   turnContext?: string;
+  refreshMemoryBoundary?: AgentPiMemoryBoundaryRefresh;
+  inputBoundary?: import("./AgentPiInputBoundary.js").AgentPiInputBoundaryHandler;
+  onModelMemoryDelivered?: () => void;
   interaction?: AgentInteractionContext;
   turnState?: AgentPiTurnState;
   activeSkills?: readonly AgentActivatedSkill[];
   personaActive?: boolean;
-  prefaceRewriteEnabled?: boolean;
-  /** Explicit UI-controlled final-answer rewrite; independent from persona text. */
-  finalResponseRewriteEnabled?: boolean;
   rootCommand?: AgentRootCommand;
   diagnostics?: AgentPiDiagnosticSink;
   tokenBudget?: AgentTurnTokenBudget;
@@ -47,7 +49,7 @@ export interface AgentPiSession {
     options?: { expandPromptTemplates?: boolean; source?: string; images?: readonly ImageContent[] },
   ): Promise<void>;
   /** Aligns the native continuation with the latest persisted Pi branch. */
-  prepareContinuation(sourceRequestId?: string): void;
+  prepareContinuation(sourceRequestId?: string): Promise<void>;
   /** Continues the prepared Pi transcript without appending a new user message. */
   continue(): Promise<void>;
   steer(text: string, images?: readonly ImageContent[]): Promise<void>;
@@ -73,6 +75,7 @@ export interface AgentPiRuntimeService {
   model(): AgentPiModelProjection;
   toolDefinitions(context?: AgentPiToolProjectionContext): AgentPiToolDefinition[];
   activeToolNames(context?: AgentPiToolProjectionContext): string[];
+  workspaceTurnContext(sessionId: string, signal?: AbortSignal): Promise<AgentPiWorkspaceTurnContext | undefined>;
   leaseTurn(options: AgentPiSessionOptions): Promise<AgentPiSessionResult>;
   rewindSession(sessionId: string, entryId: string): Promise<boolean>;
   forkSession(sourceSessionId: string, targetSessionId: string, entryId: string): Promise<boolean>;

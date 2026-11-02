@@ -1,6 +1,8 @@
 import process from "node:process";
+import path from "node:path";
 import { startSeneraServer, SeneraServerDeployments, type SeneraServerHandle } from "../ServerRuntime.js";
 import { projectDesktopRuntimeConfig } from "./DesktopRuntimeConfig.js";
+import { AgentServerAccessProfiles } from "../../Source/AgentSystem/Auth/AgentServerAccessPolicy.js";
 import {
   DesktopServerParentMessageKinds,
   DesktopServerProcessMessageKinds,
@@ -18,8 +20,13 @@ let starting = false;
 let stopping = false;
 
 parentPort.on("message", (event) => {
-  void receiveMessage(event.data).catch((error: unknown) => {
-    postMessage({ kind: DesktopServerProcessMessageKinds.Failed, message: errorMessage(error) });
+  const message: unknown = event.data;
+  void receiveMessage(message).catch((error: unknown) => {
+    postMessage({
+      kind: DesktopServerProcessMessageKinds.Failed,
+      message: errorMessage(error),
+      requestId: requestIdFrom(message),
+    });
   });
 });
 
@@ -51,6 +58,7 @@ async function start(bootstrap: DesktopServerBootstrap): Promise<void> {
   }
   starting = true;
   try {
+    const developmentFrontendUrl = process.env.SENERA_DESKTOP_FRONTEND_URL?.trim();
     server = await startSeneraServer({
       workspaceRoot: bootstrap.workspaceRoot,
       applicationStateRoot: bootstrap.applicationStateRoot,
@@ -62,7 +70,9 @@ async function start(bootstrap: DesktopServerBootstrap): Promise<void> {
       legacyConfigPath: bootstrap.legacyConfigPath,
       deployment: SeneraServerDeployments.Local,
       runtimeConfigProjection: projectDesktopRuntimeConfig,
-      automaticLoopbackHttp: true,
+      accessProfile: AgentServerAccessProfiles.Desktop,
+      staticFrontendRoot: developmentFrontendUrl ? undefined : path.join(bootstrap.resourcesRoot, "Frontend", "dist"),
+      developmentFrontendUrl,
       onWorkspaceOpened: (workspaceRoot, workspaceId) => {
         postMessage({ kind: DesktopServerProcessMessageKinds.WorkspaceOpened, workspaceRoot, workspaceId });
       },
@@ -107,6 +117,12 @@ function isDesktopServerParentMessage(value: unknown): value is DesktopServerPar
   const message = value as { kind?: unknown; requestId?: unknown; workspaceRoot?: unknown; bootstrap?: unknown };
   if (message.kind === DesktopServerParentMessageKinds.Start) return isDesktopServerBootstrap(message.bootstrap);
   return message.kind === DesktopServerParentMessageKinds.Stop && isNonEmptyString(message.requestId);
+}
+
+function requestIdFrom(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const requestId = (value as { requestId?: unknown }).requestId;
+  return isNonEmptyString(requestId) ? requestId : undefined;
 }
 
 function isDesktopServerBootstrap(value: unknown): value is DesktopServerBootstrap {

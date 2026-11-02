@@ -31,11 +31,21 @@ describe("MemOS semantic identity projection", () => {
           topic: "Ada {{assistant}} preference",
           summary: "Nova <profile> remembers it.",
           type: "preference",
+          assessments: [],
         },
         identity,
       ),
-    ).toEqual({ action: "new", topic: "用户 preference", summary: "我 remembers it.", type: "preference" });
-    expect(projectAgentMemOSSemanticIdentityDecision({ action: "skip" }, identity)).toEqual({ action: "skip" });
+    ).toEqual({
+      action: "new",
+      topic: "用户 preference",
+      summary: "我 remembers it.",
+      type: "preference",
+      assessments: [],
+    });
+    expect(projectAgentMemOSSemanticIdentityDecision({ action: "skip", assessments: [] }, identity)).toEqual({
+      action: "skip",
+      assessments: [],
+    });
     expect(AgentMemOSSemanticIdentityLabels).toEqual({ user: "用户", assistant: "我" });
   });
 });

@@ -7,6 +7,8 @@ import { CodeArtifactSourceView } from "./CodeArtifactSourceView";
 import { type CodeArtifact } from "./CodeArtifactModel";
 import { CodePreviewFrame } from "./CodePreviewFrame";
 import { readDownloadMime } from "./CodePreviewRegistry";
+import { downloadBlob } from "../../lib/download";
+import { toast } from "sonner";
 
 interface CodeArtifactViewerProps {
   artifact: CodeArtifact;
@@ -39,12 +41,7 @@ export function CodeArtifactViewer({
 
   const downloadCode = (): void => {
     const blob = new Blob([artifact.code], { type: readDownloadMime(artifact.language) });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = artifact.filename;
-    anchor.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    void downloadBlob(blob, artifact.filename).catch((error) => toast.error(String(error)));
   };
 
   return (

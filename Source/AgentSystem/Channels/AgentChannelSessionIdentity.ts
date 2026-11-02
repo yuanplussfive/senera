@@ -23,7 +23,27 @@ export function resolveAgentChannelSessionId(source: AgentChannelSource, epoch: 
  */
 export function serializeAgentChannelLane(source: AgentChannelSource): string {
   const thread = source.threadId ? `:${source.threadId}` : "";
-  return `${source.platform}:${source.chatType}:${source.chatId}:${source.userId}${thread}`;
+  const agent = source.chatType === "group" && source.agentId ? `:agent:${source.agentId}` : "";
+  const lane = `${source.platform}:${source.chatType}:${source.chatId}:${source.userId}${thread}${agent}`;
+  return source.authority ? JSON.stringify([source.authority, lane]) : lane;
+}
+
+/** Public conversation history is shared by every recipient Agent. */
+export function serializeAgentChannelConversation(source: AgentChannelSource): string {
+  return serializeAgentChannelLane({ ...source, agentId: undefined });
+}
+
+export function isSameAgentChannelConversation(left: AgentChannelSource, right: AgentChannelSource): boolean {
+  return serializeAgentChannelConversation(left) === serializeAgentChannelConversation(right);
+}
+
+/**
+ * Compares conversation lanes through the same stable identity used to derive
+ * their session IDs. Callers must not independently recreate this equality
+ * rule: adding a routing field then changes every channel boundary together.
+ */
+export function isSameAgentChannelLane(left: AgentChannelSource, right: AgentChannelSource): boolean {
+  return serializeAgentChannelLane(left) === serializeAgentChannelLane(right);
 }
 
 export function isAgentChannelSessionId(sessionId: string): boolean {

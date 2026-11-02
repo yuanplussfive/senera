@@ -1,3 +1,4 @@
+import { Tooltip } from "../../shared/ui/Tooltip";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import "../../styles/markdown.css";
@@ -6,11 +7,10 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { downloadUrl } from "../../lib/download";
 import { resolveFilePreview, type FilePreviewRenderKind } from "../../lib/filePreview";
 import { cn, formatFileSize } from "../../lib/util";
-import { ImagePreviewDialog } from "../../shared/media/ImagePreviewDialog";
 import { useWorkspaceResourceController } from "../../shared/workspace/WorkspaceResourceProvider";
 import { AppIcon, IconButton, MetaLabel, Spinner } from "../../shared/ui";
 import { Popover, PopoverAnchor, PopoverContent } from "../../shared/ui/Popover";
-import { FilePreviewIcon } from "../chat/FilePreviewIcon";
+import { FilePreviewRowIcon } from "../chat/FilePreviewIcon";
 import { PierreFilePreview, PierrePatchPreview } from "../../shared/code/PierreCodeView";
 import type { ToolResource } from "./toolResourceProjection";
 
@@ -67,7 +67,6 @@ export function ToolResourceItem({
   const source = controller ? buildResourceContentUrl(controller.httpBaseUrl, resource.uri) : undefined;
   const kind = resolveResourceKind(resource);
   const previewKind = resolveHoverPreviewKind(kind);
-  const [imageOpen, setImageOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const previewCloseTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const canPreview = enableHoverPreview && Boolean(source && previewKind);
@@ -119,7 +118,7 @@ export function ToolResourceItem({
           className={cn(
             "min-w-0 transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
             variant === "list"
-              ? "rounded-none border-b border-line-subtle/80 bg-transparent px-2.5 py-2 last:border-0"
+              ? "rounded-none bg-transparent px-4 py-2"
               : "rounded-md border border-line-subtle/80 bg-surface-panel px-2.5 py-1.5",
           )}
           data-tool-resource={resource.uri}
@@ -139,40 +138,31 @@ export function ToolResourceItem({
           }
         >
           <header className="flex min-w-0 items-center gap-2">
-            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-surface-hover text-content-secondary">
-              <FilePreviewIcon name={resource.name} mime={resource.mime} />
-            </span>
-            <div className="flex min-w-0 flex-1 flex-col">
-              {kind === "image" ? (
-                <button
-                  type="button"
-                  className="w-fit max-w-full truncate text-left text-[11.5px] font-medium text-content-primary hover:underline focus-visible:outline-none focus-visible:underline"
-                  title={resource.name}
-                  aria-label={frontendMessage("workflow.resource.openImage", { name: resource.name })}
-                  onClick={() => setImageOpen(true)}
-                >
-                  {resource.name}
-                </button>
-              ) : source && isBrowserOpenableKind(kind) ? (
-                <a
-                  className="w-fit max-w-full truncate text-[11.5px] font-medium text-content-primary hover:underline focus-visible:outline-none focus-visible:underline"
-                  href={source}
-                  target="_blank"
-                  rel="noreferrer"
-                  title={resource.name}
-                >
-                  {resource.name}
-                </a>
-              ) : (
-                <span className="truncate text-[11.5px] font-medium text-content-primary" title={resource.name}>
-                  {resource.name}
+            <Tooltip content={resource.name}>
+              <button
+                type="button"
+                className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus disabled:cursor-default"
+                disabled={!source}
+                aria-label={frontendMessage("chat.attachment.filePreview", { name: resource.name })}
+                onClick={() => {
+                  setPreviewOpen(false);
+                  if (source) controller?.openPreview({ ...resource, source });
+                }}
+              >
+                <FilePreviewRowIcon name={resource.name} mime={resource.mime} />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate text-[11.5px] font-medium text-content-primary">{resource.name}</span>
+                  <span className="flex min-w-0 items-center gap-1.5 truncate text-[9.5px] text-content-muted">
+                    <span className="truncate">
+                      {resolveFilePreview({ name: resource.name, mime: resource.mime }).label}
+                    </span>
+                    {resource.size !== undefined ? (
+                      <span className="shrink-0">{formatFileSize(resource.size)}</span>
+                    ) : null}
+                  </span>
                 </span>
-              )}
-              <span className="flex min-w-0 items-center gap-1.5 truncate text-[9.5px] text-content-muted">
-                <span className="truncate">{resource.mime}</span>
-                {resource.size !== undefined ? <span className="shrink-0">{formatFileSize(resource.size)}</span> : null}
-              </span>
-            </div>
+              </button>
+            </Tooltip>
             {source ? (
               <IconButton
                 label={frontendMessage("workflow.resource.download")}
@@ -186,37 +176,6 @@ export function ToolResourceItem({
               </IconButton>
             ) : null}
           </header>
-
-          {imageOpen && source ? (
-            <ImagePreviewDialog
-              alt={resource.name}
-              closeLabel={frontendMessage("ui.close")}
-              labels={{
-                actualSize: frontendMessage("resource.actualSize"),
-                fit: frontendMessage("resource.fit"),
-                zoomIn: frontendMessage("resource.zoomIn"),
-                zoomOut: frontendMessage("resource.zoomOut"),
-              }}
-              open
-              source={source}
-              title={frontendMessage("workflow.resource.openImage", { name: resource.name })}
-              onOpenChange={(open) => {
-                if (!open) setImageOpen(false);
-              }}
-              headerActions={
-                <IconButton
-                  label={frontendMessage("workflow.resource.download")}
-                  tooltip={frontendMessage("workflow.resource.download")}
-                  tooltipSide="bottom"
-                  size="md"
-                  className="text-content-secondary hover:bg-surface-hover hover:text-content-primary"
-                  onClick={download}
-                >
-                  <AppIcon icon="download" size={16} />
-                </IconButton>
-              }
-            />
-          ) : null}
         </article>
       </PopoverAnchor>
       {source && previewKind ? (
@@ -287,22 +246,22 @@ function TextResourceBody({
     }
     const controller = new AbortController();
     setState({ status: "loading" });
-    void fetch(source, { credentials: "include", signal: controller.signal }).then(
-      async (response) => {
+    void fetch(source, { credentials: "include", signal: controller.signal })
+      .then(async (response) => {
         if (!response.ok) throw new Error(`Resource preview failed with status ${response.status}.`);
         const text = await response.text();
+        if (controller.signal.aborted) return;
         const truncated = text.length > TextPreviewLimitCharacters;
         setState({
           status: "ready",
           text: truncated ? `${text.slice(0, TextPreviewLimitCharacters)}\n…` : text,
           truncated,
         });
-      },
-      (error: unknown) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
         setState({ status: "error" });
-      },
-    );
+      });
     return () => controller.abort();
   }, [resource.size, source]);
 
@@ -363,10 +322,6 @@ type HoverPreviewKind = Extract<ResourceKind, "pdf" | "diff" | "text">;
 function resolveHoverPreviewKind(kind: ResourceKind): HoverPreviewKind | undefined {
   if (kind === "pdf" || kind === "diff" || kind === "text") return kind;
   return undefined;
-}
-
-function isBrowserOpenableKind(kind: ResourceKind): boolean {
-  return kind === "audio" || kind === "video" || kind === "pdf";
 }
 
 function resolveResourceKind(resource: ToolResource): ResourceKind {

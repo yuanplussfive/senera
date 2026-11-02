@@ -1,6 +1,11 @@
 @config "../tailwind.config.js";
-@import "tailwindcss";
+@import "tailwindcss" source(none);
 @import "./styles/scrollbar.css";
+@import "./styles/transitions.css";
+
+[data-theme="dark"] [data-model-provider-monochrome] {
+  filter: invert(1);
+}
 
 @utility animate-text-shimmer {
   background-clip: text;
@@ -152,77 +157,6 @@ html:is([data-motion-level="reduced"], [data-motion-level="none"]) .shimmer-text
 
   to {
     background-position: 100% 0;
-  }
-}
-
-.senera-activity-mark {
-  display: block;
-  flex: none;
-  overflow: visible;
-}
-
-.senera-activity-mark__main,
-.senera-activity-mark__tail {
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.senera-activity-mark__main {
-  stroke: var(--senera-brand-violet);
-  stroke-width: 1.9;
-}
-
-.senera-activity-mark__tail {
-  stroke: var(--senera-brand-gold);
-  stroke-width: 1.9;
-  opacity: 0.88;
-}
-
-.senera-activity-mark__dot {
-  fill: var(--senera-brand-gold);
-}
-
-.senera-activity-mark--active .senera-activity-mark__main,
-.senera-activity-mark--active .senera-activity-mark__tail {
-  stroke-dasharray: 28 28;
-  stroke-dashoffset: 0;
-  animation:
-    senera-signal-flow 2.8s linear infinite,
-    senera-signal-breathe 2.8s ease-in-out infinite;
-  will-change: stroke-dashoffset, opacity;
-}
-
-/* AppIcon's `activity` entry is the static Senera mark. A live StatusGlyph
-   owns the motion so the same brand glyph can remain still after completion. */
-.senera-status-glyph[data-status-glyph-live="true"] .senera-activity-mark__main,
-.senera-status-glyph[data-status-glyph-live="true"] .senera-activity-mark__tail {
-  stroke-dasharray: 28 28;
-  stroke-dashoffset: 0;
-  animation:
-    senera-signal-flow 2.8s linear infinite,
-    senera-signal-breathe 2.8s ease-in-out infinite;
-  will-change: stroke-dashoffset, opacity;
-}
-
-@keyframes senera-signal-flow {
-  0% {
-    stroke-dashoffset: 0;
-  }
-
-  100% {
-    stroke-dashoffset: -56px;
-  }
-}
-
-@keyframes senera-signal-breathe {
-  0%,
-  100% {
-    opacity: 0.58;
-  }
-
-  50% {
-    opacity: 0.96;
   }
 }
 
@@ -382,7 +316,6 @@ html:is([data-motion-level="reduced"], [data-motion-level="none"]) .shimmer-text
   transition:
     grid-template-rows 220ms cubic-bezier(0.22, 1, 0.36, 1),
     opacity 130ms ease-out;
-  will-change: grid-template-rows, opacity;
 }
 
 .motion-disclosure--stable-open {
@@ -524,18 +457,6 @@ html:is([data-motion-level="reduced"], [data-motion-level="none"]) .motion-discl
   line-height: var(--theme-tool-line-height);
 }
 
-/* Todo is part of the execution rail, not a document-like checklist. Keep
-   its icon gutter identical to tool/output rows while letting the list own
-   its compact, stateful rhythm. */
-.workflow-task-progress {
-  display: flex;
-  max-height: min(24dvh, 13rem);
-  flex-shrink: 0;
-  flex-direction: column;
-  border-bottom: 1px solid var(--line-subtle);
-  background: transparent;
-}
-
 .workflow-section-header {
   display: flex;
   align-items: center;
@@ -569,94 +490,6 @@ html:is([data-motion-level="reduced"], [data-motion-level="none"]) .motion-discl
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
   white-space: nowrap;
-}
-
-.workflow-task-progress__bar {
-  height: 3px;
-  margin: 0 12px 6px 36px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--line-subtle);
-}
-
-.workflow-task-progress__bar > span {
-  display: block;
-  height: 100%;
-  min-width: 0;
-  border-radius: inherit;
-  background: var(--accent-content);
-  transition: width 240ms ease-out;
-}
-
-.workflow-task-progress__list {
-  position: relative;
-  min-height: 0;
-  flex: 1;
-  overflow-y: auto;
-  padding: 2px 12px 8px;
-  overscroll-behavior: contain;
-}
-
-.workflow-task-progress__group {
-  position: relative;
-  min-width: 0;
-}
-
-.workflow-task-progress__owner {
-  min-height: 22px;
-  padding: 4px 0 1px 24px;
-  color: var(--content-muted);
-  font-size: var(--theme-tool-meta-size);
-  line-height: 17px;
-}
-
-.workflow-task-progress__items {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.workflow-task-progress__row {
-  position: relative;
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr);
-  align-items: center;
-  column-gap: 8px;
-  min-height: 30px;
-  padding: 4px 0;
-  color: var(--content-secondary);
-  font-size: var(--theme-tool-meta-size);
-  line-height: 18px;
-  transition:
-    background-color var(--senera-motion-feedback) ease-out,
-    color var(--senera-motion-feedback) ease-out;
-}
-
-.workflow-task-progress__row--active {
-  color: var(--content-primary);
-}
-
-.workflow-task-progress__status-icon {
-  position: relative;
-  z-index: 1;
-  color: inherit;
-  background: transparent;
-}
-
-.workflow-task-progress__label {
-  overflow: hidden;
-  min-width: 0;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .workflow-task-progress__bar > span {
-    transition: none;
-  }
 }
 
 .live-activity-markdown.markdown-renderer:is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6),
@@ -2084,12 +1917,6 @@ html:is([data-motion-level="reduced"], [data-motion-level="none"]) .senera-activ
   transform: none;
 }
 
-html:is([data-motion-level="reduced"], [data-motion-level="none"])
-  .senera-activity-mark--active
-  :is(.senera-activity-mark__main, .senera-activity-mark__tail),
-html:is([data-motion-level="reduced"], [data-motion-level="none"])
-  .senera-status-glyph[data-status-glyph-live="true"]
-  :is(.senera-activity-mark__main, .senera-activity-mark__tail),
 html:is([data-motion-level="reduced"], [data-motion-level="none"]) .senera-status-glyph__ring {
   animation: none;
   opacity: 1;
@@ -2319,8 +2146,6 @@ html:is([data-motion-level="reduced"], [data-motion-level="none"])
     transform: none;
   }
 
-  .senera-activity-mark--active :is(.senera-activity-mark__main, .senera-activity-mark__tail),
-  .senera-status-glyph[data-status-glyph-live="true"] :is(.senera-activity-mark__main, .senera-activity-mark__tail),
   .senera-status-glyph__ring {
     animation: none;
     opacity: 1;

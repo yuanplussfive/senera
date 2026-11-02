@@ -1,0 +1,116 @@
+{
+  "name": "list_subagent_models",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "agent-input",
+    "icon": "cpu-chip",
+    "activity": {
+      "action": {
+        "zh-CN": "发现委派模型",
+        "en-US": "Discover delegation models"
+      },
+      "argumentPath": "/model_id",
+      "detailPaths": ["/provider_id"]
+    }
+  },
+  "description": "Discover authorized child-agent models from the current configuration, with capabilities, context/output limits, supported reasoning levels and delegation depth limits. Choose an exact model_id for subagent.modelProviderId. Filter by provider, exact model or required capabilities. This uses the same pool as launch validation and never exposes credentials.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "provider_id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "model_id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "capabilities": {
+        "type": "array",
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "enum": ["Chat", "Vision", "ImageOutput", "Reasoning", "DeveloperRole", "StreamingUsage", "ToolCalling"]
+        }
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "default_model_id": {
+        "type": "string",
+        "description": "Pool default route; the chosen role may specify its own default."
+      },
+      "parent_model_id": {
+        "type": "string"
+      },
+      "delegation": {
+        "type": "object"
+      },
+      "models": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      },
+      "delivery": {
+        "type": "object",
+        "description": "Current completion delivery mode, ability to wake an idle session, remaining wake budget and effective wait limits."
+      }
+    },
+    "required": ["default_model_id", "delegation", "models"],
+    "additionalProperties": false
+  },
+  "permissions": ["orchestration:delegate"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Progress": true,
+      "ResumableEvents": true
+    }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "orchestration",
+      "Title": "Orchestration",
+      "Description": "Child-agent runs managed by Senera."
+    }
+  ],
+  "search": {
+    "Summary": "Discover authorized child-agent models from the current configuration, with capabilities, context/output limits, supported reasoning levels and delegation depth limits. Choose an exact model_id for subagent.modelProviderId. Filter by provider, exact model or required capabilities. This uses the same pool as launch validation and never exposes credentials.",
+    "Tags": ["agent", "model", "委派", "模型"],
+    "Capabilities": [
+      {
+        "Id": "orchestration.list_subagent_models",
+        "Title": "list_subagent_models",
+        "Description": "Discover authorized child-agent models from the current configuration, with capabilities, context/output limits, supported reasoning levels and delegation depth limits. Choose an exact model_id for subagent.modelProviderId. Filter by provider, exact model or required capabilities. This uses the same pool as launch validation and never exposes credentials.",
+        "Facets": {
+          "Actions": ["discover"],
+          "Targets": ["agent-model"],
+          "Inputs": ["provider_id", "model_id", "capabilities"],
+          "Outputs": ["models", "delegation"],
+          "Effects": ["read"]
+        },
+        "Risk": {
+          "SideEffect": "read",
+          "Permission": "orchestration"
+        },
+        "Aliases": ["list_subagent_models"]
+      }
+    ],
+    "UseCases": ["按任务自主选择已授权模型"],
+    "Avoid": ["不要根据模型名称猜测能力"]
+  },
+  "evidenceCapabilities": []
+}

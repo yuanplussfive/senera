@@ -2,6 +2,18 @@
 
 这份文档写给实际部署、更新和排查 Senera 的人。日常本地开发看 README 就够了；跑 Docker、更新镜像、处理数据目录权限和沙箱状态时，看这里。
 
+## 本地 QQ 多 Agent 群聊
+
+在主控台的 Agent 管理中创建成员，分别选择名称、头像、模型和提示词预设。打开 QQ 页面后，通过会话列表顶部的加号创建群聊，勾选成员；已有群聊通过群管理按钮调整成员。每个群内成员拥有独立的 Senera 会话，执行轨迹实时显示在主控台，原生聊天记录由群成员共享。修改模型或预设在该成员下一次新回合生效。
+
+群聊采用自主参与：启用的成员都能观察群内消息，不再配置“响应全部 / 只响应 @”。模型根据上下文决定是否发言，并通过 `ChannelSendMessage`、`ChannelReplyMessage`、`ChannelSendMedia` 明确发送；普通最终回答仍只留在主控台。文字发送工具的 `mentionIds` 和戳一戳工具的 `targetId` 采用当前群成员的真实渠道标识，不解析文本来伪造 @ 或附件。文本、原生消息段、图片、文件和平台事件均保留。
+
+忙碌时新消息进入持久化收件箱；成员空闲后根据最新匹配事件继续一次决策，通过 `ChannelReadHistory` 按自己的已读游标读取积累的讨论。更早的原始消息、成员变更、戳一戳等记录可通过 `ChannelReadArchive` 查阅，存档游标与实时收件箱游标相互独立。读取旧记录不会触发新的对话。
+
+需要旁听时，成员调用 `ChannelWaitMessage`，选择普通消息、@、回复、戳一戳、撤回或成员变更，也可以指定发送者和带时区偏移的 `wakeAt`。登记后结束当前推理；等待不占用模型调用，重启或临时断线后可恢复。到时唤醒只提示模型重新判断，不强制发送消息，也不会伪装成用户说话。存储使用绝对时间，提示词和界面按工作区配置的时区呈现。
+
+`/stop` 停止当前执行并取消其主动返回，新的群内活动可重新触发参与；`/new` 切换到新的独立会话。命令没有明确 @ 或引用目标时作用于全部启用成员。移除或禁用成员会立即撤销其参与资格和后续渠道操作。撤回、任务删除和清空会话同步清理相应的待处理事件，避免旧消息恢复后再次触发。升级前的群聊成员、QQ 标识和预设会保留，旧激活过滤项通过一次版本迁移移除。
+
 ## Artifact 维护
 
 服务运行期间会按 `Artifacts.MaintenanceIntervalMinutes` 自动执行 artifact 保留、总量配额和半成品回收。目录扫描用 `Artifacts.MaintenanceMaxConcurrency` 控制文件系统并发，默认值为 4，避免大量 artifact 同时打开过多文件句柄。需要手动检查时，默认命令只分析，不删除文件：
@@ -84,15 +96,15 @@ Docker 镜像运行的是标准 Node.js 24，不是 Electron，因此不需要�
 
 受控浏览器的控制层是生产依赖 `agent-browser`。Senera 直接调用其与 npm 版本一致的原生控制器，不再通过 Playwright API 维护另一套浏览器会话实现；页面快照、交互引用、标签页和 daemon 生命周期由 agent-browser 统一负责。
 
-- Windows 桌面端由 agent-browser 发现当前用户已安装的 Chrome、Edge、Brave 或其通过 `agent-browser install` 管理的浏览器。`runtime.headed: true` 会打开独立的受控浏览器窗口，不使用 Electron 的渲染窗口；留空 `runtime.executablePath` 即可，只有要固定版本时才填写路径。
+- Windows 桌面端默认（`runtime.browser: auto`）自动检测当前用户已安装的 Chrome、Edge、Brave、Chromium，都没有时退回 agent-browser 管理的浏览器；也可以显式选择 `chrome`、`edge`、`brave`、`chromium` 或 `bundled`。自动检测只取所选浏览器的安装文件，仍然使用 Senera 自有的 profile，不读取用户日常浏览器的 profile、Cookie 或登录状态。`runtime.headed: true` 会打开独立的受控浏览器窗口，不使用 Electron 的渲染窗口；`runtime.executablePath` 留空即可，只有要固定某个安装路径时才填写，且优先于上面的浏览器选择。
 
 - 官方 Docker 镜像已安装 Chromium 与运行所需字体，容器部署不需要挂载宿主浏览器。镜像没有显示服务器，因此必须保持 `runtime.headed: false`；启用可见窗口会在启动前返回明确配置错误。容器默认以 root 运行 Chromium 并自动附加 `--no-sandbox`（`SENERA_CONTAINER=1` 且进程 uid 为 0 时），并启用 `--disable-dev-shm-usage` 以适配 Docker 默认共享内存大小。
 
 - 裸 Linux 源码或二进制部署需要安装 Chrome、Chromium 或兼容的发行版包及其系统依赖，或者用 `agent-browser install --with-deps` 管理浏览器；保持默认自动发现，或通过 `runtime.executablePath` 指向实际可执行文件。`agent-browser` 原生控制器随 Senera 的生产依赖和桌面安装包按平台分发，发行包校验发现控制器缺失时会返回明确的配置错误，不会退回 Playwright、Electron WebView 或静默关闭浏览能力。仓库的 Playwright 只用于 Web/Electron E2E 测试，不是运行时浏览器后端。
 
-受控会话拥有单独的临时 profile，不读取或改写用户日常浏览器的 profile、Cookie 与启动参数。浏览器找不到时会指出应安装浏览器或配置可执行路径，而不是退回 Electron WebView 或静默关闭浏览能力。
+受控会话使用 Senera 自有的 profile：持久模式复用固定的受控 profile，临时会话各自使用临时 profile。两者都不读取或改写用户日常浏览器的 profile、Cookie 与启动参数。浏览器找不到时会指出应安装浏览器或配置可执行路径，而不是退回 Electron WebView 或静默关闭浏览能力。
 
-桌面端的安装资源和工作区是两个有意分离的路径：安装资源位于 Electron 的 `resources` 目录，随版本更新、只读使用；首次启动由用户选择或新建工作区，所有可写项目数据统一落在该工作区的 `.senera/` 下。Windows 的应用数据目录只保存工作区定位指针，避免把配置、会话、日志或升级状态默认写入 C 盘；从旧版本升级时，旧 `runtime` 中仍存在的配置数据库、升级记录和沙箱缓存会迁移到新工作区。
+桌面端的安装资源和工作区是两个有意分离的路径：安装资源位于 Electron 的 `resources` 目录，随版本更新、只读使用；首次启动由用户选择或新建工作区，所有可写项目数据统一落在该工作区的 `.senera/` 下。应用数据目录保存工作区登记、共享密钥和按需安装的客户端资源，位置由应用路径服务解析并支持 `SENERA_DATA_ROOT`；配置、会话、日志或升级状态仍位于工作区。从旧版本升级时，旧 `runtime` 中仍存在的配置数据库、升级记录和沙箱缓存会迁移到新工作区。
 
 默认 `compose.yaml` 做了这些事情：
 
@@ -109,6 +121,19 @@ Docker 不会把 Sandbox 请求改为本机执行。`runsc` 未注册时，启�
 `compose.yaml` 以 root 运行主进程；未设置 `SENERA_CONTAINER_RUNTIME_USER` 时入口会在权限准备后降权为 `node`。手工执行容器内诊断命令时要沿用进程实际身份，比如 `docker compose exec -T senera id`，不要依赖 `docker exec` 的默认用户。
 
 工作区 Skill 位于数据卷的 `${SENERA_WORKSPACE_ROOT:-/data}/.senera/skills`。它由运行时用户直接维护，不会在容器启动时被内置资源覆盖；官方只读 Skills 和 MCP packages 随镜像位于 `/app/System/Skills` 与 `/app/McpServers`。
+
+### OneBot 11 渠道
+
+SnowLuma 等外部服务使用独立的「设置 → 渠道 → OneBot 11」入口，填写地址、令牌和主人
+QQ 号后启用。接入方式见 [OneBot 11 渠道](Architecture/ExternalOneBot11.md)。
+
+### 本地 Senera QQ 渠道
+
+在「设置 → 渠道 → Senera QQ」启用渠道，并安装发行版或导入客户端 ZIP，再点击「打开 Senera QQ」。扩展在电脑的应用数据目录安装一次，所有工作区和连接的手机共用；切换工作区无需重装，只需在目标工作区启用渠道。手机、桌面和浏览器使用同一主服务的工作区路由与认证，不需要单独开放网关端口。
+
+Senera QQ 是本地虚拟 OneBot 客户端，不登录真实 QQ。消息复用 Senera 会话、模型、上传、草稿和工具执行流程；主控台保留执行轨迹，渠道通过发送、引用回复工具显式投递内容，不自动外发思考过程或主控台回复。
+
+源码位于 `Frontend/qq/client`，依赖由 `Frontend/package.json` 和根锁文件统一维护。`npm run client.qq.pack` 独立构建扩展，不再打包进桌面安装包、镜像或基础 APK。已安装资源按版本提供；更新不影响已打开的旧版本页面，卸载不删除会话和附件。所有日常入口只加载已安装版本。开发源码页面通过工作区客户端路由下的 `development/` 显式打开，使用同一 Vite 服务；该入口只在开发宿主启用。打包、安装和 CI 说明见[按需安装的 Senera QQ 客户端](Development/OptionalQqClient.md)。
 
 运行时数据库不接受配置路径，统一由工作区布局解析并按领域存放：
 
@@ -240,11 +265,13 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'
 
 - `MaxStoredBytes`：上传根目录总容量，默认 2 GiB，必须不小于 `MaxFileBytes`；容量不足时返回 HTTP 507。
 
-- `RetentionHours`：上传成功后的保留时间，默认 720 小时（30 天）。过期文件会被删除，旧会话里的对应附件以后也读不到了。
+- `RetentionHours`：上传成功后的保留时间，默认 72 小时。过期文件会被删除，旧会话里的对应附件以后也读不到了。
+
+- `IncompleteRetentionHours`：上传中断或缺少有效 manifest 的目录保留时间，默认 1 小时。它独立于已完成上传的保留期，避免异常退出后的临时目录长期占用空间。
 
 - `MaintenanceIntervalMinutes`：容量核对和过期回收间隔，默认 15 分钟。服务启动时也会立即执行一次维护。
 
-并发写入会按每个文件的最大尺寸预留容量，防止多个请求同时越过总配额。因此 `MaxStoredBytes` 应为当前保留文件留出空间，并至少能容纳一个 `MaxFileBytes`。请求失败时，本次已经写完的文件会回滚；服务异常退出留下的无 manifest 目录会在一小时宽限期后清理。
+并发写入会按每个文件的最大尺寸预留容量，防止多个请求同时越过总配额。因此 `MaxStoredBytes` 应为当前保留文件留出空间，并至少能容纳一个 `MaxFileBytes`。请求失败时，本次已经写完的文件会回滚；服务异常退出留下的无 manifest 目录会按 `IncompleteRetentionHours` 清理。
 
 需要立即释放空间时，可以先停止服务，再备份并清理 `Uploads.RootDir`。不要在服务运行期间手工删除正在写入的子目录。
 
@@ -388,6 +415,19 @@ docker inspect --format "{{json .State.Health}}" senera
 environment:
   SENERA_LOG_EVENTS: verbose
 ```
+
+每次供应商调用会记录一条 `pi.provider.stream_summary`，关联会话、请求、实际模型和工具调用，
+包含首事件耗时、结束状态、事件计数和用量。普通模式只记录摘要；`verbose` 额外保存脱敏后的
+原始事件结构，正文、图片和参数字符串不会保存。详情采用首尾采样，受
+`Persistence.Logs.DetailMaxBytes` 限制，保留时间由 `Persistence.Logs.RetentionHours` 控制。
+`Persistence.Logs.DetailMaxConcurrentWrites` 控制详情写入并发，普通摘要不占用这些写入名额。
+工具名称和关联 ID 以最终事件为准，ID 保留完整值；工具开始事件中的未完成信息不会覆盖最终结果。
+
+使用 `senera logs trace REQUEST_ID` 查找对应记录，再用 `senera logs detail DETAIL_ID` 读取详情。
+诊断文件位于工作区日志的 `details` 目录，使用 Artifact 安全写入器异步保存，不逐片段推送到前端。
+`trace=busy/failed/budget/disabled` 分别表示详情写入繁忙、失败、超过大小限制或日志已关闭；
+这些状态不改变模型请求结果。原始事件为 0 时表示没有观测到供应商事件，不能据此断定模型没有运行。
+日志存储故障会标记为 `failed`，超限会标记为 `budget`，不会把截断预览当作完整流详情。
 
 改完 `compose.yaml` 后重新启动：
 

@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/connection_settings" android:orientation="vertical"
+    android:layout_width="match_parent" android:layout_height="match_parent">
+    <androidx.appcompat.widget.Toolbar android:id="@+id/connection_settings_toolbar"
+        android:layout_width="match_parent" android:layout_height="56dp"
+        android:background="@color/connection_settings_surface"
+        app:titleTextColor="@color/connection_settings_text" app:titleTextAppearance="@style/ConnectionSettings.Title" />
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:fillViewport="true" android:clipToPadding="false">
+        <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:paddingStart="20dp" android:paddingEnd="20dp" android:paddingTop="24dp" android:paddingBottom="28dp">
+            <TextView android:id="@+id/background_heading" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/background_heading" android:textAppearance="@style/ConnectionSettings.Title"
+                android:textSize="22sp" />
+            <TextView android:id="@+id/background_status" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="8dp" android:textAppearance="@style/ConnectionSettings.Hint"
+                android:accessibilityLiveRegion="polite" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="24dp" android:orientation="vertical" android:background="@drawable/connection_settings_group">
+                <LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="16dp">
+                    <androidx.appcompat.widget.SwitchCompat android:id="@+id/background_enabled"
+                        android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp"
+                        android:text="@string/background_enable" android:textAppearance="@style/ConnectionSettings.Title"
+                        app:switchPadding="16dp" app:showText="false" />
+                    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp" android:text="@string/background_enable_hint"
+                        android:textAppearance="@style/ConnectionSettings.Hint" />
+                </LinearLayout>
+                <View style="@style/ConnectionSettings.Divider" />
+                <LinearLayout android:id="@+id/floating_row" android:orientation="vertical"
+                    android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="16dp">
+                    <androidx.appcompat.widget.SwitchCompat android:id="@+id/floating_enabled"
+                        android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp"
+                        android:text="@string/background_floating" android:textAppearance="@style/ConnectionSettings.Title"
+                        app:switchPadding="16dp" app:showText="false" />
+                    <TextView android:id="@+id/floating_hint" android:layout_width="match_parent" android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp" android:textAppearance="@style/ConnectionSettings.Hint" />
+                </LinearLayout>
+            </LinearLayout>
+            <TextView android:id="@+id/background_permissions" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="28dp" android:layout_marginBottom="10dp" android:paddingStart="4dp" android:paddingEnd="4dp"
+                android:text="@string/background_permissions" android:textAppearance="@style/ConnectionSettings.Hint" />
+            <LinearLayout android:id="@+id/permission_group" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical" android:background="@drawable/connection_settings_group">
+                <LinearLayout android:id="@+id/notification_settings" style="@style/ConnectionSettings.Row">
+                    <LinearLayout android:orientation="vertical" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="@string/background_notifications" android:textAppearance="@style/ConnectionSettings.Title" />
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp"
+                            android:text="@string/background_notifications_hint" android:textAppearance="@style/ConnectionSettings.Hint" />
+                    </LinearLayout>
+                    <TextView android:id="@+id/notification_status" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp" android:textAppearance="@style/ConnectionSettings.Status" />
+                    <ImageView style="@style/ConnectionSettings.Chevron" android:contentDescription="@null" />
+                </LinearLayout>
+                <View style="@style/ConnectionSettings.Divider" />
+                <LinearLayout android:id="@+id/battery_settings" style="@style/ConnectionSettings.Row">
+                    <LinearLayout android:orientation="vertical" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="@string/background_battery" android:textAppearance="@style/ConnectionSettings.Title" />
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp"
+                            android:text="@string/background_battery_hint" android:textAppearance="@style/ConnectionSettings.Hint" />
+                    </LinearLayout>
+                    <TextView android:id="@+id/battery_status" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp" android:textAppearance="@style/ConnectionSettings.Status" />
+                    <ImageView style="@style/ConnectionSettings.Chevron" android:contentDescription="@null" />
+                </LinearLayout>
+                <View style="@style/ConnectionSettings.Divider" />
+                <LinearLayout android:id="@+id/application_settings" style="@style/ConnectionSettings.Row">
+                    <LinearLayout android:orientation="vertical" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                            android:text="@string/background_application_settings" android:textAppearance="@style/ConnectionSettings.Title" />
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp"
+                            android:text="@string/background_startup_hint" android:textAppearance="@style/ConnectionSettings.Hint" />
+                    </LinearLayout>
+                    <ImageView style="@style/ConnectionSettings.Chevron" android:contentDescription="@null" />
+                </LinearLayout>
+            </LinearLayout>
+            <TextView android:id="@+id/background_error" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="16dp" android:textAppearance="@style/ConnectionSettings.Hint"
+                android:textColor="@color/connection_settings_error" android:visibility="gone" android:accessibilityLiveRegion="polite" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp"
+                android:paddingStart="4dp" android:paddingEnd="4dp" android:text="@string/background_system_hint"
+                android:textAppearance="@style/ConnectionSettings.Hint" />
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

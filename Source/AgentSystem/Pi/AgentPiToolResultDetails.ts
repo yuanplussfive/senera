@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { AgentPiWorkspaceToolContextSchema } from "./AgentPiWorkspaceContextTypes.js";
+import { AgentToolContractReceiptSchema } from "../ToolSearch/AgentToolContractDelivery.js";
 import {
   AgentToolExecutionStatuses,
   AgentToolFailureSchema,
@@ -26,16 +28,10 @@ const AgentPiToolResultContextSchema = z.object({
     .strict()
     .optional(),
   callId: z.string().trim().min(1).optional(),
+  toolContractReceipts: z.array(AgentToolContractReceiptSchema).optional(),
+  workspaceContext: AgentPiWorkspaceToolContextSchema.optional(),
   executionStatus: z.enum(AgentToolExecutionStatuses),
   outputAvailability: z.enum(AgentToolOutputAvailabilities),
-  mediaProjection: z
-    .object({
-      code: z.literal("media_projection_failed"),
-      message: z.string().trim().min(1),
-      resourceUri: z.string().trim().min(1).optional(),
-    })
-    .strict()
-    .optional(),
 });
 
 const AgentPiSuccessfulToolResultSchema = AgentPiToolResultContextSchema.extend({

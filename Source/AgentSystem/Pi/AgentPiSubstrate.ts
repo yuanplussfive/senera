@@ -8,7 +8,8 @@ import type { AgentToolPermissionGate } from "../Safety/AgentToolPermissionGate.
 import type { AgentToolCallExecutor } from "../ToolRuntime/AgentToolCallExecutor.js";
 import { AgentPiToolExecutionBridge } from "./AgentPiToolExecutionBridge.js";
 import { AgentPiToolRegistryProjector } from "./AgentPiToolRegistryProjector.js";
-import { AgentPiToolPermissionHook } from "./AgentPiToolPermissionHook.js";
+import { AgentPiToolContractPreparationError } from "./AgentPiToolContractPreparation.js";
+import { AgentPiToolPermissionHook, type AgentPiToolPermissionHookOptions } from "./AgentPiToolPermissionHook.js";
 import { projectSeneraModelProviderToPi } from "./AgentPiModelProjector.js";
 import { resolveAgentNativeToolRoute } from "../ModelEndpoints/AgentModelEndpointContract.js";
 import { clampAgentModelThinkingLevel, resolveAgentModelThinking } from "../ModelEndpoints/AgentModelThinking.js";
@@ -55,13 +56,10 @@ import type {
 } from "./AgentPiSessionManagement.js";
 import type { AgentPiRuntimeService, AgentPiSessionOptions, AgentPiSessionResult } from "./AgentPiRuntimeTypes.js";
 import type { AgentUploadStore } from "../Uploads/AgentUploadStore.js";
-import type { AgentResourceResolverLike } from "../Resources/AgentResourceResolver.js";
 import type { AgentPiPlanningCompilerFactory } from "./AgentPiPlanningCompiler.js";
 import { projectSeneraProcessBackendsToToolTargets } from "../ToolRuntime/AgentToolExecutionPlan.js";
-import type { AgentResidentSpeechSessionRuntime } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
 import { AgentToolResultObservationCompressor } from "../ToolRuntime/AgentToolResultObservationCompressor.js";
 import { AgentPiToolObservationSummaryClient } from "./AgentPiToolObservationSummaryClient.js";
-import { AgentArtifactCompactViewStore } from "../Artifacts/AgentArtifactCompactViewStore.js";
 import type { AgentWorkspaceChangeObserverPort } from "../Artifacts/AgentWorkspaceChangeObserver.js";
 import { resolveAgentPiCompactionSettings } from "./AgentPiCompactionSettings.js";
 import type { AgentBackgroundLearningRequestLedger } from "../Memory/AgentBackgroundLearningRequestLedger.js";
@@ -82,12 +80,12 @@ export type {
 } from "./AgentPiSessionManagement.js";
 
 export interface AgentPiSubstrateOptions {
+  toolSearch?: Pick<import("../ToolSearch/AgentToolSearchRuntime.js").AgentToolSearchRuntime, "discoverAvailable">;
   workspaceLayout?: import("../Core/AgentWorkspaceLayout.js").AgentWorkspaceLayout;
   workspaceRoot: string;
   config: AgentSystemConfig;
   modelProvider: ResolvedAgentModelProviderConfig;
   planningCompilerFactory: AgentPiPlanningCompilerFactory;
-  residentSpeech?: AgentResidentSpeechSessionRuntime;
   registry: AgentExtensionRegistry;
   toolCallExecutor: AgentPiToolCallExecutorPort;
   workspaceChangeObserver?: AgentWorkspaceChangeObserverPort;
@@ -98,13 +96,13 @@ export interface AgentPiSubstrateOptions {
   sessionPool?: AgentPiCodingAgentSessionPool;
   diagnostics?: AgentPiDiagnosticSink;
   uploadStore?: AgentUploadStore;
-  resourceResolver?: AgentResourceResolverLike;
   /** Shared with delegated child runs so tool claims cross session boundaries. */
   resourceClaims?: AgentToolResourceClaimProjectorPort;
   resourceCapabilities?: AgentToolResourceCapabilityRegistry;
+  resourceAccessScope?: AgentPiToolPermissionHookOptions["resourceAccessScope"];
   resourceCoordinator?: AgentToolResourceLeaseCoordinator;
   beforeCompaction?: (sessionId: string) => Promise<void>;
-  afterCompaction?: (sessionId: string) => Promise<void> | void;
+  afterCompaction?: (sessionId: string, boundaryKey?: string) => Promise<void> | void;
   /** Clears request-local memory delivery receipts after a branch boundary. */
   onSessionContextInvalidated?: (sessionId: string) => Promise<void> | void;
   /** Shared durable ledger for detached model work such as observation compression. */
@@ -144,13 +142,11 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
       this.compactionSettings,
       options.learningRequests,
     );
-    const compactViewStore = new AgentArtifactCompactViewStore(options.workspaceRoot);
     this.observationCompressor = new AgentToolResultObservationCompressor({
       model: this.provider.model.id,
       stashDir: (options.workspaceLayout ?? resolveAgentWorkspaceLayout(options.workspaceRoot)).caches
         .toolObservationSift,
       summarize: observationSummaryClient.summarize.bind(observationSummaryClient),
-      persistLlmSummary: compactViewStore.write.bind(compactViewStore),
     });
     this.thinkingProjection = resolveAgentModelThinking({
       api: resolveAgentNativeToolRoute(options.modelProvider.Endpoint, options.modelProvider.BaseUrl).api,
@@ -173,21 +169,11 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         provider: this.provider,
         modelProvider: options.modelProvider,
         planningCompilerFactory: options.planningCompilerFactory,
-        residentSpeech: options.residentSpeech,
         maxIdleSessions: piSessionsConfig.MaxCachedSessions,
         compaction: piSessionsConfig.Compaction,
         diagnostics: options.diagnostics,
         beforeCompaction: options.beforeCompaction,
-        afterCompaction: async (sessionId) => {
-          try {
-            await options.afterCompaction?.(sessionId);
-          } finally {
-            // Resident Speech keeps a derived transcript. A Pi compaction
-            // changes the canonical lineage, so the next sidecar request must
-            // rebuild its projection instead of appending to stale history.
-            options.residentSpeech?.resetSession(sessionId);
-          }
-        },
+        afterCompaction: options.afterCompaction,
         observationCompressor: this.observationCompressor,
         observationTokenBudget: artifactConfig.ToolObservationMaxTokens,
       });
@@ -205,6 +191,7 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
       permissionGate: options.toolPermissionGate,
       executionCapabilities: () => options.executionEnv.capabilities,
       resourceCapabilities,
+      resourceAccessScope: options.resourceAccessScope,
     });
     const resourceClaims = options.resourceClaims ?? new AgentToolResourceClaimProjector(resourceCapabilities);
     const toolExecution = resolveToolExecutionConfig(options.config);
@@ -213,15 +200,15 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
       config: options.config,
       registry: options.registry,
       toolPlanningMode: this.provider.toolPlanningMode,
+      toolSearch: options.toolSearch,
       execution: new AgentPiToolExecutionBridge({
         model: this.provider.model.id,
         observationTokenBudget: artifactConfig.ToolObservationMaxTokens,
         observationCompressor: this.observationCompressor,
-        modelSupportsImages: this.provider.model.input.includes("image"),
         executeToolCall: options.toolCallExecutor.execute.bind(options.toolCallExecutor),
         recordToolArtifacts: options.artifactRecorder.record.bind(options.artifactRecorder),
-        resourceResolver: options.resourceResolver,
-        attributionEnabled: () => resolveAgentPromptConfig(options.config).BamlToolAttribution,
+        observationAttribution:
+          this.provider.toolPlanningMode === "baml" && resolveAgentPromptConfig(options.config).BamlToolAttribution,
         executionScheduler: new AgentToolExecutionScheduler({
           maxConcurrentCallsPerRun: toolExecution.MaxConcurrentCallsPerRun,
           resourceClaims,
@@ -293,7 +280,7 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         `Explicitly selected tool${missingNativeToolNames.length === 1 ? "" : "s"} cannot be exposed natively in this turn: ${missingNativeToolNames.join(", ")}.`,
       );
     }
-    const allTools = this.toolProjector.createToolSet(undefined, [], undefined, options.nativeToolNames);
+    const allTools = this.toolProjector.createRegisteredToolSet(options.nativeToolNames);
     const promptTemplateProjection = this.promptTemplateProjector.project({
       input: options.input,
       activeSkills: options.activeSkills,
@@ -350,11 +337,13 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
         diagnostics: options.diagnostics ?? this.options.diagnostics,
         systemPrompt: options.systemPrompt,
         turnContext: options.turnContext,
+        refreshMemoryBoundary: options.refreshMemoryBoundary,
+        onModelMemoryDelivered: options.onModelMemoryDelivered,
+        synchronizeToolContracts: (context) => this.toolProjector.synchronizeContractEvidence(context, toolExposure),
+        inputBoundary: options.inputBoundary,
         turnState: options.turnState,
         activeSkills: options.activeSkills,
         personaActive: options.personaActive === true,
-        prefaceRewriteEnabled: options.prefaceRewriteEnabled === true,
-        finalResponseRewriteEnabled: options.finalResponseRewriteEnabled === true,
         skillCatalog,
         skillLibraryCatalog,
         nativeProviderToolNames: this.provider.toolPlanningMode === "native" ? activeToolSet.activeToolNames : [],
@@ -380,15 +369,26 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
           const preflight = async (candidate: typeof event) => {
             const turnDecision = options.turnState?.authorizeToolTurn();
             if (turnDecision?.block) return turnDecision;
-            const projection = this.toolProjector.projectPreflight(
-              candidate,
-              toolAccessGrant,
-              options.turnState?.context.reusableCapabilities,
-              toolExposure,
-              options.turnState?.context.reusableCapabilityLookup,
-            );
+            let projection;
+            try {
+              projection = this.toolProjector.projectPreflight(
+                candidate,
+                toolAccessGrant,
+                options.turnState?.context.reusableCapabilities,
+                toolExposure,
+              );
+            } catch (error) {
+              if (!(error instanceof AgentPiToolContractPreparationError)) throw error;
+              options.turnState?.registerToolContractReceipts(candidate.toolCallId, error.receipts);
+              return { block: true, reason: error.message };
+            }
             return this.permissionHook.authorize({ ...options, toolExposure }, projection.event, {
-              requireExposure: !projection.bridged,
+              requireExposure:
+                !projection.bridged &&
+                !(
+                  event.parentToolCallId &&
+                  options.turnState?.parentToolCallId(event.toolCallId) === event.parentToolCallId
+                ),
             });
           };
           if (options.turnState) {
@@ -440,15 +440,17 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
   async resetSession(sessionId: string): Promise<boolean> {
     const reset = await this.sessionPool.reset(sessionId);
     if (reset) await this.options.onSessionContextInvalidated?.(sessionId);
-    this.options.residentSpeech?.resetSession(sessionId);
     return reset;
+  }
+
+  workspaceTurnContext(sessionId: string, signal?: AbortSignal) {
+    return this.sessionPool.workspaceTurnContext(sessionId, signal);
   }
 
   async rewindSession(sessionId: string, entryId: string): Promise<boolean> {
     const rewound = await this.sessionPool.rewind(sessionId, entryId);
     if (rewound) {
       await this.options.onSessionContextInvalidated?.(sessionId);
-      this.options.residentSpeech?.resetSession(sessionId);
     }
     return rewound;
   }
@@ -457,7 +459,6 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
     const forked = await this.sessionPool.fork(sourceSessionId, targetSessionId, entryId);
     if (forked) {
       await this.options.onSessionContextInvalidated?.(targetSessionId);
-      this.options.residentSpeech?.resetSession(targetSessionId);
     }
     return forked;
   }
@@ -466,12 +467,7 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
     sessionId: string,
     customInstructions?: string,
   ): Promise<AgentPiSessionCompactionResult | undefined> {
-    const result = await this.sessionPool.compact(sessionId, customInstructions);
-    // Custom session pools do not necessarily install the default pool's
-    // after-compaction hook. Invalidate the derived sidecar ledger at the
-    // substrate boundary so every compaction path has the same lineage rule.
-    this.options.residentSpeech?.resetSession(sessionId);
-    return result;
+    return this.sessionPool.compact(sessionId, customInstructions);
   }
 
   sessionStatus(sessionId: string): Promise<AgentPiSessionRuntimeStatus | undefined> {
@@ -490,11 +486,7 @@ export class AgentPiSubstrate implements AgentPiRuntimeService {
   }
 
   async close(): Promise<void> {
-    try {
-      await this.sessionPool.close();
-    } finally {
-      this.options.residentSpeech?.close();
-    }
+    await this.sessionPool.close();
   }
 
   private async emitSubstrateDiagnostic(

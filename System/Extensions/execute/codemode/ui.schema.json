@@ -1,0 +1,40 @@
+{
+  "form": {
+    "version": 1,
+    "sections": [
+      {
+        "id": "runtime",
+        "label": { "zh-CN": "脚本运行", "en-US": "Script runtime" },
+        "fields": [
+          {
+            "path": ["memoryLimitMiB"],
+            "label": { "zh-CN": "脚本内存上限（MiB）", "en-US": "Script memory limit (MiB)" },
+            "description": {
+              "zh-CN": "每个 QuickJS 虚拟机可分配的最大内存。",
+              "en-US": "Maximum memory allocated by each QuickJS VM."
+            },
+            "type": "number",
+            "min": 1,
+            "max": 4096,
+            "step": 1,
+            "required": false,
+            "essential": true
+          },
+          {
+            "path": ["maxConcurrentScripts"],
+            "label": { "zh-CN": "并行脚本数", "en-US": "Concurrent scripts" },
+            "description": {
+              "zh-CN": "同一运行时的并行脚本上限；同一会话的存储更新依次提交。",
+              "en-US": "Maximum concurrent scripts in this runtime; store updates within a session are serialized."
+            },
+            "type": "number",
+            "min": 1,
+            "step": 1,
+            "required": false,
+            "essential": true
+          }
+        ]
+      }
+    ]
+  }
+}

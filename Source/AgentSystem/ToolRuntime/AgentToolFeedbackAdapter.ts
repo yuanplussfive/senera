@@ -68,6 +68,7 @@ export function attachAgentToolEvidenceAssets(
     ];
     return {
       ...candidate,
+      origin: "supplement",
       locator: asset.resourceUri,
       facts: uniqueFacts(facts),
       artifactRefs: [...new Set([...(candidate.artifactRefs ?? []), asset.resourceUri])],
@@ -83,6 +84,7 @@ function projectRootCandidate(value: string, source: string, candidates: AgentTo
   const text = value.trim();
   if (!text) return;
   candidates.push({
+    origin: "result",
     key: "result:$",
     kind: "tool-output",
     locator: "$",
@@ -110,6 +112,7 @@ function collectUrlCandidates(
     if (!url || seen.has(url) || seen.size >= AutomaticEvidenceLimits.maxUrls) return;
     seen.add(url);
     candidates.push({
+      origin: "result",
       key: `source:${url}`,
       kind: "source",
       locator: url,

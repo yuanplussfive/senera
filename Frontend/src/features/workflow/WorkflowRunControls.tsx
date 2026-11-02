@@ -1,3 +1,4 @@
+import { Tooltip } from "../../shared/ui/Tooltip";
 import type { RunRecord } from "../../store/sessionStore";
 import { cn, formatDuration, formatTime } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -11,6 +12,7 @@ import {
 } from "../../shared/ui";
 import type { RunSummary } from "./runSummary";
 import { projectWorkflowSteps } from "./workflowPresentationProjection";
+import { readRunInputLabel } from "../../store/session/runInputLabel";
 
 export function RunSummaryStrip({ run, summary }: { run: RunRecord; summary: RunSummary }): JSX.Element {
   return (
@@ -40,19 +42,20 @@ function RunExecutionSegments({ run }: { run: RunRecord }): JSX.Element | null {
       aria-label={frontendMessage("workflow.summary.nodes", { count: steps.length })}
     >
       {steps.map((step) => (
-        <span
-          key={step.id}
-          className={cn(
-            "workflow-run-execution-segment",
-            step.status === "done" && "workflow-run-execution-segment--done",
-            (step.status === "failed" || step.status === "cancelled") && "workflow-run-execution-segment--failed",
-            (step.status === "running" || step.status === "cancelling") && "workflow-run-execution-segment--running",
-            step.status === "pending" && "workflow-run-execution-segment--pending",
-          )}
-          data-workflow-run-execution-segment={step.status}
-          title={step.title}
-          aria-hidden="true"
-        />
+        <Tooltip content={step.title} key={step.id}>
+          <span
+            className={cn(
+              "workflow-run-execution-segment",
+              step.status === "done" && "workflow-run-execution-segment--done",
+              (step.status === "failed" || step.status === "cancelled") && "workflow-run-execution-segment--failed",
+              (step.status === "running" || step.status === "cancelling") && "workflow-run-execution-segment--running",
+              step.status === "pending" && "workflow-run-execution-segment--pending",
+            )}
+            data-workflow-run-execution-segment={step.status}
+
+            aria-hidden="true"
+          />
+        </Tooltip>
       ))}
     </span>
   );
@@ -64,7 +67,7 @@ export function RunSelector({
   onSelect,
   pinnedToHistory,
 }: {
-  runs: RunRecord[];
+  runs: readonly RunRecord[];
   currentRunId?: string;
   onSelect: (id: string) => void;
   pinnedToHistory: boolean;
@@ -93,7 +96,7 @@ export function RunSelector({
               <span>· {formatDuration(current.startedAt, current.endedAt)}</span>
             </div>
             <div className="mt-1 line-clamp-2 text-[12.5px] leading-5 text-content-secondary">
-              {current.input || frontendMessage("workflow.run.emptyInput")}
+              {readRunInputLabel(current)}
             </div>
           </div>
           <AppIcon
@@ -124,9 +127,7 @@ export function RunSelector({
                 <span className="shrink-0 text-[10.5px] tabular-nums text-ink-400">
                   {index === 0 ? frontendMessage("workflow.run.latestShort") : `#${indexFromOldest}`}
                 </span>
-                <span className="truncate text-[12.5px]">
-                  {run.input || frontendMessage("workflow.run.emptyInput")}
-                </span>
+                <span className="truncate text-[12.5px]">{readRunInputLabel(run)}</span>
               </div>
               <span className="ml-2 text-[10.5px] tabular-nums text-ink-400">{formatTime(run.startedAt)}</span>
             </DropdownMenuItem>

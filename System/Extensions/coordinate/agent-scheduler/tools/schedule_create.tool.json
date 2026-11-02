@@ -1,0 +1,132 @@
+{
+  "name": "schedule_create",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "schedule-manage",
+    "icon": "calendar-clock",
+    "activity": {
+      "action": {
+        "zh-CN": "管理",
+        "en-US": "Manage"
+      },
+      "argumentPath": "/prompt",
+      "detailPaths": ["/name", "/at", "/rrule"]
+    }
+  },
+  "description": "Schedule instructions in the normal session inbox. Supply exactly one of rrule or at. this_session continues here; new_once creates one reusable session; new creates a session per occurrence. Receipts acknowledge admission, not model completion.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Short label."
+      },
+      "prompt": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Instructions to deliver."
+      },
+      "rrule": {
+        "type": "string",
+        "minLength": 1,
+        "description": "RFC 5545 RRULE, for example RRULE:FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0."
+      },
+      "at": {
+        "type": "string",
+        "minLength": 1,
+        "description": "One-time ISO timestamp, or a relative duration such as +30m. Offsetless values use the schedule timezone."
+      },
+      "time_zone": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Optional IANA timezone. Omission uses Senera’s shared default timezone; specify only when the user requests another timezone."
+      },
+      "target": {
+        "type": "string",
+        "enum": ["this_session", "new_once", "new"],
+        "default": "this_session"
+      }
+    },
+    "required": ["prompt"],
+    "additionalProperties": false,
+    "oneOf": [
+      {
+        "required": ["rrule"],
+        "not": {
+          "required": ["at"]
+        }
+      },
+      {
+        "required": ["at"],
+        "not": {
+          "required": ["rrule"]
+        }
+      }
+    ]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "schedule": {
+        "type": "object"
+      }
+    },
+    "required": ["schedule"],
+    "additionalProperties": false
+  },
+  "permissions": ["orchestration:schedule"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Persistent",
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Progress": true,
+      "Cancellation": true,
+      "ResumableEvents": true
+    }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "orchestration.scheduler",
+      "Title": "Agent task scheduling",
+      "Description": "Scheduled agent tasks managed by Senera."
+    }
+  ],
+  "search": {
+    "Summary": "Schedule instructions in the normal session inbox. Supply exactly one of rrule or at. this_session continues here; new_once creates one reusable session; new creates a session per occurrence. Receipts acknowledge admission, not model completion.",
+    "Tags": ["coordination"],
+    "Capabilities": [
+      {
+        "Id": "orchestration.schedule.create",
+        "Title": "schedule_create",
+        "Description": "Schedule instructions in the normal session inbox. Supply exactly one of rrule or at. this_session continues here; new_once creates one reusable session; new creates a session per occurrence. Receipts acknowledge admission, not model completion.",
+        "Facets": {
+          "Actions": ["schedule_create"],
+          "Targets": ["session-work"],
+          "Inputs": ["prompt", "time_zone"],
+          "Outputs": ["schedule"],
+          "Effects": ["session-state"]
+        },
+        "Risk": {
+          "SideEffect": "session-state",
+          "Permission": "orchestration"
+        },
+        "Aliases": ["schedule_create"]
+      }
+    ],
+    "UseCases": ["Coordinate persistent work."],
+    "Avoid": ["Do not poll with empty messages."]
+  },
+  "evidenceCapabilities": [],
+  "approval": {
+    "Mode": "ask",
+    "Reason": "创建或修改会在未来自动运行的持久任务。"
+  }
+}

@@ -334,7 +334,7 @@ export function inspectAgentToolPresentationSchemaBindings(
     }
     const targets = assertPointer(failures, source, measure.pointer, `measure "${measure.id}"`);
     if (measure.field !== undefined) {
-      const fields = resolveAgentJsonSchemaCollectionField(targets, measure.field);
+      const fields = resolveAgentJsonSchemaCollectionField(source, targets, measure.field);
       if (fields.length === 0) {
         failures.push(`measure "${measure.id}" field "${measure.field}" does not resolve from ${measure.pointer}`);
       } else if (
@@ -345,7 +345,7 @@ export function inspectAgentToolPresentationSchemaBindings(
       }
     }
     if (measure.where !== undefined) {
-      const fields = resolveAgentJsonSchemaCollectionField(targets, measure.where.field);
+      const fields = resolveAgentJsonSchemaCollectionField(source, targets, measure.where.field);
       if (fields.length === 0) {
         failures.push(
           `measure "${measure.id}" filter field "${measure.where.field}" does not resolve from ${measure.pointer}`,
@@ -366,6 +366,7 @@ export function inspectAgentToolPresentationSchemaBindings(
         const entries = assertPointer(failures, binding.outputSchema, row.pointer, `preview row ${row.pointer}`);
         assertRelativeScalarPointer(
           failures,
+          binding.outputSchema,
           entries,
           row.titlePath,
           `preview row title ${row.pointer}${row.titlePath}`,
@@ -373,6 +374,7 @@ export function inspectAgentToolPresentationSchemaBindings(
         if (row.descriptionPath) {
           assertRelativeScalarPointer(
             failures,
+            binding.outputSchema,
             entries,
             row.descriptionPath,
             `preview row description ${row.pointer}${row.descriptionPath}`,
@@ -381,6 +383,7 @@ export function inspectAgentToolPresentationSchemaBindings(
         if (row.metaPath) {
           assertRelativeScalarPointer(
             failures,
+            binding.outputSchema,
             entries,
             row.metaPath,
             `preview row meta ${row.pointer}${row.metaPath}`,
@@ -389,6 +392,7 @@ export function inspectAgentToolPresentationSchemaBindings(
         if (row.hrefPath) {
           assertRelativeScalarPointer(
             failures,
+            binding.outputSchema,
             entries,
             row.hrefPath,
             `preview row href ${row.pointer}${row.hrefPath}`,
@@ -403,7 +407,11 @@ export function inspectAgentToolPresentationSchemaBindings(
           `preview more ${preview.result.more.pointer}`,
         );
         if (preview.result.more.countPath) {
-          const counts = resolveAgentJsonSchemaRelativePointer(entries, preview.result.more.countPath);
+          const counts = resolveAgentJsonSchemaRelativePointer(
+            binding.outputSchema,
+            entries,
+            preview.result.more.countPath,
+          );
           if (counts.length === 0 || !counts.some(isAgentJsonSchemaNumber)) {
             failures.push(
               `preview more count ${preview.result.more.pointer}${preview.result.more.countPath} is not numeric`,
@@ -455,11 +463,12 @@ function assertScalarPointer(failures: string[], schema: AgentJsonSchema, pointe
 
 function assertRelativeScalarPointer(
   failures: string[],
+  root: AgentJsonSchema,
   parents: readonly AgentJsonSchema[],
   pointer: string,
   label: string,
 ): void {
-  const targets = resolveAgentJsonSchemaRelativePointer(parents, pointer);
+  const targets = resolveAgentJsonSchemaRelativePointer(root, parents, pointer);
   if (targets.length === 0) {
     failures.push(`${label} does not resolve against the row schema`);
   } else if (!targets.some(isAgentJsonSchemaScalar)) {
@@ -478,8 +487,13 @@ export function collectAgentToolPresentationArgumentPointers(
   const activity = presentation?.activity;
   const pointers = [
     activity?.argumentPath,
+    activity?.subjectPath,
     ...(activity?.detailPaths ?? []),
-    ...(activity?.v2?.variants ?? []).flatMap((variant) => [variant.argumentPath, ...(variant.detailPaths ?? [])]),
+    ...(activity?.v2?.variants ?? []).flatMap((variant) => [
+      variant.argumentPath,
+      variant.subjectPath,
+      ...(variant.detailPaths ?? []),
+    ]),
     ...(activity?.v2?.measures ?? [])
       .filter((measure) => measure.from === "argument")
       .flatMap((measure) => measureArgumentPointers(measure)),

@@ -6,8 +6,8 @@ import { useFrontendLocale } from "../../../i18n/useFrontendLocale";
 import { cn } from "../../../lib/util";
 import { classifySettingsContentLayout, useObservedLayout } from "../../../shared/responsive";
 import {
-  Button,
   AppIcon,
+  DurationInput,
   FormField,
   FormHint,
   FormLabel,
@@ -23,24 +23,36 @@ import {
   StatusToken,
   Switch,
 } from "../../../shared/ui";
-import type { AppIconName } from "../../../shared/ui";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
 import { SettingsSectionLoading } from "../SettingsLoading";
 import { SettingsEntityNavigator } from "./SettingsEntityNavigator";
 import { SettingsEntityMetrics } from "./SettingsEntityMetrics";
-import { PluginIdentityFrame, PluginIdentityIcon } from "./PluginIdentityIcon";
+import { PluginIdentityFrame, PluginIdentityIcon, PluginIdentityTile } from "./PluginIdentityIcon";
+import { PluginUsageExamples } from "./PluginUsageExamples";
+import { PluginDocumentation } from "./PluginDocumentation";
+import {
+  readConfiguredModelNameOptions,
+  readConfiguredModelConnectionOptions,
+} from "../systemExtensionConfigurationPresentation";
+import { PluginSkills } from "./PluginSkills";
+import { ModelSelect } from "../../../shared/models/ModelSelect";
+
+import {
+  readMcpInputMutation,
+  readInputDisplayValue,
+  applySavedSecrets,
+  reconcileMcpDrafts,
+  parseMultipleChoiceValues,
+  formatDraftValue,
+  formatInputValue,
+  sameDraft,
+  type McpInputDraft,
+  type McpSyncRequest,
+} from "./mcpInputDraft";
 
 const EmptyMcpServers: readonly McpServerSettingsItem[] = [];
 const McpInputSyncDebounceMs = 350;
-type McpInputDraft = McpInputValue | "";
 type McpStatusFilter = "all" | McpServerSettingsItem["status"];
-
-interface McpSyncRequest {
-  requestId: string;
-  serverId: string;
-  values: Record<string, McpInputValue>;
-  deletes: readonly string[];
-}
 
 export function McpServersSection({
   systemConfig,
@@ -242,7 +254,7 @@ export function McpServersSection({
   }, [connected, drafts, pendingChanges, selectedServer, sendDrafts, syncing]);
 
   if (!systemConfig || !systemConfig.toolSettingsSynced.mcpServers) {
-    return <SettingsSectionLoading variant="split" />;
+    return <SettingsSectionLoading variant={detailServerId ? "form" : "split"} />;
   }
 
   const resetServerView = (): void => {
@@ -345,25 +357,27 @@ export function McpServersSection({
   );
   const detail = selectedServer ? (
     <section className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-canvas">
-      <header className="shrink-0 border-b border-line-subtle/70 px-6 py-5 sm:px-8">
+      <header className="shrink-0 px-5 pt-5 sm:px-8">
         <div className="mx-auto flex w-full max-w-[860px] flex-wrap items-start justify-between gap-4">
           <div className="flex min-w-0 items-start gap-3">
-            <PluginIdentityFrame className="mt-0.5">
+            <PluginIdentityTile className="mt-0.5">
               <PluginIdentityIcon
                 brandIcon={selectedServer.presentation?.brandIcon}
                 icon={selectedServer.presentation?.icon}
-                size={22}
+                size={28}
               />
-            </PluginIdentityFrame>
+            </PluginIdentityTile>
             <div className="min-w-0">
               <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                <h3 className="truncate text-[17px] font-semibold text-content-primary">{selectedDisplayName}</h3>
+                <h3 className="text-[18px] font-semibold leading-7 tracking-[-0.02em] text-content-strong">
+                  {selectedDisplayName}
+                </h3>
                 <McpStatus status={selectedServer.status} />
               </div>
-              <p className="mt-1 max-w-[620px] text-[12px] leading-5 text-content-secondary">{selectedDescription}</p>
+              <p className="mt-1 max-w-[64ch] text-[13px] leading-6 text-content-secondary">{selectedDescription}</p>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex min-h-8 shrink-0 items-center gap-2">
             {syncing ? (
               <span className="inline-flex items-center gap-1.5 text-[11px] text-content-muted" aria-live="polite">
                 <Spinner size="xs" className="text-accent-content" />
@@ -379,15 +393,16 @@ export function McpServersSection({
                 onCheckedChange={activationControl.onEnabledChange}
               />
             ) : null}
-            <Button
-              variant="outline"
+            <IconButton
+              label={frontendMessage("settings.mcp.restart")}
+              tooltip={frontendMessage("settings.mcp.restart")}
+              tone="muted"
               size="sm"
               disabled={!connected || syncing || selectedServer.status === "unavailable"}
               onClick={restartServer}
             >
               <AppIcon icon="refresh" size={14} />
-              {frontendMessage("settings.mcp.restart")}
-            </Button>
+            </IconButton>
           </div>
         </div>
       </header>
@@ -395,7 +410,10 @@ export function McpServersSection({
         {operationError ? (
           <InlineError className="mx-auto mt-4 max-w-[860px] px-6 sm:px-8">{operationError}</InlineError>
         ) : null}
-        <div className="mx-auto w-full max-w-[860px] px-6 py-6 sm:px-8">
+        <div className="mx-auto w-full max-w-[924px] px-5 py-5 sm:px-8">
+          <PluginDocumentation content={selectedServer.presentation?.documentation} />
+          <PluginUsageExamples examples={selectedServer.presentation?.usageExamples} />
+          <PluginSkills skills={selectedServer.skills ?? []} />
           <SettingsEntityMetrics
             dataTestId="mcp-metrics"
             items={[
@@ -476,6 +494,17 @@ export function McpServersSection({
                     <FormField className="min-w-0 gap-1.5">
                       <FormLabel className="sr-only">{input.title}</FormLabel>
                       <McpInputControl
+                        modelOptions={
+                          input.modelSelection?.valueKind === "model-connection"
+                            ? readConfiguredModelConnectionOptions(
+                                systemConfig?.configSnapshot ?? null,
+                                input.modelSelection.capability,
+                              )
+                            : readConfiguredModelNameOptions(
+                                systemConfig?.configSnapshot ?? null,
+                                input.modelSelection?.capability,
+                              )
+                        }
                         input={input}
                         value={value}
                         disabled={!connected || selectedServer.status === "unavailable"}
@@ -547,6 +576,7 @@ export function McpServersSection({
 }
 
 function McpInputControl({
+  modelOptions,
   input,
   value,
   disabled,
@@ -556,6 +586,7 @@ function McpInputControl({
   onCommit,
   onClear,
 }: {
+  modelOptions: ReturnType<typeof readConfiguredModelNameOptions>;
   input: McpInputStatus;
   value: McpInputDraft;
   disabled: boolean;
@@ -565,6 +596,33 @@ function McpInputControl({
   onCommit: () => void;
   onClear: () => void;
 }): JSX.Element {
+  if (input.modelSelection)
+    return (
+      <ModelSelect
+        allowCustom={input.modelSelection.valueKind === "model-name"}
+        value={String(value)}
+        options={modelOptions}
+        placeholder={input.placeholder ?? frontendMessage("settings.mcp.inputPlaceholder")}
+        ariaLabel={input.title}
+        disabled={disabled}
+        onChange={onChange}
+        onBlur={onCommit}
+      />
+    );
+  if (input.durationUnit)
+    return (
+      <DurationInput
+        key={input.id}
+        value={value === "" ? undefined : Number(value)}
+        storageUnit={input.durationUnit}
+        min={input.min}
+        max={input.max}
+        disabled={disabled}
+        ariaLabel={input.title}
+        onChange={(next) => onChange(next ?? "")}
+        onBlur={onCommit}
+      />
+    );
   if (input.multiple && (input.choices?.length || input.type === "boolean")) {
     const choices = input.choices?.length ? input.choices : [false, true];
     const selectedValues = Array.isArray(value) ? value : value === "" ? [] : [value];
@@ -609,7 +667,7 @@ function McpInputControl({
             : (input.placeholder ?? frontendMessage("settings.mcp.inputPlaceholder"))
         }
         ariaLabel={input.title}
-        className="pl-9 text-[12.5px] font-mono tracking-tight"
+        className="text-[12.5px] font-mono tracking-tight"
         showClearButton={clearable}
         clearButtonLabel={frontendMessage("settings.mcp.clearSecret")}
         onChange={(next) => onChange(next)}
@@ -618,158 +676,25 @@ function McpInputControl({
       />
     );
   }
-  const icon: AppIconName = input.type === "filepath" || input.type === "directory" ? "folder" : "sliders";
   return (
-    <div className="relative min-w-0">
-      <AppIcon
-        icon={icon}
-        size={14}
-        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-350"
-      />
-      <Input
-        type={input.type === "number" ? "number" : "text"}
-        size="sm"
-        autoComplete="off"
-        spellCheck={false}
-        min={input.min}
-        max={input.max}
-        value={formatDraftValue(value)}
-        disabled={disabled}
-        placeholder={input.placeholder ?? frontendMessage("settings.mcp.inputPlaceholder")}
-        aria-label={input.title}
-        className="pl-9 text-[12.5px]"
-        onBlur={onCommit}
-        onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
-          if (event.key === "Enter") onCommit();
-        }}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </div>
+    <Input
+      type={input.type === "number" ? "number" : "text"}
+      size="sm"
+      autoComplete="off"
+      spellCheck={false}
+      min={input.min}
+      max={input.max}
+      value={formatDraftValue(value)}
+      disabled={disabled}
+      placeholder={input.placeholder ?? frontendMessage("settings.mcp.inputPlaceholder")}
+      aria-label={input.title}
+      onBlur={onCommit}
+      onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === "Enter") onCommit();
+      }}
+      onChange={(event) => onChange(event.target.value)}
+    />
   );
-}
-
-function readMcpInputMutation(
-  server: McpServerSettingsItem,
-  drafts: Record<string, McpInputDraft>,
-): { values?: Record<string, McpInputValue>; error?: string } {
-  try {
-    const values: Record<string, McpInputValue> = {};
-    for (const input of server.inputs) {
-      if (!(input.id in drafts)) continue;
-      const draft = drafts[input.id];
-      if (input.secret && draft === "") continue;
-      const value = normalizeDraft(input, draft ?? "");
-      if (input.required && isEmptyValue(value)) {
-        throw new InputValidationError(frontendMessage("settings.mcp.inputValueRequired", { name: input.title }));
-      }
-      values[input.id] = value;
-    }
-    return { values: Object.keys(values).length > 0 ? values : undefined };
-  } catch (error) {
-    return {
-      error:
-        error instanceof InputValidationError
-          ? error.message
-          : frontendMessage("settings.mcp.inputValueInvalid", { name: server.id }),
-    };
-  }
-}
-
-function readInputDisplayValue(
-  input: McpInputStatus,
-  draft: McpInputDraft | undefined,
-  savedSecret: string | undefined,
-): McpInputDraft {
-  if (draft !== undefined) return draft;
-  if (input.secret) {
-    // Stored secrets are write-only; echo what the user saved during this
-    // view, otherwise show nothing rather than a misleading default.
-    return savedSecret ?? (input.configured ? "" : (input.defaultValue ?? ""));
-  }
-  return input.value ?? input.defaultValue ?? "";
-}
-
-function applySavedSecrets(
-  saved: Record<string, string>,
-  request: McpSyncRequest,
-  server: McpServerSettingsItem | undefined,
-): Record<string, string> {
-  const next = { ...saved };
-  for (const inputId of request.deletes) delete next[inputId];
-  for (const [inputId, value] of Object.entries(request.values)) {
-    const input = server?.inputs.find((candidate) => candidate.id === inputId);
-    if (input?.secret && typeof value === "string") next[inputId] = value;
-  }
-  return next;
-}
-
-function reconcileMcpDrafts(
-  drafts: Record<string, McpInputDraft>,
-  request: McpSyncRequest,
-  server: McpServerSettingsItem | undefined,
-  outcome: "success" | "error",
-): Record<string, McpInputDraft> {
-  const next = { ...drafts };
-  for (const [inputId, value] of Object.entries(request.values)) {
-    if (outcome === "success") {
-      if (inputId in next && sameDraft(next[inputId], value)) delete next[inputId];
-      continue;
-    }
-    const input = server?.inputs.find((candidate) => candidate.id === inputId);
-    if (input?.secret && !(inputId in next)) next[inputId] = value;
-  }
-  return next;
-}
-
-function normalizeDraft(input: McpInputStatus, draft: McpInputDraft): McpInputValue {
-  if (input.multiple) {
-    const values = Array.isArray(draft)
-      ? draft
-      : String(draft)
-          .split(",")
-          .map((value) => value.trim())
-          .filter(Boolean);
-    if (input.type === "number") {
-      const numbers = values.map(Number);
-      if (numbers.some((value) => !Number.isFinite(value))) throw new Error("Invalid number array.");
-      return numbers;
-    }
-    if (input.type === "boolean") return values.map((value) => value === true || value === "true");
-    return values.map(String);
-  }
-  if (input.type === "number") {
-    if (draft === "") throw new Error("Number input is empty.");
-    const value = Number(draft);
-    if (!Number.isFinite(value)) throw new Error("Invalid number.");
-    return value;
-  }
-  if (input.type === "boolean") return draft === true || draft === "true";
-  return String(draft);
-}
-
-function parseMultipleChoiceValues(type: McpInputStatus["type"], values: readonly string[]): McpInputValue {
-  const parsed: unknown[] = values.map((entry) => JSON.parse(entry) as unknown);
-  if (type === "number" && parsed.every((entry): entry is number => typeof entry === "number")) return parsed;
-  if (type === "boolean" && parsed.every((entry): entry is boolean => typeof entry === "boolean")) return parsed;
-  if (parsed.every((entry): entry is string => typeof entry === "string")) return parsed;
-  throw new Error(`Invalid ${type} choice value.`);
-}
-
-function isEmptyValue(value: McpInputValue): boolean {
-  return value === "" || (Array.isArray(value) && value.length === 0);
-}
-
-function formatDraftValue(value: McpInputDraft): string | number {
-  if (Array.isArray(value)) return value.join(", ");
-  return typeof value === "boolean" ? String(value) : value;
-}
-
-function formatInputValue(value: McpInputValue): string {
-  return Array.isArray(value) ? value.join(", ") : String(value);
-}
-
-function sameDraft(left: McpInputDraft, right: McpInputDraft): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function McpNavigatorRow({
@@ -862,8 +787,6 @@ export function McpStatusToken({ status }: { status: McpServerSettingsItem["stat
     </StatusToken>
   );
 }
-
-class InputValidationError extends Error {}
 
 function shouldShowInputSource(source: McpInputStatus["source"]): boolean {
   return source === "vault" || source === "environment" || source === "oauth" || source === "unresolved";

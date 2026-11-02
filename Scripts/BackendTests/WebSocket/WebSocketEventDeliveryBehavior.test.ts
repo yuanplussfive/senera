@@ -172,7 +172,7 @@ function fakeSocket(bufferedAmount: number) {
     OPEN: 1,
     readyState: 1,
     bufferedAmount,
-    send: vi.fn(),
+    send: vi.fn((_payload: string, callback: (error?: Error) => void) => callback()),
     close: vi.fn(),
   };
 }

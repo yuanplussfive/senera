@@ -1,0 +1,100 @@
+{
+  "name": "schedule_view",
+  "loading": "Bootstrap",
+  "presentation": {
+    "category": "schedule-manage",
+    "icon": "eye",
+    "activity": {
+      "action": {
+        "zh-CN": "管理",
+        "en-US": "Manage"
+      },
+      "argumentPath": "/schedule_id"
+    }
+  },
+  "description": "Read an owned schedule and durable instruction admission receipts.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "schedule_id": {
+        "type": "string",
+        "minLength": 1,
+        "description": "ID returned by schedule_create or schedule_list."
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 20,
+        "description": "Maximum saved receipts in this page."
+      },
+      "before": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Exclusive next_before cursor from the previous page."
+      }
+    },
+    "required": ["schedule_id"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "schedule": {
+        "type": ["object", "null"]
+      }
+    },
+    "required": ["schedule"],
+    "additionalProperties": false
+  },
+  "permissions": ["orchestration:schedule"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Persistent",
+    "ResultAssessment": "Unassessed",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Progress": true,
+      "Cancellation": true,
+      "ResumableEvents": true
+    }
+  },
+  "resources": [],
+  "sources": [
+    {
+      "Id": "orchestration.scheduler",
+      "Title": "Agent task scheduling",
+      "Description": "Scheduled agent tasks managed by Senera."
+    }
+  ],
+  "search": {
+    "Summary": "Read an owned schedule and durable instruction admission receipts.",
+    "Tags": ["coordination"],
+    "Capabilities": [
+      {
+        "Id": "orchestration.schedule.view",
+        "Title": "schedule_view",
+        "Description": "Read an owned schedule and durable instruction admission receipts.",
+        "Facets": {
+          "Actions": ["schedule_view"],
+          "Targets": ["session-work"],
+          "Inputs": ["schedule_id"],
+          "Outputs": ["schedule"],
+          "Effects": ["session-state"]
+        },
+        "Risk": {
+          "SideEffect": "session-state",
+          "Permission": "orchestration"
+        },
+        "Aliases": ["schedule_view"]
+      }
+    ],
+    "UseCases": ["Coordinate persistent work."],
+    "Avoid": ["Do not poll with empty messages."]
+  },
+  "evidenceCapabilities": []
+}

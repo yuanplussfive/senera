@@ -9,7 +9,11 @@ export class AgentWebSocketSessionRequestHandlers {
     request: AgentWebSocketRequestOf<"session.create">,
     sendEvent: AgentWebSocketEventSender,
   ): Promise<void> {
-    await this.context.sessionManager.createSession({ sessionId: request.sessionId, onEvent: sendEvent });
+    await this.context.sessionManager.createSession({
+      sessionId: request.sessionId,
+      agentId: request.agentId,
+      onEvent: sendEvent,
+    });
   }
 
   async message(
@@ -17,6 +21,7 @@ export class AgentWebSocketSessionRequestHandlers {
     sendEvent: AgentWebSocketEventSender,
   ): Promise<void> {
     await this.context.sessionManager.submitMessage({
+      agentId: request.agentId,
       sessionId: request.sessionId,
       requestId: request.requestId,
       modelProviderId: request.modelProviderId,
@@ -162,6 +167,18 @@ export class AgentWebSocketSessionRequestHandlers {
       sessionId: request.sessionId,
       refresh: request.refresh,
       initialWindow: request.initialWindow,
+      before: request.before,
+      onEvent: sendEvent,
+    });
+  }
+
+  async runHistory(
+    request: AgentWebSocketRequestOf<"session.run_history">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
+    await this.context.sessionManager.replayRunHistory({
+      sessionId: request.sessionId,
+      requestId: request.requestId,
       onEvent: sendEvent,
     });
   }
@@ -173,6 +190,19 @@ export class AgentWebSocketSessionRequestHandlers {
     await this.context.sessionManager.renameSession({
       sessionId: request.sessionId,
       title: request.title,
+      onEvent: sendEvent,
+    });
+  }
+
+  async feedback(
+    request: AgentWebSocketRequestOf<"session.feedback">,
+    sendEvent: AgentWebSocketEventSender,
+  ): Promise<void> {
+    await this.context.sessionManager.recordMessageFeedback({
+      sessionId: request.sessionId,
+      requestId: request.requestId,
+      rating: request.rating,
+      ...(request.category ? { category: request.category } : {}),
       onEvent: sendEvent,
     });
   }

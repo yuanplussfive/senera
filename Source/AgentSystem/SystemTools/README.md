@@ -14,7 +14,7 @@ System/Extensions/<domain>/<extension>/
   mcp/*                  # 可选
 ```
 
-`domain.json` 负责稳定领域身份和完整的 presentation 默认值。`extension.json` 负责包身份、`domain`、`settingsSurface` 和 contributions；包目录名必须等于 `id`，`domain` 必须等于父目录领域 ID。`hostTool.capability` 必须指向 `AgentSystemToolCatalog.ts` 中预注册的宿主能力；包内容不能指定 `runtimeModule`。`skill` 和 `mcpServer` contribution 分别引用包内标准 Skill 目录和标准 MCP descriptor。`settingsSurface` 显式选择 `system-tools` 或一个专属设置面；专属设置面只能由一个包声明，前端绝不根据扩展 ID 推断归属。
+`domain.json` 负责稳定领域身份和完整的 presentation 默认值。`extension.json` 负责包身份、`domain`、`settingsSurface` 和 contributions；包目录名必须等于 `id`，`domain` 必须等于父目录领域 ID。`hostTool.capability` 是连接包合同与宿主执行器的不可见绑定键；宿主启动和验证会要求每个运行时能力恰好有一个包贡献，包内容不能指定 `runtimeModule`。`skill` 和 `mcpServer` contribution 分别引用包内标准 Skill 目录和标准 MCP descriptor。`settingsSurface` 显式选择 `system-tools` 或一个专属设置面；专属设置面只能由一个包声明，前端绝不根据扩展 ID 推断归属。
 
 每个包必须用结构化 `displayName` 和 `description` 同时声明 `zh-CN`、`en-US`。后端公共解析器固定优先中文，设置快照保留双语原文供前端按 locale 展示。缺少任一语言、空名称或空描述都会使扩展目录校验失败。
 
@@ -41,7 +41,12 @@ System/Extensions/<domain>/<extension>/
 
 禁用扩展会停止该包的 Tool、Skill 和 MCP contributions。普通配置继承主配置的 revision、回滚、热更新和运行时 cache invalidation。Secret 不允许写入 `Extensions.*.Configuration`，需要 Secret 的 MCP contribution 必须使用 MCP descriptor 的显式 input/binding 和加密 Vault。
 
-代码定义的 Zod Tool 通过 `npm run generate.system-extension-contracts` 生成并提交包合同、配置 schema 和 UI schema；`npm run verify.system-extension-contracts` 防止运行时定义与静态包漂移。
+System extension 包内的 JSON 合同是公开工具、配置和展示的唯一权威来源。`npm run verify.system-extension-contracts` 只读校验包资源、双向能力绑定、合同唯一性和运行时注册，不会生成或覆写任何包文件。
+
+自服务命令通过 Local Shell 中的 `senera` CLI 调用；参数 schema 与领域帮助由自服务契约生成，不再注册独立的模型工具。
+`npm run generate.self-command-contract` 更新这两个派生字段，
+`npm run verify.self-command-contract` 在构建时检查漂移；CLI、宿主执行器和模型工具
+因此共享日记等命令的字段与校验结构，不另写一份输入协议。
 
 每个 `tools/*.tool.json` 必须显式声明 `loading`：只有协议不可缺少的少量入口可以是 `Bootstrap`，其余能力都应为 `Dynamic`。`Bootstrap` 直接进入 provider 的初始 schema；`Dynamic` 保留在不可扩张的授权目录中，先由 `ToolSearch` 找到，再由 `ToolDescribe` 提供合同，最后通过固定执行桥调用。`planningModes` 只在某个合同天生属于单一规划协议时声明，例如 BAML 的会话加载管理；省略时表示该合同可由所有规划协议表达。不要以工具名在提示词或宿主代码中维护另一份“常驻工具”或“BAML 专用工具”清单。
 

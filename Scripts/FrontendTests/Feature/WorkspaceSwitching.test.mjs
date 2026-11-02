@@ -36,6 +36,7 @@ test("text drafts persist per workspace and session and observe updates from ano
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 const snapshot = {
   workspaceId: "workspace-a",
@@ -137,6 +138,67 @@ test("switching restores workspace session projections and their model selection
   });
   useStore.setState(useStore.getInitialState());
 });
+test("switching workspaces clears the complete transient event receipt ledger", () => {
+  activateWorkspaceSessionProjection("projection-receipts-a");
+  useStore.setState({
+    processedEventIds: { "event-a": "session-a" },
+    processedEventRequestIds: { "event-a": "request-a" },
+    processedEventIdOrder: ["event-a"],
+  });
+
+  activateWorkspaceSessionProjection("projection-receipts-b");
+  expect(useStore.getState()).toMatchObject({
+    processedEventIds: {},
+    processedEventRequestIds: {},
+    processedEventIdOrder: [],
+  });
+
+  useStore.setState({
+    processedEventIds: { "event-b": "session-b" },
+    processedEventRequestIds: { "event-b": "request-b" },
+    processedEventIdOrder: ["event-b"],
+  });
+  activateWorkspaceSessionProjection("projection-receipts-a");
+  expect(useStore.getState()).toMatchObject({
+    processedEventIds: {},
+    processedEventRequestIds: {},
+    processedEventIdOrder: [],
+  });
+  useStore.setState(useStore.getInitialState());
+});
+test("rapid session selections persist once at idle and flush the latest choice when leaving the page", () => {
+  let idleTask;
+  vi.stubGlobal(
+    "requestIdleCallback",
+    vi.fn((task) => {
+      idleTask = task;
+      return 1;
+    }),
+  );
+  vi.stubGlobal("cancelIdleCallback", vi.fn());
+  activateWorkspaceSessionProjection("projection-batched");
+  window.dispatchEvent(new Event("pagehide"));
+  const writes = vi.spyOn(Storage.prototype, "setItem");
+  const workspaceWrites = () => writes.mock.calls.filter(([key]) => key === "senera-workspace:projection-batched");
+
+  for (let index = 0; index < 40; index += 1) {
+    useStore.setState({ activeSessionId: `chat-${index}`, selectedModelProviderId: `model-${index}` });
+  }
+  expect(workspaceWrites()).toHaveLength(0);
+  idleTask();
+  expect(workspaceWrites()).toHaveLength(1);
+  expect(JSON.parse(workspaceWrites()[0][1])).toMatchObject({
+    activeSessionId: "chat-39",
+    selectedModelProviderId: "model-39",
+  });
+
+  useStore.setState({ activeSessionId: "final-choice" });
+  expect(workspaceWrites()).toHaveLength(1);
+  window.dispatchEvent(new Event("pagehide"));
+  expect(workspaceWrites()).toHaveLength(2);
+  expect(JSON.parse(workspaceWrites()[1][1]).activeSessionId).toBe("final-choice");
+});
+
 test("uploads and previews carry workspace scope and drop unrelated base queries", () => {
   const base = "http://server/?workspaceId=workspace-b&secret=remove";
   for (const value of [
@@ -192,7 +254,7 @@ test("file tree loads folders on expansion and searches unopened directories", a
   );
   await user.click(await findTreeItem("src/sample.ts"));
   expect(select).toHaveBeenCalledTimes(2);
-  await user.type(getByPlaceholderText("搜索当前工作区文件"), "weather");
+  await user.type(getByPlaceholderText("搜索文件"), "weather");
   await user.click(await findTreeItem("deep/weather.ts", true));
   expect(select).toHaveBeenCalledWith("deep/weather.ts");
 });

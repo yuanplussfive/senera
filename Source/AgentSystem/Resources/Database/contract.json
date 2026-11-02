@@ -1,0 +1,22 @@
+{
+  "id": "resource-identities",
+  "dataClass": "authoritative",
+  "versions": [
+    {
+      "version": 1,
+      "name": "resource-id-reservations",
+      "migration": "migrations/0001-resource-id-reservations.sql",
+      "snapshot": "snapshots/0001.schema.sql",
+      "migrationSha256": "045274800c7e2f40ef643a261d47b11f9e8d7b63ad4a24b983f22307f67b7866",
+      "snapshotSha256": "04a14b7a9f076435834bc578f08f594a96d6daaab4535ed8650f9274418f6eab"
+    },
+    {
+      "version": 2,
+      "name": "resource-records",
+      "migration": "migrations/0002-resource-records.sql",
+      "snapshot": "snapshots/0002.schema.sql",
+      "migrationSha256": "e55a6fa8d4006ed884a0a3d09ac690a84c2d6c917826685a2c4ad8ca442e94bc",
+      "snapshotSha256": "f8e4655835462e0a17f8ab5713f40e459728e94e19c84e2dcf12473a1a0c5f1a"
+    }
+  ]
+}

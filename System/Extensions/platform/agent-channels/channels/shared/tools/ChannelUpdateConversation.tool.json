@@ -1,0 +1,174 @@
+{
+  "name": "ChannelUpdateConversation",
+  "loading": "Bootstrap",
+  "description": "Persist semantic task decisions for this conversation. Register independent requests as pending, supplements against their existing task, and unrelated chatter as ambient. Use only observed inbox sequence numbers. Task ownership comes from the original sender, not from tool arguments. Read current revisions before updates. Call alone in its batch. Reading a message never completes its task.",
+  "presentation": {
+    "category": "channel-message",
+    "icon": "message",
+    "activity": {
+      "action": {
+        "zh-CN": "更新对话事项",
+        "en-US": "Update conversation tasks"
+      },
+      "argumentPath": "/title"
+    }
+  },
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "taskId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "revision": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "title": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "status": {
+        "type": "string",
+        "enum": ["pending", "active", "waiting", "completed", "cancelled"]
+      },
+      "nextAction": {
+        "type": ["string", "null"],
+        "maxLength": 1024
+      },
+      "wakeAt": {
+        "type": ["string", "null"],
+        "format": "date-time"
+      },
+      "messages": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "sequence": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "relation": {
+              "type": "string",
+              "enum": ["request", "supplement", "ambient"]
+            }
+          },
+          "required": ["sequence", "relation"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["messages"],
+    "additionalProperties": false,
+    "dependencies": {
+      "taskId": ["revision"],
+      "revision": ["taskId"]
+    }
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "tasks": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "status": {
+              "enum": ["pending", "active", "waiting", "completed", "cancelled"]
+            },
+            "ownerId": {
+              "type": "string"
+            },
+            "participantIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "nextAction": {
+              "type": "string"
+            },
+            "wakeAt": {
+              "type": "string"
+            },
+            "createdSequence": {
+              "type": "integer"
+            },
+            "updatedSequence": {
+              "type": "integer"
+            },
+            "revision": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "status",
+            "ownerId",
+            "participantIds",
+            "createdSequence",
+            "updatedSequence",
+            "revision"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["tasks"],
+    "additionalProperties": false
+  },
+  "permissions": ["channel:coordinate"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ResultAssessment": "ProcessExit",
+    "DeadlinePolicy": "ModelAware",
+    "Scheduling": "SelfManaged"
+  },
+  "resources": [],
+  "sources": [],
+  "surfaces": ["channel"],
+  "platforms": ["onebot11", "qq", "onebot"],
+  "search": {
+    "Summary": "按已读消息登记独立请求、任务补充和旁观消息，保存任务进度、待续事项及下次回访时间。",
+    "Tags": ["渠道", "任务", "插话", "等待"],
+    "Capabilities": [
+      {
+        "Id": "channel.coordinate",
+        "Title": "Coordinate conversation tasks",
+        "Description": "Persist task ownership, message associations and outstanding commitments in the current channel lane.",
+        "Facets": {
+          "Actions": ["read", "coordinate"],
+          "Targets": ["conversation-tasks"],
+          "Inputs": ["observed-sequences", "task-revision"],
+          "Outputs": ["conversation-state"],
+          "Effects": ["conversation-state-update"]
+        },
+        "Aliases": ["登记渠道待办", "关联任务补充"],
+        "Risk": {
+          "SideEffect": "conversation-state-update",
+          "Permission": "channel-coordinate"
+        }
+      }
+    ],
+    "UseCases": ["多人同时提问时保留独立请求", "保存待续事项"],
+    "Examples": ["将用户的新消息关联到当前任务"],
+    "Avoid": ["不凭空填写消息编号或将旁观消息当成任务授权"]
+  },
+  "evidenceCapabilities": []
+}

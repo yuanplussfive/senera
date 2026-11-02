@@ -46,9 +46,13 @@ export function extractAgentWebContent(input: AgentWebContentExtractionInput): A
   removeNonContentElements(document);
   const links = collectLinks(document, input.finalUrl, input.maxLinks);
   const titleFromDocument = compactText(document.querySelector("title")?.textContent ?? "", 512);
-  const article = input.mode === "page" ? undefined : new Readability(document as unknown as Document).parse();
+  const article =
+    input.mode === "page" || !document.documentElement
+      ? undefined
+      : new Readability(document as unknown as Document).parse();
   const title = compactText(article?.title ?? titleFromDocument ?? input.finalUrl, 512);
-  const contentHtml = article?.content ?? document.body?.innerHTML ?? input.source;
+  const contentHtml =
+    article?.content ?? (document.documentElement ? document.body?.innerHTML : undefined) ?? input.source;
   const markdown = normalizeMarkdown(Turndown.turndown(contentHtml), input.maxMarkdownChars);
 
   return {

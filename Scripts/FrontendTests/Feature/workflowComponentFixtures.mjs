@@ -25,8 +25,6 @@ export function createRun(overrides = {}) {
     xmlPreview: "",
     visibleText: "",
     displayText: "",
-    displayTarget: "",
-    displayedChars: 0,
     expectedOutputMode: "open",
     ...overrides,
   };

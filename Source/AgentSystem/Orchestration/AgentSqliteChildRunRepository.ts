@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { z } from "zod";
+import { AgentResourceAccessScopeSchema } from "../Execution/SeneraResourceAccess.js";
 import { AgentExecutionApprovalModeValues } from "../Safety/AgentExecutionApprovalMode.js";
 import { AgentRunContextModes } from "./AgentRunDispatchPort.js";
 import {
@@ -147,8 +148,14 @@ export class AgentSqliteChildRunRepository implements AgentChildRunRepository {
     id: string,
     childRequestId: string,
     updatedAt = new Date().toISOString(),
+    executionMode?: "wait" | "detach",
   ): AgentChildRunRecord | undefined {
-    this.statements.markResumed.run({ id, child_request_id: childRequestId, updated_at: updatedAt });
+    this.statements.markResumed.run({
+      id,
+      child_request_id: childRequestId,
+      updated_at: updatedAt,
+      execution_mode: executionMode ?? null,
+    });
     return this.get(id);
   }
 
@@ -417,6 +424,7 @@ const AgentChildRunExecutionContractSchema = z
       )
       .optional(),
     resourceCoverage: z.enum(["declared", "unscoped"]).optional(),
+    resourceAccessScope: AgentResourceAccessScopeSchema.optional(),
     resourceClaims: z
       .array(
         z

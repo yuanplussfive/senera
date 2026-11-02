@@ -16,6 +16,7 @@ import type { AgentSqliteStoreContract } from "../../../Source/AgentSystem/Datab
 import { AgentMemoryDatabaseContract } from "../../../Source/AgentSystem/Memory/AgentMemorySqlSchema.js";
 import { AgentSessionDatabaseContract } from "../../../Source/AgentSystem/SessionPersistence/AgentSessionSqlSchema.js";
 import { DefaultAgentTimeZone } from "../../../Source/AgentSystem/Time/AgentTime.js";
+import { SqliteAgentMemorySourceRepository } from "../../../Source/AgentSystem/Memory/AgentMemorySourceRepository.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -187,17 +188,81 @@ describe("SQLite database kernel", () => {
         "agent_execution_runs",
         "agent_execution_steps",
         "agent_todos",
-        "continuity_memory_delivery",
+        "continuity_memory_boundaries",
+        "continuity_memory_snapshot_versions",
         "memory_background_learning_requests",
         "memory_catalog_state",
         "memory_episodes",
+        "memory_knowledge_scores",
+        "memory_recall_receipts",
+        "memory_score_sync",
         "memory_sources",
+        "memory_task_completions",
+        "memory_task_requests",
+        "memory_utility_settlements",
         "pi_compaction_candidates",
       ]);
       expect(kernel.connection.prepare("SELECT catalog, revision FROM memory_catalog_state").all()).toEqual([
         { catalog: "physical_history", revision: 0 },
       ]);
       expect(kernel.connection.pragma("foreign_key_check")).toEqual([]);
+    });
+  });
+
+  test("upgrades v5 memory without losing source history and retires only unattributed snapshot caches", () => {
+    const databasePath = temporaryDatabasePath("memory-evidence-upgrade.sqlite");
+    const legacy = new AgentSqliteDatabaseKernel({
+      databasePath,
+      contract: { ...AgentMemoryDatabaseContract, migrations: AgentMemoryDatabaseContract.migrations.slice(0, 5) },
+    });
+    const timestamp = "2026-10-27T00:00:00Z";
+    const repository = new SqliteAgentMemorySourceRepository(legacy);
+    const recorded = repository.recordCompletedTurn({
+      sessionId: "saved-session",
+      requestId: "saved-request",
+      startedAt: timestamp,
+      completedAt: timestamp,
+      userEntry: {
+        kind: "user.message",
+        id: "user",
+        requestId: "saved-request",
+        timestamp,
+        content: "Keep replies concise",
+      },
+      assistantEntry: {
+        kind: "assistant.decision",
+        id: "assistant",
+        requestId: "saved-request",
+        timestamp,
+        xml: "Acknowledged",
+      },
+      terminal: { kind: "FinalAnswer", content: "Acknowledged" },
+      executedTools: [],
+      modelProvider: {
+        id: "test",
+        providerId: "test",
+        kind: "test",
+        endpoint: "openai-chat",
+        baseUrl: "http://localhost",
+        model: "test-model",
+      },
+    });
+    legacy.connection
+      .prepare("INSERT INTO continuity_memory_snapshots VALUES(?,?,?,?)")
+      .run("saved-session", "[]", timestamp, timestamp);
+    repository.close();
+    legacy.close();
+    withDatabaseKernel(databasePath, AgentMemoryDatabaseContract, (kernel) => {
+      expect(kernel.recovery).toBeUndefined();
+      const migrated = new SqliteAgentMemorySourceRepository(kernel);
+      expect(migrated.listEpisodes("saved-session")).toEqual([recorded.episode]);
+      expect(migrated.listSources(recorded.episode.uri).sort((left, right) => left.id.localeCompare(right.id))).toEqual(
+        [...recorded.sources].sort((left, right) => left.id.localeCompare(right.id)),
+      );
+      expect(userTable(kernel.connection, "continuity_memory_snapshots")).toBe(false);
+      expect(kernel.connection.prepare("SELECT * FROM memory_knowledge_scores").all()).toEqual([]);
+      expect(kernel.connection.pragma("foreign_key_check")).toEqual([]);
+      migrated.close();
     });
   });
 

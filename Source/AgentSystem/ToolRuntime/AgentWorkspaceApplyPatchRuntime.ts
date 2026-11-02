@@ -1,15 +1,13 @@
 import path from "node:path";
+import { relativePathWithin } from "../Core/AgentPath.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { AgentWorkspaceResourceDomains, classifyAgentWorkspaceResource } from "../Core/AgentWorkspaceLayout.js";
 import { AgentResourceAccessAuthorities } from "../Execution/SeneraResourceAccess.js";
-import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { AgentExtensionPatchPreflightError } from "../ManagedExtensions/AgentExtensionPatchCandidate.js";
 import { AgentExtensionPatchPreflight } from "../ManagedExtensions/AgentExtensionPatchPreflight.js";
 import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/AgentXmlStatus.js";
-import {
-  WorkspaceApplyPatchArgumentsSchema,
-  WorkspaceApplyPatchOutputSchema,
-} from "./AgentWorkspaceApplyPatchContract.js";
+import { systemToolArguments } from "../SystemTools/AgentSystemToolDefinition.js";
+import type { WorkspaceApplyPatchArguments, WorkspaceApplyPatchResult } from "./AgentWorkspacePatchTypes.js";
 import { WorkspaceApplyPatchError, type WorkspacePatchFailureInput } from "./AgentWorkspacePatchError.js";
 import { buildWorkspacePatchPlan, collectWorkspacePatchChangedPaths } from "./AgentWorkspacePatchPlanBuilder.js";
 import {
@@ -30,28 +28,11 @@ interface WorkspacePatchAttemptSummary {
 }
 
 export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, context) => {
-  const parsed = WorkspaceApplyPatchArgumentsSchema.safeParse(args);
-  if (!parsed.success) {
-    return workspacePatchFailure({
-      code: AgentExecutionErrorCodes.InvalidToolArguments,
-      message: agentErrorMessage("workspacePatch.argumentsInvalid"),
-      diagnostics: parsed.error.issues.map((issue) => ({
-        message: issue.message,
-        pointer: `/${issue.path.join("/")}`,
-        path: issue.path.map((entry) => (typeof entry === "number" ? entry : String(entry))),
-      })),
-      details: {
-        phase: AgentToolProcessErrorPhases.RuntimeExecution,
-        issues: parsed.error.issues,
-        toolName: context.tool.name,
-      },
-    });
-  }
-
+  const input = systemToolArguments<WorkspaceApplyPatchArguments>(args);
   const reporting = openAgentHostToolReportingScope(context);
   let attempt: WorkspacePatchAttemptSummary | undefined;
   try {
-    const plan = await buildWorkspacePatchPlan(parsed.data, context.workspaceRoot, context.executionEnv);
+    const plan = await buildWorkspacePatchPlan(input, context.workspaceRoot, context.executionEnv);
     const changedPaths = collectWorkspacePatchChangedPaths(plan);
     attempt = {
       state: "planned",
@@ -89,6 +70,10 @@ export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, co
     });
     const workspaceMutationReceipt = await applyWorkspacePatchTransaction(plan, commitEnv);
     const appliedChangedPaths = workspaceMutationReceipt.entries.map((entry) => entry.path);
+    const externalChangedPaths = appliedChangedPaths.filter(
+      (value) => relativePathWithin(context.workspaceRoot, path.resolve(context.workspaceRoot, value)) === undefined,
+    );
+    const externalPaths = new Set(externalChangedPaths);
     reporting.reporter.progress({
       message: "Workspace patch applied.",
       completed: 4,
@@ -96,16 +81,20 @@ export const applyWorkspacePatchHostTool: AgentHostToolHandler = async (args, co
       unit: "stage",
     });
 
-    const result = WorkspaceApplyPatchOutputSchema.parse({
+    const result = {
       text: `Workspace patch applied ${plan.operations.length} operation(s) over ${appliedChangedPaths.length} path(s).`,
       applied: true,
       operationCount: plan.operations.length,
       changedPaths: appliedChangedPaths,
       operations: plan.operations,
+      ...(externalChangedPaths.length ? { externalChangedPaths } : {}),
       extensions: extensionValidations,
-    });
+    } satisfies WorkspaceApplyPatchResult;
     return toolProcessSuccessResult(result, {
-      workspaceMutationReceipt,
+      workspaceMutationReceipt: {
+        ...workspaceMutationReceipt,
+        entries: workspaceMutationReceipt.entries.filter((entry) => !externalPaths.has(entry.path)),
+      },
     });
   } catch (error) {
     if (error instanceof AgentExtensionPatchPreflightError) {

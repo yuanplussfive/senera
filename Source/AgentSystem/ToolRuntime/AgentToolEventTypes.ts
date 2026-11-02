@@ -5,7 +5,7 @@ import type { AgentLocalizedMessage } from "../I18n/AgentMessageCatalog.js";
 import type { AgentToolEventOrigin } from "./AgentToolEventOrigin.js";
 
 type AgentToolEventContext = Required<Pick<AgentEventContext, "requestId" | "step">> &
-  Partial<Pick<AgentEventContext, "sessionId">>;
+  Partial<Pick<AgentEventContext, "sessionId" | "scope">>;
 
 export type AgentToolDomainEvent =
   | {

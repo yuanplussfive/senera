@@ -68,6 +68,9 @@ assert.equal(models.itemFields?.find((field) => field.key === "Endpoint")?.requi
 assert.equal(models.itemFields?.find((field) => field.key === "Model")?.required, true);
 assert.equal(models.itemFields?.find((field) => field.key === "Chat")?.required, false);
 assert.equal(models.itemFields?.find((field) => field.key === "Chat")?.essential, true);
+const imageApi = models.itemFields?.find((field) => field.path.slice(-2).join(".") === "ImageGeneration.Api");
+assert.equal(imageApi?.required, true);
+assert.deepEqual(imageApi?.optionalParents, [["ModelProviders", "ImageGeneration"]]);
 assert.equal((models.effectiveValue as Array<{ Capabilities?: { Chat?: boolean } }>)[0]?.Capabilities?.Chat, true);
 
 assert.equal(findOptionalField(form, ["AgentLoop", "LoadedTools"]), undefined);
@@ -84,26 +87,16 @@ assert.equal(
 );
 assert.equal(
   findField(form, ["ContinuityLearning", "Enabled"]).description,
-  "为每个成功回合生成 MemOS 语义片段，并按上海时区归并日/月摘要。",
+  "为完成的回合学习语义记忆；按日历边界生成工作区 Markdown 日记与月记。",
 );
 
-const plannerModel = findField(form, ["ActionPlanner", "Client", "ModelProviderId"]);
-assert.equal(plannerModel.type, "string");
-assert.equal(plannerModel.valueSource, "missing");
-assert.equal(plannerModel.missing, true);
-assert.deepEqual(plannerModel.modelSelection, {
-  id: "planner-base",
-  capability: "Chat",
-  valueKind: "model-id",
-  mutation: "config",
-  required: true,
-});
+assert.equal(findOptionalField(form, ["ActionPlanner", "Client", "ModelProviderId"]), undefined);
 const modelSelections = form.sections.flatMap((section) =>
   section.fields.flatMap((field) => (field.modelSelection ? [field.modelSelection] : [])),
 );
 assert.deepEqual(
   modelSelections.map((selection) => selection.id),
-  ["assistant", "planner-base", "action-planner", "final-answer", "state-card", "continuity-learning"],
+  ["assistant", "final-answer", "state-card", "continuity-learning"],
 );
 assert.equal(findField(form, ["StateCard", "HistoryBudgetCharacters"]).effectiveValue, 4_000);
 assert.deepEqual(findField(form, ["StateCard", "Client", "ModelProviderId"]).modelSelection, {

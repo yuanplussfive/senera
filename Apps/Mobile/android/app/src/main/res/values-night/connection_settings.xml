@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="connection_settings_background">#171817</color>
+    <color name="connection_settings_surface">#222421</color>
+    <color name="connection_settings_text">#EBECE7</color>
+    <color name="connection_settings_secondary">#A2A59C</color>
+    <color name="connection_settings_line">#343630</color>
+    <color name="connection_settings_active">#94C5A5</color>
+    <color name="connection_settings_error">#F0A49C</color>
+    <color name="floating_background">#222421</color>
+    <bool name="connection_settings_light_bars">false</bool>
+</resources>

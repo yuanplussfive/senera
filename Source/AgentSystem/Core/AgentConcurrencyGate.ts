@@ -31,7 +31,7 @@ export class AgentConcurrencyGate {
     }
   }
 
-  private acquire(signal?: AbortSignal): Promise<AgentConcurrencyLease> {
+  acquire(signal?: AbortSignal): Promise<AgentConcurrencyLease> {
     throwIfAborted(signal);
     if (this.active < this.limit) {
       this.active += 1;

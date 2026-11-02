@@ -1,4 +1,6 @@
 import { clearPersistedStore, DEFAULT_USER_PROFILE, useStore } from "../../Frontend/src/store/sessionStore.ts";
+import { DEFAULT_WORKFLOW_DOCK_WIDTH_RATIO } from "../../Frontend/src/shared/responsive/workflowDock.ts";
+import { DEFAULT_TERMINAL_PANEL_HEIGHT_RATIO } from "../../Frontend/src/shared/responsive/terminalPanel.ts";
 
 export function installMemoryLocalStorage() {
   const values = new Map();
@@ -28,7 +30,10 @@ export function resetFrontendStore(overrides = {}) {
     activeSessionId: null,
     sidebarCollapsed: false,
     rightPanelCollapsed: false,
-    workflowDockWidth: 420,
+    workflowDockWidthRatio: DEFAULT_WORKFLOW_DOCK_WIDTH_RATIO,
+    terminalPanelOpen: false,
+    terminalPanelMaximized: false,
+    terminalPanelHeightRatio: DEFAULT_TERMINAL_PANEL_HEIGHT_RATIO,
     motionLevel: "full",
     viewedRunIdBySession: {},
     historyLoadedIds: {},
@@ -41,7 +46,9 @@ export function resetFrontendStore(overrides = {}) {
     historyRunEventBuffers: {},
     historyPreviewedIds: {},
     historyHydration: {},
+    runHistoryDetailStates: {},
     processedEventIds: {},
+    processedEventRequestIds: {},
     processedEventIdOrder: [],
     missingOnServerIds: {},
     pendingCreatedSessionIds: {},

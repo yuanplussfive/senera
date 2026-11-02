@@ -52,6 +52,14 @@ Pi's `tool_execution_start` callback begins before its internal preflight. It is
 
 `ShellCommandTool.timeoutMs=0` omits the process maximum duration and retains the active execution resource until its managed process tree exits or the user stops it. Positive values remain bounded by `ToolExecution.TimeoutSeconds`; idle expiry still applies to ordinary bounded resources. On Windows, the supervisor waits for all processes in the owned Job Object before reporting completion, so a shell wrapper exiting does not make its still-running children disappear. Closing the execution broker terminates remaining Job Objects to avoid orphaned processes.
 
+## Terminal presentation and output
+
+The terminal workbench uses Dockview for panel lifetime and splitting, and xterm for terminal emulation. Switching panels preserves the terminal instance; closing a panel waits for the execution-resource removal acknowledgement. Compact layouts merge groups without recreating their PTYs. Each selector entry has an independent close action that releases the execution resource, terminating a live process before removal. Stopped resources remain removable, including a resource left stopping by an earlier signal. The command hook deduplicates pending close requests. The action menu retains signal commands for stopping a process while keeping its output visible.
+
+`ExecutionResourceOutputStore` keeps a bounded text tail per resource and delivers output directly to xterm subscribers. `TerminalOutputWriter` serializes browser writes and drains bounded batches. This pacing does not impose end-to-end PTY backpressure, and text-tail replay is not a complete VT screen snapshot. State events with a cursor gap trigger the same inspect/recovery path as missing output; they must not advance the output cursor past missing data. WebGL is active only for visible terminals; the standard xterm DOM renderer preserves input and buffers when graphics acceleration is unavailable or lost.
+
+Terminal context-menu events copy the xterm selection through the shared clipboard writer and stop propagation. With no selection, they leave the clipboard untouched.
+
 ## MCP lifecycle
 
 Each package owns a standard MCP Server implementation. Persistent clients are pooled by endpoint revision and execution profile. Cancellation, progress, elicitation, task recovery, and connection replacement use MCP protocol behavior rather than a private stdout control protocol.

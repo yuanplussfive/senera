@@ -210,20 +210,25 @@ async function openGatewaySession(options: QqGatewayLoopOptions, onEstablished: 
           ready = true;
           options.setConnectionState("connected");
         } else if (payload.t === QqGatewayDispatch.InteractionCreate) {
-          void Promise.resolve(options.onInteraction(payload.d)).catch((error) => {
-            // A callback failure must not become an unhandled rejection on the
-            // long-lived Gateway task. The interaction handler is responsible
-            // for ACKing first; report the follow-up failure to the adapter's
-            // isolated fatal boundary instead of tearing down the socket.
-            options.onFatal(new Error(`QQ interaction handler failed: ${describe(error)}`));
-          });
+          void Promise.resolve()
+            .then(() => options.onInteraction(payload.d))
+            .catch((error) => {
+              // A callback failure must not become an unhandled rejection on the
+              // long-lived Gateway task. The interaction handler is responsible
+              // for ACKing first; report the follow-up failure to the adapter's
+              // isolated fatal boundary instead of tearing down the socket.
+              options.onFatal(new Error(`QQ interaction handler failed: ${describe(error)}`));
+            });
         } else {
-          void Promise.resolve(options.onDispatch(payload.t, payload.d as QqDispatchData)).catch((error) => {
-            // Dispatch handlers may perform attachment downloads or STT. A
-            // rejected event must be observed without terminating the socket
-            // reader or creating an unhandled rejection.
-            options.onFatal(new Error(`QQ dispatch handler failed: ${describe(error)}`));
-          });
+          const dispatchType = payload.t;
+          void Promise.resolve()
+            .then(() => options.onDispatch(dispatchType, payload.d as QqDispatchData))
+            .catch((error) => {
+              // Dispatch handlers may perform attachment downloads or STT. A
+              // rejected event must be observed without terminating the socket
+              // reader or creating an unhandled rejection.
+              options.onFatal(new Error(`QQ dispatch handler failed: ${describe(error)}`));
+            });
         }
         return;
       default:

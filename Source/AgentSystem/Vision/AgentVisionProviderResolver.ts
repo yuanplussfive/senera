@@ -1,6 +1,8 @@
 import { resolveModelProviderCatalog } from "../AgentDefaults.js";
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+import { agentModelMeetsRequirements, AgentModelRequestRequirements } from "../Core/AgentModelCapabilityContract.js";
+import { readAgentModelInvocationCapabilities } from "../ModelEndpoints/AgentModelRequirements.js";
 
 export interface AgentVisionProviderSelection {
   readonly conversationModelProviderId?: string;
@@ -17,16 +19,22 @@ export function resolveAgentVisionProvider(config: AgentSystemConfig, selection:
     } catch (cause) {
       throw new AgentLocalizedError("vision.modelNotFound", { modelProviderId: configuredModelProviderId }, { cause });
     }
-    if (!configured.Capabilities?.Vision) {
+    if (
+      !agentModelMeetsRequirements(
+        readAgentModelInvocationCapabilities(configured),
+        AgentModelRequestRequirements.Vision,
+      )
+    ) {
       throw new AgentLocalizedError("vision.modelNotCapable", { modelProviderId: configuredModelProviderId });
     }
     return configured;
   }
 
   const requested = providers.resolve(selection.conversationModelProviderId);
-  const provider =
-    providers.list().find((item) => item.id === requested.Id && item.capabilities.Vision) ??
-    providers.list().find((item) => item.capabilities.Vision);
+  const candidates = providers
+    .list()
+    .filter((item) => agentModelMeetsRequirements(item.capabilities, AgentModelRequestRequirements.Vision));
+  const provider = candidates.find((item) => item.id === requested.Id) ?? candidates[0];
   if (!provider) throw new AgentLocalizedError("vision.modelMissing");
   return providers.resolve(provider.id);
 }

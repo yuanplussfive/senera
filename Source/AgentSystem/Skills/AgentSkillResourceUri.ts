@@ -1,7 +1,7 @@
 /** Stable model-facing identity for a Skill package.
  *
  * This is deliberately not a filesystem path. Package resources must be
- * resolved by the SeneraCommand host using the Skill name and relative path,
+ * resolved by the senera CLI host using the Skill name and relative path,
  * so a desktop, container, and remote runtime expose the same prompt. */
 export function agentSkillLogicalUri(name: string): string {
   const normalized = name.trim();

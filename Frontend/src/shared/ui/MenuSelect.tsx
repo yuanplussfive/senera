@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type CSSProperties, type ReactNode } from "react";
 import { cn } from "../../lib/util";
 import {
   DropdownMenu,
@@ -9,12 +9,21 @@ import {
   DropdownMenuTrigger,
 } from "./DropdownMenu";
 import { AppIcon } from "./AppIcon";
+import { IconButton } from "./IconButton";
 
 export interface MenuSelectOption {
   value: string;
   label: string;
   description?: string;
   disabled?: boolean;
+}
+
+export interface MenuSelectOptionAction {
+  label: string;
+  icon: ReactNode;
+  disabled?: boolean;
+  destructive?: boolean;
+  onSelect: () => void;
 }
 
 export interface MenuSelectProps {
@@ -27,8 +36,11 @@ export interface MenuSelectProps {
   trailing?: ReactNode;
   renderValue?: (value: string, option: MenuSelectOption | undefined) => ReactNode;
   renderOption?: (option: MenuSelectOption) => ReactNode;
+  renderOptionIcon?: (option: MenuSelectOption) => ReactNode;
+  getOptionAction?: (option: MenuSelectOption) => MenuSelectOptionAction | undefined;
   triggerClassName?: string;
   contentClassName?: string;
+  contentStyle?: CSSProperties;
   emptyState?: ReactNode;
   ariaLabel?: string;
   onChange: (value: string) => void;
@@ -49,8 +61,11 @@ export function MenuSelect({
   trailing,
   renderValue,
   renderOption,
+  renderOptionIcon,
+  getOptionAction,
   triggerClassName,
   contentClassName,
+  contentStyle,
   emptyState,
   ariaLabel,
   onChange,
@@ -96,19 +111,56 @@ export function MenuSelect({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
-        className={cn("max-h-[320px] min-w-[240px] overflow-y-auto", contentClassName)}
+        style={contentStyle}
+        className={cn(
+          "max-h-[min(320px,var(--radix-popper-available-height))] min-w-[min(240px,var(--radix-popper-available-width))]",
+          contentClassName,
+        )}
       >
         {options.length > 0 ? (
           <DropdownMenuRadioGroup value={value} onValueChange={(next) => next !== value && onChange(next)}>
-            {options.map((option, index) => (
-              <DropdownMenuRadioItem
-                key={`${option.value || "empty"}-${index}`}
-                value={option.value}
-                disabled={option.disabled}
-              >
-                {renderOption ? renderOption(option) : option.label}
-              </DropdownMenuRadioItem>
-            ))}
+            {options.map((option, index) => {
+              const action = getOptionAction?.(option);
+              const selection = (
+                <DropdownMenuRadioItem
+                  value={option.value}
+                  disabled={option.disabled}
+                  aria-label={option.label}
+                  aria-description={option.description}
+                  icon={renderOptionIcon?.(option)}
+                  className="min-w-0 flex-1"
+                >
+                  {renderOption ? renderOption(option) : option.label}
+                </DropdownMenuRadioItem>
+              );
+              return (
+                <div key={`${option.value || "empty"}-${index}`} className="flex items-center gap-1">
+                  {selection}
+                  {action ? (
+                    <DropdownMenuItem
+                      asChild
+                      destructive={action.destructive}
+                      disabled={action.disabled}
+                      onSelect={(event) => {
+                        event.preventDefault();
+                        action.onSelect();
+                      }}
+                    >
+                      <IconButton
+                        label={action.label}
+                        tooltip={action.label}
+                        size="sm"
+                        tone={action.destructive ? "danger" : "muted"}
+                        disabled={action.disabled}
+                        className="mr-1 min-h-7 min-w-7 justify-center p-1"
+                      >
+                        {action.icon}
+                      </IconButton>
+                    </DropdownMenuItem>
+                  ) : null}
+                </div>
+              );
+            })}
           </DropdownMenuRadioGroup>
         ) : emptyState != null ? (
           <DropdownMenuItem disabled>{emptyState}</DropdownMenuItem>

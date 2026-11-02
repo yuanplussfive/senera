@@ -1,5 +1,4 @@
 import { AgentResourceUriError } from "./AgentResourceUriError.js";
-import { sha256Hex } from "../Core/AgentHash.js";
 import { AgentResourceUriContract } from "./AgentResourceContract.js";
 
 const ResourceIdPattern = new RegExp(`^${AgentResourceUriContract.ResourceIdPattern}$`, "u");
@@ -19,12 +18,6 @@ export function createAgentResourceUri(resourceId: string): string {
     `${encodeURIComponent(normalizedId)}`,
     `${AgentResourceUriContract.Protocol}//${AgentResourceUriContract.Authority}/`,
   ).toString();
-}
-
-export function createAgentResourceId(value: string): string {
-  const normalized = value.trim();
-  if (ResourceIdPattern.test(normalized)) return normalized;
-  return `res_${sha256Hex(normalized).slice(0, 32)}`;
 }
 
 export function normalizeAgentResourceUri(value: string): string | undefined {

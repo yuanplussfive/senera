@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   AgentSelfCommandRegistry,
+  AgentSelfCommandModelBindings,
   agentSelfCommandId,
   findAgentSelfCommandSpec,
   projectAgentSelfCommandCapabilities,
@@ -41,10 +42,21 @@ describe("senera self command registry", () => {
     expect(findAgentSelfCommandSpec("config", "get")?.sensitive).toBeUndefined();
   });
 
-  test("help text lists every registry family and usage", () => {
+  test("Agent-private commands declare their model binding in the registry", () => {
+    expect(findAgentSelfCommandSpec("diary", "read")?.modelBinding).toBe(
+      AgentSelfCommandModelBindings.ActiveSessionAgent,
+    );
+    expect(findAgentSelfCommandSpec("preset", "enable")?.modelBinding).toBe(
+      AgentSelfCommandModelBindings.ActiveSessionAgent,
+    );
+    expect(findAgentSelfCommandSpec("preset", "read")?.modelBinding).toBeUndefined();
+  });
+
+  test("help text lists every registry family and domain help includes its usage", () => {
     const help = renderAgentSelfCliHelp();
     for (const spec of AgentSelfCommandRegistry) {
-      expect(help).toContain(spec.usage);
+      expect(help).toContain(`senera ${spec.command}`);
+      expect(renderAgentSelfCliHelp(spec.command)).toContain(spec.usage);
     }
     expect(help).toContain("senera config");
     expect(help).toContain("senera sessions");

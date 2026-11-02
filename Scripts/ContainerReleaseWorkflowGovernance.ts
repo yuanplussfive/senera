@@ -24,8 +24,8 @@ export function inspectContainerReleasePipeline(workflow: string): string[] {
         "actions/upload-artifact@v6",
       ]),
     );
-    if (desktopJob.includes("actions/download-artifact")) {
-      violations.push(`${ReleaseWorkflowLabel} job desktop must not depend on a separately packaged sandbox asset.`);
+    if (desktopJob.includes("actions/download-artifact") && !desktopJob.includes("name: release-web")) {
+      violations.push(`${ReleaseWorkflowLabel} job desktop may only reuse the verified frontend artifact.`);
     }
     if (desktopJob.includes("gh release upload") || desktopJob.includes("environment: release-stable")) {
       violations.push(`${ReleaseWorkflowLabel} job desktop must build an internal artifact before stable publication.`);

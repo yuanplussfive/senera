@@ -15,7 +15,7 @@ const OptionalNonNegativeQuotaSchema = z
 
 const AgentChildRunDeadlineConfigurationSchema = z
   .object({
-    softTimeoutMs: z.number().int().min(60_000).max(86_400_000).default(1_500_000),
+    softTimeoutMs: z.number().int().min(60_000).max(86_400_000).default(900_000),
     wrapUpTimeoutMs: z.number().int().min(10_000).max(1_800_000).default(180_000),
     snapshotIntervalMs: z.number().int().min(500).max(60_000).default(5_000),
     activityExtension: z
@@ -38,7 +38,7 @@ const AgentChildRunDeadlineConfigurationSchema = z
     }
   })
   .default({
-    softTimeoutMs: 1_500_000,
+    softTimeoutMs: 900_000,
     wrapUpTimeoutMs: 180_000,
     snapshotIntervalMs: 5_000,
     activityExtension: { recentActivityWindowMs: 30_000, stepMs: 60_000, maximumMs: 120_000 },
@@ -47,6 +47,7 @@ const AgentChildRunDeadlineConfigurationSchema = z
 const AgentDelegationModelPoolConfigurationSchema = z
   .object({
     inheritParent: z.boolean().default(true),
+    includeConfiguredModels: z.boolean().default(false),
     modelProviderIds: z.array(NonEmptyConfigurationStringSchema).default([]),
   })
   .strict()
@@ -61,7 +62,7 @@ const AgentDelegationModelPoolConfigurationSchema = z
         message: `Delegation model pool entries must be unique: ${[...new Set(duplicateModelProviderIds)].join(", ")}.`,
       });
     }
-    if (!value.inheritParent && value.modelProviderIds.length === 0) {
+    if (!value.inheritParent && !value.includeConfiguredModels && value.modelProviderIds.length === 0) {
       context.addIssue({
         code: "custom",
         path: ["modelProviderIds"],
@@ -69,7 +70,7 @@ const AgentDelegationModelPoolConfigurationSchema = z
       });
     }
   })
-  .default({ inheritParent: true, modelProviderIds: [] });
+  .default({ inheritParent: true, includeConfiguredModels: true, modelProviderIds: [] });
 
 const AgentDelegationCoordinationConfigurationSchema = z
   .object({
@@ -92,11 +93,11 @@ const AgentDelegationControlConfigurationSchema = z
   .object({
     todo: z
       .object({
-        required: z.boolean().default(true),
+        required: z.boolean().default(false),
         minimumItems: z.number().int().min(1).max(256).default(1),
       })
       .strict()
-      .default({ required: true, minimumItems: 1 }),
+      .default({ required: false, minimumItems: 1 }),
     budget: z
       .object({
         maxModelTurns: z.number().int().min(1).max(4096).default(32),
@@ -109,7 +110,7 @@ const AgentDelegationControlConfigurationSchema = z
   })
   .strict()
   .default({
-    todo: { required: true, minimumItems: 1 },
+    todo: { required: false, minimumItems: 1 },
     budget: { maxModelTurns: 32, maxToolCalls: 128, noProgressTurns: 3, noProgressTimeoutMs: 180_000 },
   });
 
@@ -140,19 +141,22 @@ export const AgentDelegationConfigurationSchema = z
     execution: z
       .object({
         deadline: AgentChildRunDeadlineConfigurationSchema,
-        maxDepth: OptionalNonNegativeQuotaSchema,
+        maxDepth: OptionalNonNegativeQuotaSchema.default(1),
+        maxActivePerTree: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(8),
         control: AgentDelegationControlConfigurationSchema,
       })
       .strict()
       .default({
+        maxDepth: 1,
+        maxActivePerTree: 8,
         deadline: {
-          softTimeoutMs: 1_500_000,
+          softTimeoutMs: 900_000,
           wrapUpTimeoutMs: 180_000,
           snapshotIntervalMs: 5_000,
           activityExtension: { recentActivityWindowMs: 30_000, stepMs: 60_000, maximumMs: 120_000 },
         },
         control: {
-          todo: { required: true, minimumItems: 1 },
+          todo: { required: false, minimumItems: 1 },
           budget: { maxModelTurns: 32, maxToolCalls: 128, noProgressTurns: 3, noProgressTimeoutMs: 180_000 },
         },
       }),
@@ -205,6 +209,30 @@ export const AgentSchedulerConfigurationSchema = z
 export type AgentDelegationConfiguration = z.infer<typeof AgentDelegationConfigurationSchema>;
 export type AgentSchedulerConfiguration = z.infer<typeof AgentSchedulerConfigurationSchema>;
 
+export const AgentJobsConfigurationSchema = z
+  .object({
+    waitTimeoutMs: z.number().int().nonnegative().default(30_000),
+    maxWaitTimeoutMs: z.number().int().positive().default(600_000),
+    completionDelivery: z.enum(["wakeup", "quiet"]).default("wakeup"),
+    maxConsecutiveWakes: OptionalNonNegativeQuotaSchema.default(null),
+    inlineOutputBytes: z.number().int().nonnegative().default(2_048),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.waitTimeoutMs > value.maxWaitTimeoutMs)
+      context.addIssue({
+        code: "custom",
+        path: ["waitTimeoutMs"],
+        message: "Default wait cannot exceed the maximum wait.",
+      });
+  });
+
+export type AgentJobsConfiguration = z.infer<typeof AgentJobsConfigurationSchema>;
+
+export function resolveAgentJobsConfiguration(config: AgentSystemConfig): AgentJobsConfiguration {
+  return AgentJobsConfigurationSchema.parse(config.Extensions?.jobs?.Configuration ?? {});
+}
+
 export function resolveAgentDelegationConfiguration(config: AgentSystemConfig): AgentDelegationConfiguration {
   return AgentDelegationConfigurationSchema.parse(config.Extensions?.["agent-delegation"]?.Configuration ?? {});
 }
@@ -235,8 +263,3 @@ export function resolveAgentChildRunWaitTimeoutMs(config: AgentSystemConfig, req
 export function resolveAgentSchedulerConfiguration(config: AgentSystemConfig): AgentSchedulerConfiguration {
   return AgentSchedulerConfigurationSchema.parse(config.Extensions?.["agent-scheduler"]?.Configuration ?? {});
 }
-
-export const AgentOrchestrationConfigurationContracts = Object.freeze([
-  { extensionId: "agent-delegation", schema: AgentDelegationConfigurationSchema },
-  { extensionId: "agent-scheduler", schema: AgentSchedulerConfigurationSchema },
-] as const);

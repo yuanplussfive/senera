@@ -1,9 +1,17 @@
 .model-thinking-preview .markdown-renderer {
+  display: block;
+  min-width: 0;
+  margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: inherit;
   line-height: inherit;
+}
+
+.model-thinking-preview > div,
+.model-thinking-preview > div > div {
+  display: contents;
 }
 
 .model-thinking-preview .markdown-renderer > * {
@@ -18,10 +26,6 @@
 .model-thinking-preview .markdown-renderer p {
   font-size: inherit;
   line-height: inherit;
-}
-
-.model-thinking-disclosure {
-  border-block: 1px solid var(--line-subtle);
 }
 
 .model-thinking-disclosure__trigger {
@@ -66,10 +70,11 @@
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
-  align-items: baseline;
+  align-items: center;
   gap: 5px;
   font-size: var(--theme-chat-assistant-font-size-scaled, 13px);
   line-height: var(--theme-chat-assistant-line-height, 20px);
+  white-space: nowrap;
 }
 
 .model-thinking-disclosure__label,
@@ -97,6 +102,7 @@
 }
 
 .model-thinking-disclosure__preview {
+  flex: 1 1 0%;
   min-width: 0;
   overflow: hidden;
   color: var(--content-secondary);
@@ -119,16 +125,20 @@
   transform: rotate(90deg);
 }
 
-.model-thinking-disclosure__content {
-  border-top: 1px solid var(--line-subtle);
-}
-
 .model-thinking-disclosure__transcript {
   max-height: min(28rem, 55vh);
-  padding: 8px 0 10px 22px;
+  margin-top: 6px;
+  padding: 12px 14px 14px;
   overflow-y: auto;
+  background: var(--surface-muted);
+  border-radius: 10px;
+  scrollbar-gutter: stable;
   overscroll-behavior: contain;
   color: var(--content-primary);
+}
+
+.model-thinking-disclosure__transcript-content {
+  min-width: 0;
 }
 
 .model-thinking-disclosure__entry {

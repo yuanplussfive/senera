@@ -1,11 +1,13 @@
+import { Tooltip } from "../../../shared/ui/Tooltip";
 import { useEffect, useMemo, useState } from "react";
 import type { McpServerSettingsItem, SystemExtensionSettingsItem } from "../../../api/eventTypes";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { resolveFrontendLocalizedText } from "../../../i18n/frontendLocaleModel";
 import { useFrontendLocale } from "../../../i18n/useFrontendLocale";
-import { AppIcon, ScrollArea, SegmentedControl, StateView, Switch } from "../../../shared/ui";
+import { AppIcon, Button, IconButton, ScrollArea, SegmentedControl, StateView, Switch } from "../../../shared/ui";
 import { AgentSystemExtensionSettingsSurfaces } from "../../../../../Source/AgentSystem/Types/AgentSystemExtensionSettingsSurface";
 import type { SettingsSystemConfigHandle } from "../SettingsContracts";
+import { SettingsSectionLoading } from "../SettingsLoading";
 import type { ConfigSettingsDraftState } from "./configSettingsDraftState";
 import { McpServersSection } from "./McpServersSection";
 import {
@@ -14,7 +16,7 @@ import {
   SystemToolsSection,
   writeSettingsExtensionDraft,
 } from "./SystemToolsSection";
-import { PluginIdentityFrame, PluginIdentityIcon } from "./PluginIdentityIcon";
+import { PluginIdentityTile, PluginIdentityIcon } from "./PluginIdentityIcon";
 import {
   isMcpServerEnablementMutable,
   readMcpServerEnabledDraft,
@@ -50,7 +52,7 @@ export function PluginsSection({
   const locale = useFrontendLocale();
   const [filter, setFilter] = useState<PluginFilter>("all");
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<PluginDirectoryItem | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const extensions = useMemo(
     () =>
       (systemConfig?.systemExtensions ?? []).filter(
@@ -58,18 +60,21 @@ export function PluginsSection({
       ),
     [systemConfig?.systemExtensions],
   );
-  const pluginItems = useMemo<readonly PluginDirectoryItem[]>(() => {
-    const extensionItems = extensions.map((source) => ({
-      kind: "extension" as const,
-      key: `extension:${source.id}`,
-      source,
-      enabled: readSettingsExtensionDraft(draftState.draft, source).enabled,
-      configurationFieldCount: projectVisibleExtensionConfigurationSections(
+  const extensionItems = useMemo(
+    () =>
+      extensions.map((source) => ({
+        kind: "extension" as const,
+        key: `extension:${source.id}`,
         source,
-        locale,
-        systemConfig?.configSnapshot ?? null,
-      ).reduce((count, section) => count + section.fields.length, 0),
-    }));
+        configurationFieldCount: projectVisibleExtensionConfigurationSections(
+          source,
+          locale,
+          systemConfig?.configSnapshot ?? null,
+        ).reduce((count, section) => count + section.fields.length, 0),
+      })),
+    [extensions, locale, systemConfig?.configSnapshot],
+  );
+  const pluginItems = useMemo<readonly PluginDirectoryItem[]>(() => {
     const mcpItems = (systemConfig?.mcpServers ?? []).map((source) => ({
       kind: "mcp" as const,
       key: `mcp:${source.id}`,
@@ -77,8 +82,14 @@ export function PluginsSection({
       configurationFieldCount: source.inputs.length,
       enabled: readMcpServerEnabledDraft(draftState.draft, source),
     }));
-    return [...extensionItems, ...mcpItems];
-  }, [draftState.draft, extensions, locale, systemConfig?.configSnapshot, systemConfig?.mcpServers]);
+    return [
+      ...extensionItems.map((item) => ({
+        ...item,
+        enabled: readSettingsExtensionDraft(draftState.draft, item.source).enabled,
+      })),
+      ...mcpItems,
+    ];
+  }, [draftState.draft, extensionItems, systemConfig?.mcpServers]);
   const visibleItems = useMemo(() => {
     const normalizedQuery = search.trim().toLocaleLowerCase(locale);
     return pluginItems.filter((item) => {
@@ -93,14 +104,14 @@ export function PluginsSection({
         .includes(normalizedQuery);
     });
   }, [filter, locale, pluginItems, search]);
-  const selectedItem = selected ? (pluginItems.find((item) => item.key === selected.key) ?? null) : null;
+  const selectedItem = selectedKey ? (pluginItems.find((item) => item.key === selectedKey) ?? null) : null;
 
   useEffect(() => {
-    if (selected && !selectedItem) setSelected(null);
-  }, [selected, selectedItem]);
+    if (selectedKey && !selectedItem) setSelectedKey(null);
+  }, [selectedKey, selectedItem]);
 
   if (!systemConfig || !systemConfig.toolSettingsSynced.systemTools || !systemConfig.toolSettingsSynced.mcpServers) {
-    return <StateView status="loading" description={frontendMessage("settings.plugins.loading")} />;
+    return <SettingsSectionLoading variant="directory" />;
   }
 
   const setExtensionEnabled = (extension: SystemExtensionSettingsItem, enabled: boolean): void => {
@@ -120,16 +131,17 @@ export function PluginsSection({
         item={selectedItem}
         draftState={draftState}
         systemConfig={systemConfig}
-        onBack={() => setSelected(null)}
+        onBack={() => setSelectedKey(null)}
       />
     );
   }
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-canvas" data-plugins-directory>
-      <header className="shrink-0 border-b border-line-subtle/70 bg-surface-canvas px-5 py-3.5 sm:px-7">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <header className="shrink-0 px-5 pt-4 sm:px-8 sm:pt-5">
+        <div className="mx-auto flex max-w-[860px] flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-line-subtle pb-1">
           <SegmentedControl
+            variant="underline"
             ariaLabel={frontendMessage("settings.plugins.typeFilter")}
             options={[
               {
@@ -148,40 +160,35 @@ export function PluginsSection({
             value={filter}
             onChange={setFilter}
           />
-          <div className="flex min-w-[min(100%,280px)] flex-1 items-center justify-end sm:flex-none">
-            <label className="flex h-9 min-w-0 max-w-[320px] flex-1 items-center gap-2 rounded-lg border border-line-subtle/70 bg-surface-subtle/55 px-3 text-content-muted transition focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus sm:w-[260px]">
+          <div className="mb-1 flex min-w-0 basis-full sm:basis-auto">
+            <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-content-muted transition-colors focus-within:bg-surface-subtle focus-within:ring-2 focus-within:ring-accent-focus sm:w-52">
               <AppIcon icon="search" size={15} aria-hidden="true" />
               <input
                 value={search}
                 aria-label={frontendMessage("settings.plugins.search")}
                 placeholder={frontendMessage("settings.plugins.search")}
-                className="min-w-0 flex-1 bg-transparent text-[12.5px] text-content-primary outline-none placeholder:text-content-muted"
+                className="min-w-0 flex-1 bg-transparent text-[13px] text-content-primary outline-none placeholder:text-content-muted"
                 onChange={(event) => setSearch(event.target.value)}
               />
               {search ? (
-                <button
-                  type="button"
-                  aria-label={frontendMessage("settings.entityNavigator.clearSearch")}
-                  className="grid h-5 w-5 shrink-0 place-items-center rounded text-content-muted hover:bg-surface-hover hover:text-content-primary"
+                <IconButton
+                  label={frontendMessage("settings.entityNavigator.clearSearch")}
+                  size="sm"
+                  tone="muted"
                   onClick={() => setSearch("")}
                 >
                   <AppIcon icon="close" size={14} aria-hidden="true" />
-                </button>
+                </IconButton>
               ) : null}
-            </label>
+            </div>
           </div>
         </div>
       </header>
       <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
-        <div className="mx-auto w-full max-w-[1180px] px-5 py-6 sm:px-7 sm:py-8">
-          <div className="mb-4">
-            <h2 className="text-[13px] font-semibold text-content-primary">
-              {frontendMessage("settings.plugins.directory")}
-            </h2>
-          </div>
+        <div className="mx-auto w-full max-w-[924px] px-5 py-3 sm:px-8 sm:py-4">
           {visibleItems.length ? (
             <div
-              className="grid min-w-0 grid-cols-1 gap-x-10 border-y border-line-subtle sm:grid-cols-2"
+              className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] gap-x-8 gap-y-1"
               data-plugin-directory-grid
             >
               {visibleItems.map((item) => (
@@ -190,7 +197,7 @@ export function PluginsSection({
                   item={item}
                   locale={locale}
                   disabled={draftState.saving || systemConfig.socketStatus !== "open"}
-                  onSelect={() => setSelected(item)}
+                  onSelect={() => setSelectedKey(item.key)}
                   onExtensionEnabledChange={setExtensionEnabled}
                   onMcpEnabledChange={setMcpServerEnabled}
                 />
@@ -228,31 +235,36 @@ function PluginDirectoryRow({
   const description = resolveFrontendLocalizedText(item.source.description, locale);
   const presentation = item.source.presentation;
   const configurationSummary =
-    item.configurationFieldCount === 0
-      ? frontendMessage("settings.entityPreview.noConfiguration")
-      : frontendMessage("settings.entityPreview.configurationCount", { count: item.configurationFieldCount });
+    item.configurationFieldCount > 0
+      ? frontendMessage("settings.entityPreview.configurationCount", { count: item.configurationFieldCount })
+      : undefined;
   return (
     <div
-      className="group flex min-h-[92px] min-w-0 items-center border-b border-line-subtle last:border-b-0 sm:[&:nth-last-child(2):nth-child(odd)]:border-b-0"
+      className="group flex min-w-0 items-center gap-3 border-b border-line-subtle py-2"
       data-plugin-directory-item={item.kind}
     >
       <button
         type="button"
-        className="flex min-h-[92px] min-w-0 flex-1 items-center gap-3 px-1 py-4 text-left outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-accent-focus sm:px-2"
+        className="flex min-h-[100px] min-w-0 flex-1 items-center gap-3.5 rounded-md py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
         onClick={onSelect}
       >
-        <PluginIdentityFrame>
-          <PluginIdentityIcon brandIcon={presentation?.brandIcon} icon={presentation?.icon} size={18} />
-        </PluginIdentityFrame>
+        <PluginIdentityTile>
+          <PluginIdentityIcon brandIcon={presentation?.brandIcon} icon={presentation?.icon} size={26} />
+        </PluginIdentityTile>
         <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-[13px] font-medium text-content-primary">{displayName}</span>
-            {item.kind === "extension" ? (
-              <span className="shrink-0 text-[10.5px] tabular-nums text-content-muted">v{item.source.version}</span>
-            ) : null}
+          <span className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
+            <span className="text-[13px] font-medium leading-5 text-content-primary group-hover:text-content-strong">
+              {displayName}
+            </span>
           </span>
-          <span className="mt-1 block truncate text-[11.5px] leading-4 text-content-secondary">{description}</span>
-          <span className="mt-1 block text-[10.5px] leading-4 text-content-muted">{configurationSummary}</span>
+          <Tooltip content={description}>
+            <span className="mt-1 line-clamp-2 text-[12px] font-normal leading-5 text-content-secondary">
+              {description}
+            </span>
+          </Tooltip>
+          {configurationSummary ? (
+            <span className="mt-1 block text-[10px] text-content-muted">{configurationSummary}</span>
+          ) : null}
         </span>
       </button>
       <span className="shrink-0">
@@ -291,14 +303,14 @@ function PluginDetailPage({
 }): JSX.Element {
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-canvas" data-plugin-detail-page>
-      <button
-        type="button"
-        className="flex h-11 shrink-0 items-center gap-1.5 border-b border-line-subtle/70 px-5 text-left text-[12.5px] font-medium text-content-secondary transition hover:bg-surface-hover hover:text-content-primary sm:px-7"
-        onClick={onBack}
-      >
-        <AppIcon icon="chevron-right" size={16} className="rotate-180" aria-hidden="true" />
-        {frontendMessage("settings.plugins.backToDirectory")}
-      </button>
+      <div className="shrink-0 px-5 pt-3 sm:px-8">
+        <div className="mx-auto max-w-[860px]">
+          <Button variant="ghost" size="sm" className="-ml-2 gap-1.5 text-content-secondary" onClick={onBack}>
+            <AppIcon icon="arrow-left" size={14} aria-hidden="true" />
+            {frontendMessage("settings.plugins.backToDirectory")}
+          </Button>
+        </div>
+      </div>
       <div className="min-h-0 flex-1 overflow-hidden">
         {item.kind === "extension" ? (
           <SystemToolsSection draftState={draftState} systemConfig={systemConfig} detailExtensionId={item.source.id} />

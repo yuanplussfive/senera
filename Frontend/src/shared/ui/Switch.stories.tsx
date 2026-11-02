@@ -1,6 +1,6 @@
 import type { Story } from "@ladle/react";
 import { useState } from "react";
-import { Switch } from "./Switch";
+import { Switch, SwitchTrack } from "./Switch";
 
 export const States: Story = () => {
   const [enabled, setEnabled] = useState(true);
@@ -12,7 +12,7 @@ export const States: Story = () => {
         <div>
           <h1 className="text-[20px] font-semibold text-content-strong">开关</h1>
           <p className="mt-1 text-[12.5px] leading-5 text-content-muted">
-            开态轨道用中性强色（content-strong），不跟随主题强调色；公共开关只负责轨道、状态和焦点，页面文字放在外层普通布局中。
+            开态使用中性深色，关闭态使用浅色轨道与细边界；不可用态降低对比并停止响应。开关只展示状态，名称与说明放在外层。
           </p>
         </div>
 
@@ -21,6 +21,17 @@ export const States: Story = () => {
           <div className="flex flex-wrap items-center gap-5">
             <Switch checked={enabled} ariaLabel="示例开关" onCheckedChange={setEnabled} />
             <Switch checked={false} disabled ariaLabel="禁用示例开关" onCheckedChange={() => undefined} />
+          </div>
+        </section>
+
+        <section className="border-t border-line-subtle pt-5">
+          <h2 className="text-[14px] font-semibold text-content-strong">复合行的初始状态</h2>
+          <p className="mt-1 text-[12px] text-content-muted">首次显示时滑块已有完整尺寸；只有后续状态变化参与动画。</p>
+          <div className="mt-3 flex items-center gap-5">
+            <SwitchTrack checked />
+            <SwitchTrack checked={false} />
+            <SwitchTrack checked disabled />
+            <SwitchTrack checked size="md" />
           </div>
         </section>
 

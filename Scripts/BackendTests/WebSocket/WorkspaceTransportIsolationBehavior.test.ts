@@ -1,3 +1,4 @@
+import { AgentServerAccessProfiles } from "../../../Source/AgentSystem/Auth/AgentServerAccessPolicy.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
@@ -9,7 +10,10 @@ import { expect, test, vi } from "vitest";
 import { AgentWebSocketServer } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketServer.js";
 import { AgentWebSocketTransport } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketTransport.js";
 import { AgentCallbackRunEventWriter } from "../../../Source/AgentSystem/WebSocket/AgentCallbackRunEventWriter.js";
+import { AgentUserProfileManager } from "../../../Source/AgentSystem/Session/AgentUserProfile.js";
+import { InMemorySessionRepository } from "../../../Source/AgentSystem/SessionPersistence/InMemorySessionRepository.js";
 import type { AgentDomainEvent } from "../../../Source/AgentSystem/Events/AgentEvent.js";
+import type { AgentSessionManager } from "../../../Source/AgentSystem/Session/AgentSessionManager.js";
 import {
   AgentWorkspaceCatalog,
   AgentWorkspaceInUseError,
@@ -19,6 +23,7 @@ import {
   AgentWebSocketCloseCodes,
   AgentWebSocketCloseReasons,
 } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketCloseContract.js";
+import { AgentControlWebSocketPath } from "../../../Source/AgentSystem/WebSocket/AgentWebSocketRoutes.js";
 
 test("unknown scopes close permanently and the application catalog remains accessible without opening a workspace", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "senera-workspace-recovery-"));
@@ -39,7 +44,7 @@ test("unknown scopes close permanently and the application catalog remains acces
     defaultWorkspaceId: workspace.id,
     catalog,
     openWorkspace,
-    automaticLoopbackHttp: true,
+    accessProfile: AgentServerAccessProfiles.Development,
   });
   let socket: WebSocket | undefined;
   try {
@@ -97,10 +102,37 @@ test("one transport isolates workspace events and files while sharing applicatio
     aId = randomUUID(),
     bId = randomUUID();
   const config = { Server: { Host: "127.0.0.1", Port: port }, ModelProviders: [] };
+  let finishRun!: () => void;
+  const runFinished = new Promise<void>((resolve) => {
+    finishRun = resolve;
+  });
+  const sessionManager = {
+    submitMessage: async (request: Parameters<AgentSessionManager["submitMessage"]>[0]) => {
+      const context = { sessionId: request.sessionId, requestId: request.requestId!, step: 1 };
+      await request.onEvent?.({ kind: "run.started", context, data: { input: request.input } });
+      await request.onEvent?.({ kind: "model.delta", context, data: { text: "streaming from the phone" } });
+      await runFinished;
+      await request.onEvent?.({ kind: "run.completed", context, data: {} });
+    },
+    replayHistory: async (request: Parameters<AgentSessionManager["replayHistory"]>[0]) => {
+      await request.onEvent?.({
+        kind: "session.history.completed",
+        context: { sessionId: request.sessionId },
+        data: { sessionId: request.sessionId },
+      });
+    },
+    closeSession: async (request: Parameters<AgentSessionManager["closeSession"]>[0]) => {
+      await request.onEvent?.({
+        kind: "session.not_found",
+        context: { sessionId: request.sessionId },
+        data: { sessionId: request.sessionId, operation: "session.close", message: "No such session" },
+      });
+    },
+  };
   const common = {
     config,
-    automaticLoopbackHttp: true,
-    sessionManager: {} as never,
+    accessProfile: AgentServerAccessProfiles.Development,
+    sessionManager: sessionManager as unknown as AgentSessionManager,
     userProfileManager: {} as never,
     eventWriter: new AgentCallbackRunEventWriter(vi.fn()),
   };
@@ -108,9 +140,15 @@ test("one transport isolates workspace events and files while sharing applicatio
     applicationRoot: root,
     config: () => config,
     defaultWorkspaceId: aId,
-    automaticLoopbackHttp: true,
+    accessProfile: AgentServerAccessProfiles.Development,
   });
-  const primary = new AgentWebSocketServer({ ...common, workspaceRoot: a, workspaceId: aId, transport });
+  const primary = new AgentWebSocketServer({
+    ...common,
+    workspaceRoot: a,
+    workspaceId: aId,
+    transport,
+    userProfileManager: new AgentUserProfileManager(new InMemorySessionRepository()),
+  });
   const secondary = new AgentWebSocketServer({ ...common, workspaceRoot: b, workspaceId: bId, transport });
   const sockets: WebSocket[] = [];
   try {
@@ -123,7 +161,7 @@ test("one transport isolates workspace events and files while sharing applicatio
       [aId, messagesA],
       [bId, messagesB],
     ] as const) {
-      const socket = new WebSocket(`ws://127.0.0.1:${port}/?workspaceId=${id}`);
+      const socket = new WebSocket(`ws://127.0.0.1:${port}${AgentControlWebSocketPath}?workspaceId=${id}`);
       sockets.push(socket);
       socket.on("message", (data) => messages.push(JSON.parse(data.toString())));
       await once(socket, "open");
@@ -145,6 +183,61 @@ test("one transport isolates workspace events and files while sharing applicatio
     });
     expect(messagesA.some((message) => message.kind === "run.started")).toBe(true);
     expect(messagesB.some((message) => message.kind === "run.started")).toBe(false);
+    const peer = new WebSocket(`ws://127.0.0.1:${port}/?workspaceId=${aId}`);
+    sockets.push(peer);
+    const peerMessages: { kind: string; data: unknown }[] = [];
+    peer.on("message", (data) => peerMessages.push(JSON.parse(data.toString())));
+    await once(peer, "open");
+    sockets[0]!.send(
+      JSON.stringify({ type: "profile.update", profile: { name: "Updated operator", avatarPath: null } }),
+    );
+    await vi.waitFor(() => {
+      expect(messagesA).toContainEqual(
+        expect.objectContaining({
+          kind: "profile.snapshot",
+          data: expect.objectContaining({ name: "Updated operator" }),
+        }),
+      );
+      expect(peerMessages).toContainEqual(
+        expect.objectContaining({
+          kind: "profile.snapshot",
+          data: expect.objectContaining({ name: "Updated operator" }),
+        }),
+      );
+    });
+    expect(messagesB.some((message) => message.kind === "profile.snapshot")).toBe(false);
+    const requestId = randomUUID();
+    peer.send(
+      JSON.stringify({
+        type: "session.message",
+        sessionId: "shared-session",
+        requestId,
+        input: "from phone",
+        approvalMode: "agent",
+      }),
+    );
+    await vi.waitFor(() => {
+      for (const messages of [messagesA, peerMessages]) {
+        expect(messages.filter((message) => message.kind === "model.delta")).toHaveLength(1);
+        expect(messages.some((message) => message.kind === "run.completed")).toBe(false);
+      }
+    });
+    expect(messagesB.some((message) => message.kind === "model.delta")).toBe(false);
+    finishRun();
+    await vi.waitFor(() => {
+      for (const messages of [messagesA, peerMessages])
+        expect(messages.some((message) => message.kind === "run.completed")).toBe(true);
+    });
+    peer.send(JSON.stringify({ type: "session.history", sessionId: "shared-session" }));
+    await vi.waitFor(() =>
+      expect(peerMessages.some((message) => message.kind === "session.history.completed")).toBe(true),
+    );
+    expect(messagesA.some((message) => message.kind === "session.history.completed")).toBe(false);
+    expect(messagesB.some((message) => message.kind === "session.history.completed")).toBe(false);
+    peer.send(JSON.stringify({ type: "session.close", sessionId: "missing-session" }));
+    await vi.waitFor(() => expect(peerMessages.some((message) => message.kind === "session.not_found")).toBe(true));
+    expect(messagesA.some((message) => message.kind === "session.not_found")).toBe(false);
+    expect(messagesB.some((message) => message.kind === "session.not_found")).toBe(false);
     for (const [id, content] of [
       [aId, "workspace a"],
       [bId, "workspace b"],
@@ -173,6 +266,7 @@ test("one transport isolates workspace events and files while sharing applicatio
     await primary.stop();
     expect((await fetch(`http://127.0.0.1:${port}/health/ready`)).status).toBe(200);
   } finally {
+    finishRun();
     for (const socket of sockets) socket.terminate();
     await secondary.stop();
     await primary.stop();
@@ -200,7 +294,7 @@ test("catalog DELETE forgets a registration without deleting its workspace", asy
     config: () => config,
     defaultWorkspaceId: primary.id,
     catalog,
-    automaticLoopbackHttp: true,
+    accessProfile: AgentServerAccessProfiles.Development,
     forgetWorkspace: async (id) => {
       if (id === primary.id) throw new AgentWorkspaceInUseError(id);
       catalog.forget(id);

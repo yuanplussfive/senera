@@ -5,6 +5,7 @@ import type { AgentConversationEntry } from "./AgentConversation.js";
 import { composeAgentTurnRequest } from "../Prompt/AgentTurnRequestComposer.js";
 import type { AgentTurnAttachmentReference } from "../Prompt/AgentTurnRequestComposer.js";
 import type { AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
+import { DefaultAgentTimeZone, formatAgentTimeOffsetMillisecond } from "../Time/AgentTime.js";
 
 export class AgentConversationPolicy {
   private readonly protocol = createXmlProtocolSpec();
@@ -15,6 +16,8 @@ export class AgentConversationPolicy {
     interaction?: AgentInteractionContext,
     attachmentReferences?: readonly AgentTurnAttachmentReference[],
   ): string {
+    // Host input already has a trusted envelope. Do not escape it again inside a user message.
+    if (entry.metadata?.hostInput) return entry.content;
     if ((!entry.attachments || entry.attachments.length === 0) && !interaction) return entry.content;
 
     if (interaction) {
@@ -23,13 +26,13 @@ export class AgentConversationPolicy {
         attachments: entry.attachments,
         attachmentReferences,
         interaction,
-        options: { enabled: false, timeZone: "UTC" },
+        options: { enabled: false, timeZone: DefaultAgentTimeZone },
       });
     }
 
     return this.codec.objectToXml(this.protocol.roots.currentUserMessage, {
       [this.protocol.context.requestId]: entry.requestId,
-      [this.protocol.context.timestamp]: entry.timestamp,
+      [this.protocol.context.timestamp]: formatAgentTimeOffsetMillisecond(entry.timestamp),
       [this.protocol.context.userMessage]: this.userMessagePayload(entry, attachmentReferences),
     });
   }

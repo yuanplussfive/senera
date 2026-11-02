@@ -20,7 +20,7 @@ $ pnpm add @boundaryml/baml
 
 import type { Image, Audio, Pdf, Video } from "@boundaryml/baml"
 import type { Checked, Check } from "./types.js"
-import type {  ActionPlanInput,  ActionRunState,  AuxiliaryImageAnalysis,  AuxiliarySummary,  ChannelCodePart,  ChannelDelivery,  ChannelResourcePart,  ChannelTextPart,  DirectDecision,  DirectDecisionKind,  EvidenceSlot,  ExecuteDecision,  ExecuteDecisionKind,  ExecutionDeltaOp,  MemOSFragment,  PiToolArgumentsDraft,  PlanFragment,  PlannedToolCall,  PlannerActiveSkill,  PlannerCurrentUserTurn,  PlannerEvidenceMemoryItem,  PlannerEvidenceRequirement,  PlannerEvidenceStateItem,  PlannerJournalItem,  PlannerTimelineTurn,  PlannerToolCallStateItem,  ProgressSignals,  RepeatedCallWarning,  ResidentSpeechProjection,  StateCardRewrite,  ToolCallArgumentValue,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  ToolCatalogSummaryItem,  ToolEvidenceCapabilityItem,  ToolRiskAudit,  ToolRiskAuditDecision,  ToolRiskLevel } from "./types.js"
+import type {  ActionPlanInput,  ActionRunState,  AuxiliarySummary,  DirectDecision,  DirectDecisionKind,  EvidenceSlot,  ExecuteDecision,  ExecuteDecisionKind,  ExecutionDeltaOp,  MemOSFragment,  MemOSMemoryAssessment,  MemOSSkipDecision,  MemoryDiary,  MemoryRelevanceAssessment,  MemoryRelevanceRecord,  MemoryRetention,  PiToolArgumentsDraft,  PlanFragment,  PlannedToolCall,  PlannerActiveSkill,  PlannerCurrentUserTurn,  PlannerEvidenceMemoryItem,  PlannerEvidenceRequirement,  PlannerEvidenceStateItem,  PlannerJournalItem,  PlannerTimelineTurn,  PlannerToolCallStateItem,  ProgressSignals,  RepeatedCallWarning,  StateCardRewrite,  ToolCallArgumentValue,  ToolCallStatus,  ToolCapabilityFacets,  ToolCapabilityItem,  ToolCapabilityRisk,  ToolCatalogItem,  ToolCatalogSummaryItem,  ToolEvidenceCapabilityItem,  ToolRiskAudit,  ToolRiskAuditDecision,  ToolRiskLevel } from "./types.js"
 import type * as types from "./types.js"
 
 /******************************************************************************
@@ -55,31 +55,8 @@ export namespace partial_types {
       warnings: RepeatedCallWarning[]
       calls: PlannerToolCallStateItem[]
     }
-    export interface AuxiliaryImageAnalysis {
-      analysis?: string | null
-    }
     export interface AuxiliarySummary {
       summary?: string | null
-    }
-    export interface ChannelCodePart {
-      kind?: "code" | null
-      language?: string | null
-      code?: string | null
-    }
-    export interface ChannelDelivery {
-      parts: (ChannelTextPart | ChannelResourcePart | ChannelCodePart)[]
-    }
-    export interface ChannelResourcePart {
-      kind?: "resource" | null
-      uri?: string | null
-      alt?: string | null
-      mediaKind?: "image" | "video" | "audio" | "file" | null
-      mime?: string | null
-      fileName?: string | null
-    }
-    export interface ChannelTextPart {
-      kind?: "text" | null
-      text?: string | null
     }
     export interface DirectDecision {
       kind?: types.DirectDecisionKind | null
@@ -96,8 +73,33 @@ export namespace partial_types {
     export interface MemOSFragment {
       topic?: string | null
       summary?: string | null
-      type?: "fact" | "preference" | "relationship" | "context" | "entity" | "custom" | null
+      type?: "fact" | "preference" | "relationship" | "context" | null
+      assessments: MemOSMemoryAssessment[]
       [key: string]: any;
+    }
+    export interface MemOSMemoryAssessment {
+      candidate?: number | null
+      usefulness?: "helpful" | "unhelpful" | "unused" | "uncertain" | null
+      reason?: string | null
+    }
+    export interface MemOSSkipDecision {
+      action?: "skip" | null
+      assessments: MemOSMemoryAssessment[]
+    }
+    export interface MemoryDiary {
+      title?: string | null
+      body?: string | null
+    }
+    export interface MemoryRelevanceAssessment {
+      records: MemoryRelevanceRecord[]
+    }
+    export interface MemoryRelevanceRecord {
+      recordId?: number | null
+      relevant?: boolean | null
+      score?: number | null
+    }
+    export interface MemoryRetention {
+      days?: number | null
     }
     export interface PiToolArgumentsDraft {
       arguments: Record<string, ToolCallArgumentValue>
@@ -203,12 +205,10 @@ export namespace partial_types {
       count?: number | null
       lastStep?: number | null
     }
-    export interface ResidentSpeechProjection {
-      utterance?: string | null
-    }
     export interface StateCardRewrite {
       topicRelation?: "continue" | "new_topic" | null
       standaloneRequest?: string | null
+      resumeRequestId?: string | null
     }
     export interface ToolCapabilityFacets {
       Actions?: string[] | null

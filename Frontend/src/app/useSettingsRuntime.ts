@@ -15,6 +15,8 @@ import { useConfigMutationController, type ConfigMutationController } from "./us
 import { generateId } from "../lib/util";
 import { resolveBackendMessage } from "../i18n/backendMessage";
 import { useWorkspaceController, type WorkspaceControllerHandle } from "./useWorkspaceController";
+import { buildHttpApiUrl } from "../api/httpApiUrl";
+import { agentOneBot11ClientPath } from "../../../Source/AgentSystem/Channels/AgentChannelClientRoutes";
 
 export interface SettingsRuntimeHandle {
   controller: ConfigMutationController;
@@ -138,6 +140,12 @@ export function useSettingsRuntime({
       ...controller,
       configSnapshot,
       workspaceId,
+      oneBot11ClientUrl: workspaceId
+        ? buildHttpApiUrl(
+            import.meta.env.DEV ? window.location.origin : httpBaseUrl,
+            agentOneBot11ClientPath(workspaceId),
+          )
+        : undefined,
       systemTools,
       systemExtensions,
       mcpServers,
@@ -179,6 +187,7 @@ export function useSettingsRuntime({
       systemTools,
       toolSettingsSynced,
       workspaceId,
+      httpBaseUrl,
     ],
   );
 

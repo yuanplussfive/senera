@@ -3,6 +3,7 @@ import type {
   ModelThinkingLevel,
   ModelThinkingProfileConfig,
   ModelToolPlanningMode,
+  ModelsDevPricing,
 } from "./eventTypes";
 
 export interface ProviderModelEndpointInput {
@@ -24,6 +25,7 @@ export type ProviderModelEndpointPatchInput = Pick<ProviderModelEndpointInput, "
 export type ProviderModelEndpointKind = "Responses" | "ChatCompletions" | "ClaudeMessages" | "GoogleGenerateContent";
 
 export interface ProviderModelConfigInput {
+  Pricing?: ModelsDevPricing;
   Id: string;
   ProviderId: string;
   Icon?: string;

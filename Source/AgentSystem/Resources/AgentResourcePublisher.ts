@@ -9,6 +9,10 @@ export interface AgentResourcePublishInput {
   readonly bytes: Uint8Array;
   readonly name: string;
   readonly mime: string;
+  /** Persistent host records survive temporary-upload expiry, within the same storage quota. */
+  readonly retention?: "persistent";
+  /** Durable owner used to release a persistent inspection record with its session history. */
+  readonly owner?: { readonly sessionId: string; readonly requestId: string };
   readonly signal?: AbortSignal;
 }
 

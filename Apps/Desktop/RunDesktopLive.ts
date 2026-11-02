@@ -1,4 +1,7 @@
 import net from "node:net";
+import fs from "node:fs";
+import path from "node:path";
+import { isDesktopLiveBuildCurrent } from "./DesktopLiveBuildState.js";
 import process from "node:process";
 import { sync as spawnSync } from "cross-spawn";
 import { isMainModule } from "../../Source/AgentSystem/Core/AgentPath.js";
@@ -20,7 +23,10 @@ interface CommandInvocation {
 }
 
 const DesktopChildTerminationGraceMs = 2_000;
-const DesktopElectronDevelopmentArguments = ["--disable-gpu", "--disable-gpu-compositing", "--in-process-gpu"];
+const DesktopElectronDiagnosticArguments = ["--disable-gpu", "--disable-gpu-compositing", "--in-process-gpu"];
+const desktopLiveTypeScriptCli = path.join(process.cwd(), "node_modules", "typescript", "bin", "tsc");
+const desktopLiveBuildInfoPath = path.join(process.cwd(), ".cache", "desktop-live", "tsconfig.tsbuildinfo");
+const desktopLiveMainOutputPath = path.join(process.cwd(), "Dist", "Apps", "Desktop", "Main.js");
 const desktopLiveUserDataDir = resolveAgentWorkspaceLayout(process.cwd()).desktopRuntimeRoot;
 const configuredFrontendUrl = process.env.SENERA_DESKTOP_FRONTEND_URL?.trim();
 const defaultFrontendUrl = "http://127.0.0.1:5173";
@@ -42,13 +48,10 @@ async function main(): Promise<void> {
   try {
     registerShutdownHandlers();
 
-    // shortcut: live 模式依赖已安装的预编译原生模块；依赖无兼容二进制时再恢复 Electron 重编译。
-    for (const step of [command("npm", ["run", "build"])]) {
-      const result = run(step);
-      if (result !== 0) {
-        process.exitCode = result;
-        return;
-      }
+    const buildExitCode = buildDesktopLive();
+    if (buildExitCode !== 0) {
+      process.exitCode = buildExitCode;
+      return;
     }
 
     let frontendUrl = configuredFrontendUrl || defaultFrontendUrl;
@@ -82,12 +85,13 @@ async function main(): Promise<void> {
       command(
         "electron",
         [
-          ...DesktopElectronDevelopmentArguments,
+          ...readDesktopElectronDevelopmentArguments(),
           `--user-data-dir=${desktopLiveUserDataDir}`,
           "Dist/Apps/Desktop/Main.js",
         ],
         {
           ...electronEnv,
+          SENERA_DESKTOP_RELEASE_CHANNEL: "development",
           SENERA_DESKTOP_FRONTEND_URL: frontendUrl,
           SENERA_SERVER_PORT: String(serverPort),
           SENERA_DESKTOP_REMOTE_DEBUGGING_PORT: String(remoteDebuggingPort),
@@ -98,6 +102,46 @@ async function main(): Promise<void> {
   } finally {
     await cleanupDesktopLive();
   }
+}
+
+/**
+ * Desktop live only needs emitted JavaScript, not the release gates that `npm run
+ * build` enforces. Compiling incrementally with the type checker disabled keeps
+ * repeat launches near-instant; `npm run build` and CI still run the full pipeline.
+ */
+function buildDesktopLive(): number {
+  if (isDesktopLiveBuildCurrent(process.cwd(), desktopLiveBuildInfoPath, desktopLiveMainOutputPath)) {
+    console.log("\n> desktop sources unchanged; skipping compile");
+  } else {
+    const compile = compileDesktopLive();
+    if (compile !== 0) return compile;
+  }
+
+  return run(command("tsx", ["Build/CopyRuntimeAssets.ts"]));
+}
+
+function compileDesktopLive(): number {
+  // The incremental state can outlive the outputs it describes (`npm run build`
+  // cleans Dist). Trusting it then would skip every emit and launch stale code.
+  if (!fs.existsSync(desktopLiveMainOutputPath)) {
+    fs.rmSync(desktopLiveBuildInfoPath, { force: true });
+  }
+
+  return run(
+    command("node", [
+      desktopLiveTypeScriptCli,
+      "-p",
+      "tsconfig.json",
+      "--noCheck",
+      "--incremental",
+      "--tsBuildInfoFile",
+      desktopLiveBuildInfoPath,
+    ]),
+  );
+}
+
+function readDesktopElectronDevelopmentArguments(): string[] {
+  return process.env.SENERA_DESKTOP_DIAGNOSTIC_GPU?.trim() ? DesktopElectronDiagnosticArguments : [];
 }
 
 function frontendDevArguments(frontendUrl: string): string[] {
@@ -202,7 +246,7 @@ async function waitForFrontend(url: string): Promise<void> {
     if (frontendProbe.kind === "invalid") {
       throw new Error(readInvalidFrontendMessage(url, frontendProbe.message));
     }
-    await sleep(500);
+    await sleep(150);
   }
   throw new Error(`Timed out waiting for frontend dev server: ${url}`);
 }

@@ -1,47 +1,59 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type {
+  DesktopHostIntegrationCapabilities,
+  DesktopHostIntegrationResult,
+} from "./DesktopHostIntegrationProtocol.js";
 import type { DesktopUpdateSnapshot } from "./DesktopUpdateProtocol.js";
 
-contextBridge.exposeInMainWorld("seneraDesktop", {
-  isDesktop: true,
-  windowControls: process.platform === "darwin" ? "native" : "custom",
-  openSettings: (options?: { section?: string }) => ipcRenderer.invoke("senera:settings.open", options),
-  minimizeWindow: () => ipcRenderer.invoke("senera:window.minimize"),
-  toggleMaximizeWindow: () => ipcRenderer.invoke("senera:window.toggle-maximize"),
-  closeWindow: () => ipcRenderer.invoke("senera:window.close"),
-  getWindowState: () => ipcRenderer.invoke("senera:window.get-state"),
-  onWindowStateChanged: (listener: (state: { isMaximized: boolean }) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, state: { isMaximized: boolean }): void => listener(state);
-    ipcRenderer.on("senera:window.state-changed", handler);
-    return () => ipcRenderer.removeListener("senera:window.state-changed", handler);
-  },
-  setSettingsDirty: (dirty: boolean) => ipcRenderer.invoke("senera:settings.dirty", dirty),
-  notifySettingsSurfaceReady: () => ipcRenderer.invoke("senera:settings.surface-ready"),
-  onSettingsNavigationRequested: (listener: (section: string) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, section: string): void => listener(section);
-    ipcRenderer.on("senera:settings.navigate", handler);
-    return () => ipcRenderer.removeListener("senera:settings.navigate", handler);
-  },
-  onSettingsCloseRequested: (listener: () => void) => {
-    const handler = (): void => listener();
-    ipcRenderer.on("senera:settings.request-close", handler);
-    return () => ipcRenderer.removeListener("senera:settings.request-close", handler);
-  },
-  confirmSettingsClose: () => ipcRenderer.invoke("senera:settings.confirm-close"),
-  cancelSettingsClose: () => ipcRenderer.invoke("senera:settings.cancel-close"),
-  openExternalUrl: (url: string) => ipcRenderer.invoke("senera:external-url.open", url),
-  chooseWorkspaceFolder: () => ipcRenderer.invoke("senera:workspace.choose-folder"),
-  onWorkspaceFolderRequested: (listener: () => void) => {
-    const handler = (): void => listener();
-    ipcRenderer.on("senera:workspace.request-folder", handler);
-    return () => ipcRenderer.removeListener("senera:workspace.request-folder", handler);
-  },
-  getUpdateState: (): Promise<DesktopUpdateSnapshot | undefined> => ipcRenderer.invoke("senera:update.get-state"),
-  checkForUpdates: (): Promise<DesktopUpdateSnapshot | undefined> => ipcRenderer.invoke("senera:update.check"),
-  downloadUpdate: (): Promise<DesktopUpdateSnapshot | undefined> => ipcRenderer.invoke("senera:update.download"),
-  installUpdate: (): Promise<DesktopUpdateSnapshot | undefined> => ipcRenderer.invoke("senera:update.install"),
-  onUpdateStateChanged: (listener: (state: DesktopUpdateSnapshot) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, state: DesktopUpdateSnapshot): void => listener(state);
-    ipcRenderer.on("senera:update.state-changed", handler);
-    return () => ipcRenderer.removeListener("senera:update.state-changed", handler);
-  },
-});
+if (process.isMainFrame)
+  contextBridge.exposeInMainWorld("seneraDesktop", {
+    isDesktop: true,
+    nativeWebview: true,
+    windowControls: process.platform === "darwin" ? "native" : "custom",
+    openSettings: (options?: { section?: string }) => ipcRenderer.invoke("senera:settings.open", options),
+    minimizeWindow: () => ipcRenderer.invoke("senera:window.minimize"),
+    toggleMaximizeWindow: () => ipcRenderer.invoke("senera:window.toggle-maximize"),
+    closeWindow: () => ipcRenderer.invoke("senera:window.close"),
+    getWindowState: () => ipcRenderer.invoke("senera:window.get-state"),
+    onWindowStateChanged: (listener: (state: { isMaximized: boolean }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, state: { isMaximized: boolean }): void => listener(state);
+      ipcRenderer.on("senera:window.state-changed", handler);
+      return () => ipcRenderer.removeListener("senera:window.state-changed", handler);
+    },
+    setSettingsDirty: (dirty: boolean) => ipcRenderer.invoke("senera:settings.dirty", dirty),
+    notifySettingsSurfaceReady: () => ipcRenderer.invoke("senera:settings.surface-ready"),
+    onSettingsNavigationRequested: (listener: (section: string) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, section: string): void => listener(section);
+      ipcRenderer.on("senera:settings.navigate", handler);
+      return () => ipcRenderer.removeListener("senera:settings.navigate", handler);
+    },
+    onSettingsCloseRequested: (listener: () => void) => {
+      const handler = (): void => listener();
+      ipcRenderer.on("senera:settings.request-close", handler);
+      return () => ipcRenderer.removeListener("senera:settings.request-close", handler);
+    },
+    confirmSettingsClose: () => ipcRenderer.invoke("senera:settings.confirm-close"),
+    cancelSettingsClose: () => ipcRenderer.invoke("senera:settings.cancel-close"),
+    openExternalUrl: (url: string) => ipcRenderer.invoke("senera:external-url.open", url),
+    openQqClient: (workspaceId: string): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke("senera:qq-client.open", workspaceId),
+    chooseWorkspaceFolder: () => ipcRenderer.invoke("senera:workspace.choose-folder"),
+    getHostIntegrationCapabilities: (): Promise<DesktopHostIntegrationCapabilities | undefined> =>
+      ipcRenderer.invoke("senera:host.capabilities"),
+    revealWorkspace: (): Promise<DesktopHostIntegrationResult> => ipcRenderer.invoke("senera:host.reveal-workspace"),
+    openExternalTerminal: (): Promise<DesktopHostIntegrationResult> => ipcRenderer.invoke("senera:host.open-terminal"),
+    onWorkspaceFolderRequested: (listener: () => void) => {
+      const handler = (): void => listener();
+      ipcRenderer.on("senera:workspace.request-folder", handler);
+      return () => ipcRenderer.removeListener("senera:workspace.request-folder", handler);
+    },
+    getUpdateState: (): Promise<DesktopUpdateSnapshot | undefined> => ipcRenderer.invoke("senera:update.get-state"),
+    checkForUpdates: (): Promise<DesktopUpdateSnapshot | undefined> => ipcRenderer.invoke("senera:update.check"),
+    downloadUpdate: (): Promise<DesktopUpdateSnapshot | undefined> => ipcRenderer.invoke("senera:update.download"),
+    installUpdate: (): Promise<DesktopUpdateSnapshot | undefined> => ipcRenderer.invoke("senera:update.install"),
+    onUpdateStateChanged: (listener: (state: DesktopUpdateSnapshot) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, state: DesktopUpdateSnapshot): void => listener(state);
+      ipcRenderer.on("senera:update.state-changed", handler);
+      return () => ipcRenderer.removeListener("senera:update.state-changed", handler);
+    },
+  });

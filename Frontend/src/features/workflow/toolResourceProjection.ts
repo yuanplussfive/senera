@@ -6,6 +6,11 @@ export type ToolResource = NonNullable<ToolResultPresentation["resources"]>[numb
 export type ToolWorkspaceChange = ToolResultPresentation["changes"][number];
 export type ToolWorkspaceObservation = NonNullable<ToolResultPresentation["workspaceObservation"]>;
 
+export interface ReversibleWorkspaceCheckpoint {
+  readonly artifactUri: string;
+  readonly checkpointId: string;
+}
+
 export interface ToolWorkspaceChangeSummary {
   readonly fileCount: number;
   readonly directoryCount: number;
@@ -111,6 +116,49 @@ export function collectToolWorkspaceObservation(steps: readonly TimelineStep[]):
   };
 }
 
+/**
+ * Every mutating step must have a published checkpoint. The server verifies
+ * their snapshot chain and composes one guarded restore before any writes.
+ */
+export function findReversibleWorkspaceCheckpoints(
+  steps: readonly TimelineStep[],
+  changes: readonly ToolWorkspaceChange[],
+): readonly ReversibleWorkspaceCheckpoint[] | undefined {
+  const checkpoints = new Map<string, { artifactUri: string; checkpointId: string; changedPaths: readonly string[] }>();
+  let inconsistentCheckpointProjection = false;
+  for (const step of steps) {
+    const presentation = step.toolPresentation;
+    const checkpoint = presentation?.workspaceCheckpoint;
+    const artifactUri = checkpoint?.artifactUri ?? presentation?.artifactUri;
+    if (!checkpoint || !artifactUri) {
+      if (
+        presentation?.changes?.some(
+          (change) =>
+            change.kind === "workspace" && change.status !== "unchanged" && change.workspaceStatus !== "unchanged",
+        )
+      )
+        return undefined;
+      continue;
+    }
+    const identity = `${artifactUri}\u0000${checkpoint.id}`;
+    const next = {
+      artifactUri,
+      checkpointId: checkpoint.id,
+      changedPaths: checkpoint.changedPaths,
+    };
+    const previous = checkpoints.get(identity);
+    if (previous && !sameValues(uniqueSorted(previous.changedPaths), uniqueSorted(next.changedPaths))) {
+      inconsistentCheckpointProjection = true;
+    }
+    checkpoints.set(identity, next);
+  }
+  if (inconsistentCheckpointProjection || checkpoints.size === 0 || changes.length === 0) return undefined;
+  const changedPaths = uniqueSorted(changes.map((change) => change.key));
+  const capturedPaths = new Set([...checkpoints.values()].flatMap((checkpoint) => checkpoint.changedPaths));
+  if (!changedPaths.every((path) => capturedPaths.has(path))) return undefined;
+  return [...checkpoints.values()].map(({ artifactUri, checkpointId }) => ({ artifactUri, checkpointId }));
+}
+
 export function summarizeToolWorkspaceChanges(changes: readonly ToolWorkspaceChange[]): ToolWorkspaceChangeSummary {
   return changes.reduce<ToolWorkspaceChangeSummary>(
     (summary, change) => {
@@ -194,4 +242,14 @@ function mergeWorkspaceStatus(
 function sumLineCounts(previous: number | undefined, next: number | undefined): number | undefined {
   if (previous === undefined && next === undefined) return undefined;
   return (previous ?? 0) + (next ?? 0);
+}
+
+function uniqueSorted(values: readonly string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort((left, right) =>
+    left.localeCompare(right),
+  );
+}
+
+function sameValues(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }

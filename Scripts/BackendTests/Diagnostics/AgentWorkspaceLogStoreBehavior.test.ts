@@ -21,6 +21,7 @@ describe("workspace log store", () => {
         detailMaxBytes: 16_384,
         projectionMaxBytes: 1_024 * 1_024,
         retentionHours: 24,
+        maintenanceIntervalMinutes: 15,
         queryPageSize: 1,
         tailLineCount: 10,
       },
@@ -45,9 +46,13 @@ describe("workspace log store", () => {
 
     const first = store.query({ requestId: "run_one" });
     expect(first.items).toHaveLength(1);
+    expect(first.items[0]?.timestamp).toBe("2026-10-16T08:00:00.000+08:00");
     expect(first.items[0]?.detailId).toMatch(/^detail_/u);
     expect(first.items[0]?.details).toBeUndefined();
     expect(first.nextCursor).toBeDefined();
+    expect(fs.readFileSync(path.join(root, "events.jsonl"), "utf8")).toContain(
+      '"timestamp":"2026-10-16T08:00:00.000+08:00"',
+    );
 
     const second = store.query({ requestId: "run_one", after: first.nextCursor });
     expect(second.items.map((item) => item.message)).toEqual(["skill.completed"]);
@@ -59,6 +64,38 @@ describe("workspace log store", () => {
     }
   });
 
+  test("treats date-only query bounds as Shanghai calendar days", () => {
+    const root = createRoot();
+    const store = new AgentWorkspaceLogStore({
+      root,
+      policy: {
+        enabled: true,
+        detailMaxBytes: 4_096,
+        projectionMaxBytes: 1_024 * 1_024,
+        retentionHours: 24,
+        maintenanceIntervalMinutes: 15,
+        queryPageSize: 8,
+        tailLineCount: 10,
+      },
+    });
+    store.append({
+      recordId: "late_night",
+      timestamp: "2026-10-19T15:59:59.999Z",
+      level: "info",
+      message: "previous-day",
+    });
+    store.append({
+      recordId: "midnight",
+      timestamp: "2026-10-19T16:00:00.000Z",
+      level: "info",
+      message: "current-day",
+    });
+
+    const result = store.query({ from: "2026-10-20", to: "2026-10-20", order: "asc" });
+    expect(result.items.map((item) => item.message)).toEqual(["current-day"]);
+    expect(result.items[0]?.timestamp).toBe("2026-10-20T00:00:00.000+08:00");
+  });
+
   test("keeps log file reads workspace-bounded and reports expired cursors", () => {
     const root = createRoot();
     const store = new AgentWorkspaceLogStore({
@@ -68,6 +105,7 @@ describe("workspace log store", () => {
         detailMaxBytes: 4_096,
         projectionMaxBytes: 1_024,
         retentionHours: 24,
+        maintenanceIntervalMinutes: 15,
         queryPageSize: 8,
         tailLineCount: 10,
       },
@@ -97,6 +135,7 @@ describe("workspace log store", () => {
         detailMaxBytes: 512,
         projectionMaxBytes: 1_024 * 1_024,
         retentionHours: 24,
+        maintenanceIntervalMinutes: 15,
         queryPageSize: 8,
         tailLineCount: 2,
       },
@@ -132,6 +171,7 @@ describe("workspace log store", () => {
         detailMaxBytes: 4_096,
         projectionMaxBytes: 1_024,
         retentionHours: 24,
+        maintenanceIntervalMinutes: 15,
         queryPageSize: 8,
         tailLineCount: 10,
       },
@@ -167,6 +207,7 @@ describe("workspace log store", () => {
         detailMaxBytes: 4_096,
         projectionMaxBytes: 1_024,
         retentionHours: 24,
+        maintenanceIntervalMinutes: 15,
         queryPageSize: 8,
         tailLineCount: 10,
       }),
@@ -178,6 +219,71 @@ describe("workspace log store", () => {
     expect(store.query().items.map((item) => item.message)).toEqual(["enabled"]);
   });
 
+  test("runs retention maintenance while the runtime stays alive", () => {
+    const root = createRoot();
+    const store = new AgentWorkspaceLogStore({
+      root,
+      policy: {
+        enabled: true,
+        detailMaxBytes: 4_096,
+        projectionMaxBytes: 1_024,
+        retentionHours: 24,
+        maintenanceIntervalMinutes: 1,
+        queryPageSize: 8,
+        tailLineCount: 10,
+      },
+    });
+    store.append({
+      recordId: "expired_one",
+      timestamp: new Date().toISOString(),
+      level: "info",
+      message: "expired",
+      details: { value: true },
+    });
+    const files = fs.readdirSync(root, { recursive: true }).map((entry) => path.join(root, String(entry)));
+    const expiredAt = new Date(Date.now() - 25 * 60 * 60 * 1_000);
+    for (const file of files) {
+      if (fs.statSync(file).isFile()) fs.utimesSync(file, expiredAt, expiredAt);
+    }
+
+    store.start();
+    expect(store.query().items).toEqual([]);
+    expect(store.health().detailFiles).toBe(0);
+    store.close();
+  });
+
+  test("prunes expired records from a projection that is still receiving events", () => {
+    const root = createRoot();
+    const store = new AgentWorkspaceLogStore({
+      root,
+      policy: {
+        enabled: true,
+        detailMaxBytes: 4_096,
+        projectionMaxBytes: 1_024,
+        retentionHours: 24,
+        maintenanceIntervalMinutes: 15,
+        queryPageSize: 8,
+        tailLineCount: 10,
+      },
+    });
+    store.append({
+      recordId: "expired_record",
+      timestamp: new Date(Date.now() - 25 * 60 * 60 * 1_000).toISOString(),
+      level: "info",
+      message: "expired",
+    });
+    store.append({
+      recordId: "fresh_record",
+      timestamp: new Date().toISOString(),
+      level: "info",
+      message: "fresh",
+    });
+
+    store.start();
+    expect(store.query().items.map((item) => item.message)).toEqual(["fresh"]);
+    store.close();
+  });
+
   test("isolates an invalid runtime policy from the active run", () => {
     const root = createRoot();
     const store = new AgentWorkspaceLogStore({
@@ -187,6 +293,7 @@ describe("workspace log store", () => {
         detailMaxBytes: 0,
         projectionMaxBytes: 1_024,
         retentionHours: 24,
+        maintenanceIntervalMinutes: 15,
         queryPageSize: 8,
         tailLineCount: 10,
       }),

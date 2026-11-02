@@ -39,7 +39,7 @@ describe("extension secret HTTP API", () => {
     });
   });
 
-  test("returns an empty value for a stored secret this host cannot open", async () => {
+  test("rejects an unreadable secret instead of turning it into an empty editable value", async () => {
     const baseUrl = await createHarness("senera:secret:v2:");
     const url = new URL(AgentExtensionSecretHttpRoute, baseUrl);
     url.searchParams.set("extensionId", "web-tools");
@@ -48,12 +48,10 @@ describe("extension secret HTTP API", () => {
 
     const response = await fetch(url);
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
-      ok: true,
-      extensionId: "web-tools",
-      path: ["search", "codexApiKey"],
-      value: "",
+      ok: false,
+      error: { code: "secret_unresolved", message: expect.any(String) },
     });
   });
 

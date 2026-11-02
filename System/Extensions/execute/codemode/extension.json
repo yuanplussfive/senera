@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schemas.senera.ai/extension/v1.json",
+  "schemaVersion": 1,
+  "id": "codemode",
+  "domain": "execute",
+  "settingsSurface": "system-tools",
+  "displayName": { "zh-CN": "工具编排", "en-US": "Codemode" },
+  "description": {
+    "zh-CN": "用 JavaScript 组合已授权工具，筛选和汇总结果。",
+    "en-US": "Compose authorized tools and select results with JavaScript."
+  },
+  "priority": 89,
+  "presentation": {
+    "category": "codemode",
+    "icon": "terminal",
+    "activity": { "action": { "zh-CN": "组合工具", "en-US": "Compose tools" }, "argumentPath": "/code" }
+  },
+  "configuration": { "schema": "config.schema.json", "ui": "ui.schema.json" },
+  "documentation": {
+    "zh-CN": "### 用代码组合现有工具\n\n适合批量查询、并行读取、计算和筛选结果，减少模型与工具之间的往返。模型只需输出所需字段，完整工具结果沿用 Artifact 保存。\n\n脚本运行在独立 QuickJS/WASM 线程中，没有 Node、文件系统或网络接口；外部能力全部经现有工具的授权、审批、资源调度和结果校验。它不隔离工具启动的宿主进程。\n\n存储随当前 Pi 分支持久化；失败脚本不提交存储，已经执行的外部操作不会回滚，也不会因重启自动重放。超时沿用系统工具配置。",
+    "en-US": "### Compose existing tools\n\nUse JavaScript for parallel reads, batch queries, filtering and computation. Select only the required output; full tool results remain in Artifacts.\n\nEach script runs in an isolated QuickJS/WASM worker without Node, filesystem or network APIs. External capabilities use the existing tool authorization, approvals, scheduling and validation. This does not isolate host processes launched by tools.\n\nStore writes persist on the current Pi branch only after success. External effects are not rolled back, and scripts are never replayed after restart. Existing system tool deadlines apply."
+  },
+  "contributions": [
+    {
+      "kind": "hostTool",
+      "contract": "tools/Codemode.tool.json",
+      "capability": "system.tool.codemode.run",
+      "recommendedForSkills": ["execution-workflow"]
+    }
+  ]
+}

@@ -1,4 +1,3 @@
-import type { ITheme } from "@xterm/xterm";
 import type {
   ExecutionResourceSnapshotData,
   ExecutionResourceState,
@@ -6,30 +5,7 @@ import type {
 } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog";
-
-export const TerminalXtermTheme = {
-  background: "#0c0c0c",
-  foreground: "#cccccc",
-  cursor: "#f2f2f2",
-  cursorAccent: "#0c0c0c",
-  selectionBackground: "#264f78",
-  black: "#0c0c0c",
-  brightBlack: "#767676",
-  red: "#c50f1f",
-  brightRed: "#e74856",
-  green: "#13a10e",
-  brightGreen: "#16c60c",
-  yellow: "#c19c00",
-  brightYellow: "#f9f1a5",
-  blue: "#0037da",
-  brightBlue: "#3b78ff",
-  magenta: "#881798",
-  brightMagenta: "#b4009e",
-  cyan: "#3a96dd",
-  brightCyan: "#61d6d6",
-  white: "#cccccc",
-  brightWhite: "#f2f2f2",
-} as const satisfies ITheme;
+import type { AppIconName } from "../../shared/ui/AppIcon";
 
 export type TerminalCapability = ExecutionResourceTerminalData["capabilities"][number];
 
@@ -53,6 +29,26 @@ export function terminalTabLabel(resource: ExecutionResourceSnapshotData): strin
   return frontendMessage("terminal.kind.process");
 }
 
+export function terminalSelectionOptions(
+  resources: readonly ExecutionResourceSnapshotData[],
+): Array<{ value: string; label: string }> {
+  const totals = new Map<string, number>();
+  const occurrences = new Map<string, number>();
+  for (const resource of resources) {
+    const title = terminalTabLabel(resource);
+    totals.set(title, (totals.get(title) ?? 0) + 1);
+  }
+  return resources.map((resource) => {
+    const title = terminalTabLabel(resource);
+    const number = (occurrences.get(title) ?? 0) + 1;
+    occurrences.set(title, number);
+    return {
+      value: resource.resourceId,
+      label: totals.get(title) === 1 ? title : frontendFeatureMessage("terminal.resource.numbered", { title, number }),
+    };
+  });
+}
+
 export function terminalPurposeLabel(resource: ExecutionResourceSnapshotData): string {
   if (resource.presentation?.purpose === "command-task") return frontendFeatureMessage("terminal.kind.commandTask");
   if (resource.presentation?.purpose === "interactive-shell")
@@ -66,15 +62,15 @@ export function terminalStatusLabel(state: ExecutionResourceState): string {
   return frontendMessage(`terminal.status.${state}`);
 }
 
-const StatusIndicatorClassNames = {
-  starting: "bg-[#d19a66] senera-loading-pulse",
-  running: "bg-[var(--terminal-accent)]",
-  stopping: "bg-[#d7ba7d] senera-loading-pulse",
-  completed: "bg-[#89d185]",
-  failed: "bg-[#f14c4c]",
-  cancelled: "bg-[var(--terminal-subtle)]",
-} as const satisfies Record<ExecutionResourceState, string>;
+const ConnectionPresentations = {
+  starting: { icon: "clock", className: "text-[var(--terminal-warning)]" },
+  running: { icon: "link", className: "text-[var(--terminal-success)]" },
+  stopping: { icon: "clock", className: "text-[var(--terminal-warning)]" },
+  completed: { icon: "terminal", className: "text-[var(--terminal-subtle)]" },
+  failed: { icon: "warning", className: "text-[var(--terminal-error)]" },
+  cancelled: { icon: "terminal", className: "text-[var(--terminal-subtle)]" },
+} as const satisfies Record<ExecutionResourceState, { icon: AppIconName; className: string }>;
 
-export function terminalStatusIndicatorClass(state: ExecutionResourceState): string {
-  return StatusIndicatorClassNames[state];
+export function terminalConnectionPresentation(state: ExecutionResourceState) {
+  return ConnectionPresentations[state];
 }

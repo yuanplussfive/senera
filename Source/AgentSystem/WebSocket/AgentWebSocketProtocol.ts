@@ -2,7 +2,7 @@ import { z } from "zod";
 import { AgentSessionMessageDispositionValues } from "../Session/AgentSessionMessageDisposition.js";
 import { AgentSessionMessageQueueModeValues } from "../Session/AgentSessionMessageQueueMode.js";
 import { createRequestId } from "../Core/AgentIds.js";
-import { AgentUserProfileInputSchema } from "../Session/AgentUserProfile.js";
+import { AgentUserProfileUpdateSchema } from "../Session/AgentUserProfile.js";
 import { AgentUploadAttachmentListSchema } from "../Uploads/AgentUploadTypes.js";
 import { AgentSystemConfigSchema } from "../Schemas/AgentSystemConfigSchema.js";
 import { ModelProviderSchema } from "../Schemas/AgentModelConfigSchema.js";
@@ -10,11 +10,13 @@ import { AgentProviderEndpointPatchSchema } from "../Config/AgentConfigCommandSc
 import { SeneraTerminalDimensionLimits } from "../Execution/SeneraTerminalTypes.js";
 import { AgentApprovalDecisions } from "../Approvals/AgentApprovalTypes.js";
 import { AgentInteractionInputActions } from "../Interaction/AgentInteractionInputTypes.js";
+import { AgentFeedbackCategoryValues, AgentFeedbackRatings } from "../Interaction/AgentFeedbackTypes.js";
 import { AgentPiSessionExportFormats } from "../Pi/AgentPiSessionManagement.js";
 import { AgentExtensionInputValueSchema } from "../Extensions/AgentExtensionInput.js";
 import { AgentExecutionApprovalModeValues } from "../Safety/AgentExecutionApprovalMode.js";
 import { AgentModelThinkingLevels } from "../ModelEndpoints/AgentModelThinking.js";
 import { AgentExplicitActivationSetSchema } from "../Activation/AgentActivationTypes.js";
+import { AgentChannelKinds } from "../Channels/AgentChannelTypes.js";
 
 const AgentInteractionInputValueSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.array(z.string())]);
 
@@ -65,22 +67,28 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("session.create"),
+      agentId: z.string().uuid().optional(),
       sessionId: z.string().min(1).optional(),
     })
     .strict(),
   z
     .object({
       type: z.literal("session.message"),
+      agentId: z.string().uuid().optional(),
       sessionId: z.string().min(1),
       requestId: z.string().min(1).optional(),
       modelProviderId: z.string().min(1).optional(),
       thinkingLevel: z.enum(AgentModelThinkingLevels).optional(),
-      input: z.string().min(1),
+      input: z.string(),
       approvalMode: z.enum(AgentExecutionApprovalModeValues),
       attachments: AgentUploadAttachmentListSchema.optional(),
       disposition: z.enum(AgentSessionMessageDispositionValues).optional(),
       queueMode: z.enum(AgentSessionMessageQueueModeValues).optional(),
       activations: AgentExplicitActivationSetSchema.optional(),
+    })
+    .refine((message) => message.input.trim().length > 0 || Boolean(message.attachments?.length), {
+      message: "A message must contain text or attachments.",
+      path: ["input"],
     })
     .strict(),
   z
@@ -175,6 +183,14 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
       sessionId: z.string().min(1),
       refresh: z.boolean().optional(),
       initialWindow: z.boolean().optional(),
+      before: z.string().min(1).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("session.run_history"),
+      sessionId: z.string().min(1),
+      requestId: z.string().min(1),
     })
     .strict(),
   z
@@ -234,7 +250,7 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("channel.connect"),
-      kind: z.enum(["telegram", "qq", "discord"]),
+      kind: z.enum(AgentChannelKinds),
     })
     .strict(),
   z
@@ -358,7 +374,7 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("profile.update"),
-      profile: AgentUserProfileInputSchema,
+      profile: AgentUserProfileUpdateSchema,
     })
     .strict(),
   z
@@ -386,6 +402,16 @@ export const AgentWebSocketRequestSchema = z.discriminatedUnion("type", [
       action: z.enum(AgentInteractionInputActions),
       content: z.record(z.string(), AgentInteractionInputValueSchema).optional(),
       message: z.string().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("session.feedback"),
+      sessionId: z.string().min(1),
+      requestId: z.string().min(1),
+      /** `null` retracts a previously recorded rating. */
+      rating: z.enum(AgentFeedbackRatings).nullable(),
+      category: z.enum(AgentFeedbackCategoryValues).optional(),
     })
     .strict(),
   z

@@ -1,4 +1,4 @@
-import { describe, expect, test, afterEach } from "vitest";
+import { describe, expect, test, afterEach, vi } from "vitest";
 import { agentErrorMessage } from "../../../Source/AgentSystem/I18n/AgentMessageCatalog.js";
 import { AgentChannelSessionMappingStore } from "../../../Source/AgentSystem/Channels/AgentChannelSessionMappingStore.js";
 import {
@@ -26,16 +26,9 @@ import type {
   AgentChannelAdapter,
   AgentChannelSource,
 } from "../../../Source/AgentSystem/Channels/AgentChannelTypes.js";
-import {
-  agentChannelMediaIdentity,
-  projectAgentChannelFinalParts,
-} from "../../../Source/AgentSystem/Channels/AgentChannelOutboundMedia.js";
-import { projectAgentChannelFinalParts as validateFinalParts } from "../../../Source/AgentSystem/Channels/AgentChannelFinalResponse.js";
-import {
-  appendAgentChannelFinalizationRecord,
-  readAgentChannelFinalizationHistory,
-} from "../../../Source/AgentSystem/Channels/AgentChannelFinalizationTypes.js";
+import { agentChannelMediaIdentity } from "../../../Source/AgentSystem/Channels/AgentChannelOutboundMedia.js";
 import { cleanupChannelsTestRoots, openChannelsTestDatabase, TestChannelSource } from "./AgentChannelTestSupport.js";
+import { createDeferred } from "../Support/AsyncTestFixtures.js";
 
 afterEach(() => cleanupChannelsTestRoots());
 
@@ -53,99 +46,6 @@ describe("channel session identity", () => {
     const withThread = serializeAgentChannelLane({ ...TestChannelSource, threadId: "t1" });
     expect(withThread).toContain(":t1");
     expect(withThread).not.toBe(serializeAgentChannelLane(TestChannelSource));
-  });
-});
-
-describe("structured channel final delivery", () => {
-  test("validates ordered parts without Markdown routing", async () => {
-    const parts = validateFinalParts({
-      parts: [
-        { kind: "text", text: "前文" },
-        { kind: "resource", uri: "senera://resource/image", alt: "截图" },
-        { kind: "code", language: "svg", code: "<svg />" },
-        { kind: "text", text: "后文" },
-      ],
-    });
-    const projection = await projectAgentChannelFinalParts(parts, {
-      resourceResolver: {
-        resolve: async () => ({
-          resourceUri: "senera://resource/image",
-          filePath: "E:/senera/image.png",
-          name: "image.png",
-          mime: "image/png",
-          size: 8,
-          sha256: "a".repeat(64),
-          origin: "artifact" as const,
-        }),
-      },
-    });
-    expect(projection.segments.map((segment) => segment.kind)).toEqual(["text", "media", "media", "text"]);
-    expect(projection.media[1]).toMatchObject({ kind: "file", contentType: "image/svg+xml" });
-  });
-});
-
-describe("channel finalization context", () => {
-  test("keeps a bounded, idempotent learning window", () => {
-    let metadata: Parameters<typeof appendAgentChannelFinalizationRecord>[0] | undefined;
-    const base = {
-      createdAt: "2026-09-03T00:00:00.000Z",
-      platform: "qq" as const,
-      chatType: "direct" as const,
-      content: "x".repeat(20_000),
-      parts: [
-        { kind: "text" as const, text: "x".repeat(20_000) },
-        { kind: "resource" as const, uri: "senera://resource/example", alt: "示例" },
-      ],
-    };
-    for (let index = 0; index < 10; index += 1) {
-      metadata = appendAgentChannelFinalizationRecord(metadata, { ...base, id: `request-${index}` });
-    }
-    metadata = appendAgentChannelFinalizationRecord(metadata, { ...base, id: "request-9", content: "latest" });
-
-    const history = readAgentChannelFinalizationHistory(metadata);
-    expect(history).toHaveLength(8);
-    expect(history.map((record) => record.id)).toEqual([
-      "request-2",
-      "request-3",
-      "request-4",
-      "request-5",
-      "request-6",
-      "request-7",
-      "request-8",
-      "request-9",
-    ]);
-    expect(history.at(-1)?.content).toBe("latest");
-    expect(history[0]?.content.length).toBeLessThanOrEqual(12_000);
-    expect(history[0]?.parts[0]?.kind === "text" && history[0].parts[0].text.length).toBeLessThanOrEqual(8_192);
-  });
-
-  test("retains bounded media metadata for extensionless resources", () => {
-    const metadata = appendAgentChannelFinalizationRecord(undefined, {
-      id: "request-media-metadata",
-      createdAt: "2026-09-03T00:00:00.000Z",
-      platform: "qq",
-      chatType: "direct",
-      content: "已发送文件",
-      parts: [
-        {
-          kind: "resource",
-          uri: "https://cdn.example/download?id=1",
-          mediaKind: "file",
-          mime: "application/pdf",
-          fileName: "report.pdf",
-        },
-      ],
-    });
-
-    expect(readAgentChannelFinalizationHistory(metadata)[0]?.parts).toEqual([
-      {
-        kind: "resource",
-        uri: "https://cdn.example/download?id=1",
-        mediaKind: "file",
-        mime: "application/pdf",
-        fileName: "report.pdf",
-      },
-    ]);
   });
 });
 
@@ -349,7 +249,7 @@ describe("channel delivery pump", () => {
     delivery.stop();
     await expect(queued).resolves.toMatchObject({ status: "failed", code: "stopped" });
     release?.();
-    await expect(active).resolves.toMatchObject({ status: "sent", messageId: "late" });
+    await expect(active).resolves.toMatchObject({ status: "failed", code: "delivery_unknown" });
   });
 });
 
@@ -411,6 +311,138 @@ describe("channel run renderer", () => {
     await delivery.stop();
   });
 
+  test.each(["throw", "rejected"])(
+    "sends the complete final answer when preview editing fails (%s)",
+    async (failure) => {
+      const adapter = editableAdapter();
+      adapter.edit = vi.fn<NonNullable<AgentChannelAdapter["edit"]>>(async () => {
+        if (failure === "throw") throw new Error("Preview is no longer editable.");
+        return { kind: "unsupported" };
+      });
+      const delivery = new AgentChannelDelivery({ adapter });
+      const renderer = new AgentChannelRunRenderer({ adapter, delivery, source: TestChannelSource });
+      try {
+        await renderer.handleEvent(events(["run.started"])[0] as never);
+        await renderer.handleEvent({ ...events(["model.delta"])[0], data: { text: "draft" } } as never);
+        await renderer.handleEvent({
+          ...events(["assistant.message.created"])[0],
+          data: { kind: "final_answer", terminal: true, content: "Complete final answer" },
+        } as never);
+        await renderer.handleEvent(events(["run.completed"])[0] as never);
+        expect(adapter.send).toHaveBeenLastCalledWith(
+          TestChannelSource,
+          "Complete final answer",
+          expect.objectContaining({ deliveryId: expect.any(String) }),
+        );
+      } finally {
+        renderer.dispose();
+        await delivery.stop();
+      }
+    },
+  );
+
+  test("settles an in-flight preview edit before publishing the final answer", async () => {
+    vi.useFakeTimers();
+    const adapter = editableAdapter();
+    const edited: string[] = [];
+    const preview = createDeferred<void>();
+    adapter.edit = vi.fn<NonNullable<AgentChannelAdapter["edit"]>>(async (_source, messageId, content) => {
+      if (content === "ab") await preview.promise;
+      edited.push(content);
+      return { kind: "edited", messageId };
+    });
+    const delivery = new AgentChannelDelivery({ adapter });
+    const renderer = new AgentChannelRunRenderer({
+      adapter,
+      delivery,
+      source: TestChannelSource,
+      editIntervalMs: 10,
+    });
+    let completion: Promise<void> | undefined;
+    try {
+      await renderer.handleEvent(events(["run.started"])[0] as never);
+      await renderer.handleEvent({ ...events(["model.delta"])[0], data: { text: "a" } } as never);
+      await renderer.handleEvent({ ...events(["model.delta"])[0], data: { text: "b" } } as never);
+      await vi.advanceTimersByTimeAsync(10);
+      completion = renderer
+        .handleEvent({
+          ...events(["assistant.message.created"])[0],
+          data: { kind: "final_answer", terminal: true, content: "final answer" },
+        } as never)
+        .then(() => renderer.handleEvent(events(["run.completed"])[0] as never));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(adapter.edit).toHaveBeenCalledTimes(1);
+      preview.resolve();
+      await completion;
+      expect(edited).toEqual(["ab", "final answer"]);
+    } finally {
+      preview.resolve();
+      await completion;
+      renderer.dispose();
+      await delivery.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  test("throttles large deltas and publishes the latest buffered preview", async () => {
+    vi.useFakeTimers();
+    const adapter = editableAdapter();
+    adapter.edit = vi.fn<NonNullable<AgentChannelAdapter["edit"]>>(async (_source, messageId) => ({
+      kind: "edited",
+      messageId,
+    }));
+    const delivery = new AgentChannelDelivery({ adapter });
+    const renderer = new AgentChannelRunRenderer({
+      adapter,
+      delivery,
+      source: TestChannelSource,
+      editIntervalMs: 100,
+      bufferThreshold: 1,
+    });
+    try {
+      await renderer.handleEvent(events(["run.started"])[0] as never);
+      for (const text of ["a", "b", "c"]) {
+        await renderer.handleEvent({ ...events(["model.delta"])[0], data: { text } } as never);
+      }
+      expect(adapter.edit).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(100);
+      expect(adapter.edit).toHaveBeenCalledExactlyOnceWith(TestChannelSource, "preview", "abc");
+    } finally {
+      renderer.dispose();
+      await delivery.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  test("continues delivering later events after one operation rejects", async () => {
+    const adapter = editableAdapter();
+    const delivery = new AgentChannelDelivery({ adapter });
+    vi.spyOn(delivery, "enqueueAndWait").mockRejectedValueOnce(new Error("Delivery interrupted."));
+    const renderer = new AgentChannelRunRenderer({ adapter, delivery, source: TestChannelSource });
+    try {
+      await renderer.handleEvent(events(["run.started"])[0] as never);
+      await expect(
+        renderer.handleEvent({
+          ...events(["assistant.message.created"])[0],
+          data: { kind: "tool_preface", content: "Checking now" },
+        } as never),
+      ).rejects.toThrow("Delivery interrupted.");
+      await renderer.handleEvent({
+        ...events(["assistant.message.created"])[0],
+        data: { kind: "final_answer", terminal: true, content: "Complete final answer" },
+      } as never);
+      await renderer.handleEvent(events(["run.completed"])[0] as never);
+      expect(adapter.send).toHaveBeenCalledWith(
+        TestChannelSource,
+        "Complete final answer",
+        expect.objectContaining({ deliveryId: expect.any(String) }),
+      );
+    } finally {
+      renderer.dispose();
+      await delivery.stop();
+    }
+  });
+
   test("delivers the model preface without exposing tool lifecycle events", async () => {
     const messages: string[] = [];
     const adapter: AgentChannelAdapter = {
@@ -460,156 +492,6 @@ describe("channel run renderer", () => {
     await delivery.stop();
   });
 
-  test("uses the host rewrite and preserves structured delivery order", async () => {
-    const source: AgentChannelSource = { ...TestChannelSource, platform: "qq" };
-    const sent: Array<{ content: string; options?: Parameters<AgentChannelAdapter["send"]>[2] }> = [];
-    const adapter: AgentChannelAdapter = {
-      kind: "qq",
-      capabilities: {
-        splitsLongMessages: true,
-        maxMessageLength: 4096,
-        supportsEdit: false,
-        supportsDraft: false,
-        markdown: "plain",
-        commandPrefix: "/",
-        supportsMedia: true,
-      },
-      bind: () => undefined,
-      connect: async () => undefined,
-      disconnect: async () => undefined,
-      getConnectionState: () => "connected",
-      send: async (_source, content, options) => {
-        sent.push({ content, options });
-        return { kind: "sent", messageId: `m${sent.length}` };
-      },
-      handleWebhookUpdate: async () => false,
-    };
-    const delivery = new AgentChannelDelivery({ adapter });
-    let rewriteInput:
-      | {
-          content: string;
-          source: AgentChannelSource;
-          context?: { resourceManifest?: { references: readonly unknown[] } };
-        }
-      | undefined;
-    const renderer = new AgentChannelRunRenderer({
-      adapter,
-      delivery,
-      source,
-      finalResponseRewriter: {
-        rewrite: async (input) => {
-          rewriteInput = input;
-          return {
-            parts: [
-              { kind: "text", text: "前文" },
-              { kind: "text", text: "中间" },
-              { kind: "resource", uri: "data:image/png;base64,iVBORw0KGgo=", alt: "截图" },
-              { kind: "code", language: "svg", code: "<svg />" },
-              { kind: "text", text: "后文" },
-            ],
-          };
-        },
-      },
-      resourceResolver: {
-        resolve: async () => undefined,
-        resolveWorkspacePath: async () => ({
-          filePath: "C:/Users/1/Downloads/YaeMiko.svg",
-          name: "YaeMiko.svg",
-          mime: "image/svg+xml",
-          size: 128,
-          sha256: "e".repeat(64),
-        }),
-      },
-    });
-
-    await renderer.handleEvent({ kind: "run.started", context: { requestId: "req-final" }, data: {} } as never);
-    await renderer.handleEvent({
-      kind: "assistant.message.created",
-      context: { requestId: "req-final" },
-      data: {
-        kind: "final_answer",
-        content: "最终答案 ![截图](YaeMiko.svg)",
-        terminal: true,
-      },
-    } as never);
-    await renderer.handleEvent({ kind: "run.completed", context: { requestId: "req-final" }, data: {} } as never);
-    await delivery.flush();
-
-    expect(rewriteInput).toMatchObject({ content: "最终答案 ![截图](YaeMiko.svg)", source: { platform: "qq" } });
-    expect(rewriteInput?.context?.resourceManifest?.references).toEqual([
-      {
-        source: "YaeMiko.svg",
-        kind: "workspace",
-        absolutePath: "C:/Users/1/Downloads/YaeMiko.svg",
-        name: "YaeMiko.svg",
-        mime: "image/svg+xml",
-      },
-    ]);
-    expect(sent.map(({ content }) => content)).toEqual(["前文", "中间", "", "", "后文"]);
-    expect(sent[2]?.options?.media?.[0]).toMatchObject({ kind: "image", contentType: "image/png" });
-    expect(sent[3]?.options?.media?.[0]).toMatchObject({ kind: "file", contentType: "image/svg+xml" });
-    expect(sent.some(({ content }) => content.includes("!["))).toBe(false);
-    await delivery.stop();
-  });
-
-  test("serializes plain-text answers through the host final boundary", async () => {
-    const source: AgentChannelSource = { ...TestChannelSource, platform: "qq" };
-    const sent: Array<{ content: string }> = [];
-    const adapter: AgentChannelAdapter = {
-      kind: "qq",
-      capabilities: {
-        splitsLongMessages: true,
-        maxMessageLength: 4096,
-        supportsEdit: false,
-        supportsDraft: false,
-        markdown: "plain",
-        commandPrefix: "/",
-        supportsMedia: true,
-      },
-      bind: () => undefined,
-      connect: async () => undefined,
-      disconnect: async () => undefined,
-      getConnectionState: () => "connected",
-      send: async (_s, content) => {
-        sent.push({ content });
-        return { kind: "sent", messageId: `m${sent.length}` };
-      },
-      handleWebhookUpdate: async () => false,
-    };
-    const delivery = new AgentChannelDelivery({ adapter });
-    let rewrites = 0;
-    const renderer = new AgentChannelRunRenderer({
-      adapter,
-      delivery,
-      source,
-      finalResponseRewriter: {
-        rewrite: async () => {
-          rewrites += 1;
-          return {
-            parts: [
-              { kind: "text", text: "第一段纯文本。" },
-              { kind: "text", text: "第二段纯文本。" },
-              { kind: "text", text: "第三段纯文本。" },
-            ],
-          };
-        },
-      },
-    });
-    const answer = "第一段纯文本。\n\n第二段纯文本。\n\n第三段纯文本。";
-    await renderer.handleEvent({ kind: "run.started", context: { requestId: "req-plain" }, data: {} } as never);
-    await renderer.handleEvent({
-      kind: "assistant.message.created",
-      context: { requestId: "req-plain" },
-      data: { kind: "final_answer", content: answer, terminal: true },
-    } as never);
-    await renderer.handleEvent({ kind: "run.completed", context: { requestId: "req-plain" }, data: {} } as never);
-    await delivery.flush();
-
-    expect(rewrites).toBe(1);
-    expect(sent.map(({ content }) => content)).toEqual(["第一段纯文本。", "第二段纯文本。", "第三段纯文本。"]);
-    await delivery.stop();
-  });
-
   test("keeps host failure notices on the deterministic delivery path", async () => {
     const sent: string[] = [];
     const channelAdapter: AgentChannelAdapter = {
@@ -633,17 +515,10 @@ describe("channel run renderer", () => {
       handleWebhookUpdate: async () => false,
     };
     const delivery = new AgentChannelDelivery({ adapter: channelAdapter });
-    let rewrites = 0;
     const renderer = new AgentChannelRunRenderer({
       adapter: channelAdapter,
       delivery,
       source: TestChannelSource,
-      finalResponseRewriter: {
-        rewrite: async () => {
-          rewrites += 1;
-          return { parts: [{ kind: "text", text: "unexpected rewrite" }] };
-        },
-      },
     });
 
     await renderer.handleEvent({ kind: "run.started", context: { requestId: "req-failed" }, data: {} } as never);
@@ -654,181 +529,8 @@ describe("channel run renderer", () => {
     } as never);
     await delivery.flush();
 
-    expect(rewrites).toBe(0);
     expect(sent).toHaveLength(1);
     expect(sent[0]).toContain("upstream failed");
-    await delivery.stop();
-  });
-
-  test("runs the host rewrite for structured answers with code fences", async () => {
-    const source: AgentChannelSource = { ...TestChannelSource, platform: "qq" };
-    const sent: Array<{ content: string }> = [];
-    const adapter: AgentChannelAdapter = {
-      kind: "qq",
-      capabilities: {
-        splitsLongMessages: true,
-        maxMessageLength: 4096,
-        supportsEdit: false,
-        supportsDraft: false,
-        markdown: "plain",
-        commandPrefix: "/",
-        supportsMedia: true,
-      },
-      bind: () => undefined,
-      connect: async () => undefined,
-      disconnect: async () => undefined,
-      getConnectionState: () => "connected",
-      send: async (_s, content) => {
-        sent.push({ content });
-        return { kind: "sent", messageId: `m${sent.length}` };
-      },
-      handleWebhookUpdate: async () => false,
-    };
-    const delivery = new AgentChannelDelivery({ adapter });
-    let rewrites = 0;
-    const renderer = new AgentChannelRunRenderer({
-      adapter,
-      delivery,
-      source,
-      finalResponseRewriter: {
-        rewrite: async () => {
-          rewrites += 1;
-          return {
-            parts: [
-              { kind: "text", text: "第一段" },
-              { kind: "text", text: "第二段" },
-            ],
-          };
-        },
-      },
-    });
-    const answer = "前文\n```ts\nconst x = 1;\n```\n后文";
-    await renderer.handleEvent({ kind: "run.started", context: { requestId: "req-long" }, data: {} } as never);
-    await renderer.handleEvent({
-      kind: "assistant.message.created",
-      context: { requestId: "req-long" },
-      data: { kind: "final_answer", content: answer, terminal: true },
-    } as never);
-    await renderer.handleEvent({ kind: "run.completed", context: { requestId: "req-long" }, data: {} } as never);
-    await delivery.flush();
-
-    expect(rewrites).toBe(1);
-    expect(sent.map(({ content }) => content)).toEqual(["第一段", "第二段"]);
-    await delivery.stop();
-  });
-
-  test("falls back to plain text when the rewrite produces an empty projection", async () => {
-    const source: AgentChannelSource = { ...TestChannelSource, platform: "qq" };
-    const sent: Array<{ content: string }> = [];
-    const adapter: AgentChannelAdapter = {
-      kind: "qq",
-      capabilities: {
-        splitsLongMessages: true,
-        maxMessageLength: 4096,
-        supportsEdit: false,
-        supportsDraft: false,
-        markdown: "plain",
-        commandPrefix: "/",
-        supportsMedia: true,
-      },
-      bind: () => undefined,
-      connect: async () => undefined,
-      disconnect: async () => undefined,
-      getConnectionState: () => "connected",
-      send: async (_s, content) => {
-        sent.push({ content });
-        return { kind: "sent", messageId: `m${sent.length}` };
-      },
-      handleWebhookUpdate: async () => false,
-    };
-    const delivery = new AgentChannelDelivery({ adapter });
-    const renderer = new AgentChannelRunRenderer({
-      adapter,
-      delivery,
-      source,
-      finalResponseRewriter: {
-        rewrite: async () => ({ parts: [{ kind: "text", text: "   " }] }),
-      },
-    });
-    const answer = "```ts\nconst x = 1;\n```";
-    await renderer.handleEvent({ kind: "run.started", context: { requestId: "req-empty" }, data: {} } as never);
-    await renderer.handleEvent({
-      kind: "assistant.message.created",
-      context: { requestId: "req-empty" },
-      data: { kind: "final_answer", content: answer, terminal: true },
-    } as never);
-    await renderer.handleEvent({ kind: "run.completed", context: { requestId: "req-empty" }, data: {} } as never);
-    await delivery.flush();
-
-    expect(sent.map(({ content }) => content)).toEqual([answer]);
-    await delivery.stop();
-  });
-
-  test("drops a late rewrite result after the renderer is disposed", async () => {
-    const sent: string[] = [];
-    const adapter: AgentChannelAdapter = {
-      kind: "qq",
-      capabilities: {
-        splitsLongMessages: true,
-        maxMessageLength: 4096,
-        supportsEdit: false,
-        supportsDraft: false,
-        markdown: "plain",
-        commandPrefix: "/",
-        supportsMedia: true,
-      },
-      bind: () => undefined,
-      connect: async () => undefined,
-      disconnect: async () => undefined,
-      getConnectionState: () => "connected",
-      send: async (_source, content) => {
-        sent.push(content);
-        return { kind: "sent", messageId: `m${sent.length}` };
-      },
-      handleWebhookUpdate: async () => false,
-    };
-    const delivery = new AgentChannelDelivery({ adapter });
-    let resolveRewrite!: (value: { parts: [{ kind: "text"; text: string }] }) => void;
-    let markRewriteStarted!: () => void;
-    let rewriteSignal: AbortSignal | undefined;
-    const rewriteStarted = new Promise<void>((resolve) => {
-      markRewriteStarted = resolve;
-    });
-    const rewriteResult = new Promise<{ parts: [{ kind: "text"; text: string }] }>((resolve) => {
-      resolveRewrite = resolve;
-    });
-    const renderer = new AgentChannelRunRenderer({
-      adapter,
-      delivery,
-      source: TestChannelSource,
-      finalResponseRewriter: {
-        rewrite: async (input) => {
-          rewriteSignal = input.signal;
-          markRewriteStarted();
-          return rewriteResult;
-        },
-      },
-    });
-
-    await renderer.handleEvent({ kind: "run.started", context: { requestId: "req-late" }, data: {} } as never);
-    await renderer.handleEvent({
-      kind: "assistant.message.created",
-      context: { requestId: "req-late" },
-      data: { kind: "final_answer", content: "原始答案\n![图](senera://resource/r1)", terminal: true },
-    } as never);
-    const completion = renderer.handleEvent({
-      kind: "run.completed",
-      context: { requestId: "req-late" },
-      data: {},
-    } as never);
-    await rewriteStarted;
-    renderer.dispose();
-    expect(rewriteSignal?.aborted).toBe(true);
-    resolveRewrite({ parts: [{ kind: "text", text: "迟到答案" }] });
-    await completion;
-    await delivery.flush();
-
-    expect(sent).toEqual([]);
     await delivery.stop();
   });
 
@@ -867,7 +569,12 @@ describe("channel run renderer", () => {
     await renderer.handleEvent({ kind: "run.cancelled", context: { requestId: "req-cancel" }, data: {} } as never);
     await delivery.flush();
 
-    expect(sent).toEqual([{ content: "已取消本次处理。", options: undefined }]);
+    expect(sent).toEqual([
+      {
+        content: "已取消本次处理。",
+        options: expect.objectContaining({ chatType: "direct", deliveryId: expect.any(String) }),
+      },
+    ]);
     await delivery.stop();
   });
 
@@ -906,7 +613,9 @@ describe("channel run renderer", () => {
     await renderer.handleEvent({ kind: "run.completed", context: { requestId: "req-tool-media" }, data: {} } as never);
     await delivery.flush();
 
-    expect(sent).toEqual([{ content: "已完成。", options: undefined }]);
+    expect(sent).toEqual([
+      { content: "已完成。", options: expect.objectContaining({ chatType: "direct", deliveryId: expect.any(String) }) },
+    ]);
     await delivery.stop();
   });
 
@@ -1142,6 +851,26 @@ describe("channel run renderer", () => {
     await delivery.stop();
   });
 });
+
+function editableAdapter(): AgentChannelAdapter {
+  return {
+    kind: "telegram",
+    capabilities: {
+      splitsLongMessages: true,
+      maxMessageLength: 4096,
+      supportsEdit: true,
+      supportsDraft: false,
+      markdown: "markdown_v2",
+      commandPrefix: "/",
+    },
+    bind: () => undefined,
+    connect: async () => undefined,
+    disconnect: async () => undefined,
+    getConnectionState: () => "connected",
+    send: vi.fn<AgentChannelAdapter["send"]>(async () => ({ kind: "sent", messageId: "preview" })),
+    handleWebhookUpdate: async () => false,
+  };
+}
 
 test("identifies flood errors from the marker", () => {
   const error = createFloodError("flood", 3);

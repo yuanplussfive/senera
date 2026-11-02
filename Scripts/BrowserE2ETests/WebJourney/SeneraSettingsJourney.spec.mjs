@@ -2,8 +2,6 @@ import { createBrowserE2eHarness, expect, test } from "../browserE2eTest.mjs";
 
 let harness;
 
-test.describe.configure({ mode: "serial" });
-
 test.describe("settings navigation and section management", () => {
   test.beforeAll(async () => {
     harness = await createBrowserE2eHarness({ authenticationMode: "disabled" });

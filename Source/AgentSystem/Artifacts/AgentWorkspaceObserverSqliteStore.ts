@@ -29,6 +29,7 @@ interface WorkspaceObserverFileRow {
   readonly mtime_ms: number;
   readonly hash: string;
   readonly content_state: "captured" | "omitted";
+  readonly content_encoding: "utf8" | "base64";
   readonly content_reason: string | null;
   readonly content_ref: string | null;
   readonly content_byte_length: number | null;
@@ -44,6 +45,7 @@ type WorkspaceObserverFileWrite = {
   readonly mtime_ms: number;
   readonly hash: string;
   readonly content_state: "captured" | "omitted";
+  readonly content_encoding: "utf8" | "base64";
   readonly content_reason: string | null;
   readonly content_ref: string | null;
   readonly content_byte_length: number | null;
@@ -179,6 +181,7 @@ function encodeRecord(pathKey: string, entry: AgentWorkspaceObserverBaselineReco
       content_state: "captured",
       content_reason: null,
       content_ref: entry.contentRef,
+      content_encoding: entry.content.encoding,
       content_byte_length: entry.content.byteLength,
       line_count: entry.content.lineCount,
       scan_generation: "",
@@ -194,6 +197,7 @@ function encodeRecord(pathKey: string, entry: AgentWorkspaceObserverBaselineReco
     content_state: "omitted",
     content_reason: entry.content.reason,
     content_ref: null,
+    content_encoding: "utf8",
     content_byte_length: entry.content.byteLength ?? null,
     line_count: null,
     scan_generation: "",
@@ -213,7 +217,7 @@ function decodeRecord(row: WorkspaceObserverFileRow): AgentWorkspaceObserverBase
       hash: row.hash,
       content: {
         state: "captured",
-        encoding: "utf8",
+        encoding: row.content_encoding,
         byteLength: row.content_byte_length,
         lineCount: row.line_count,
       },

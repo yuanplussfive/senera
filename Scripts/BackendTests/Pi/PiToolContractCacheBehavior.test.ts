@@ -1,8 +1,14 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { formatSkillInvocation } from "@earendil-works/pi-agent-core";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+import type { Context } from "@earendil-works/pi-ai";
+import { createAgentToolExecutionDigest } from "../../../Source/AgentSystem/ToolContracts/AgentToolContractIdentity.js";
+import { createAgentToolContractDelivery } from "../../../Source/AgentSystem/ToolSearch/AgentToolContractDelivery.js";
+import { createAgentPiToolObservation } from "../../../Source/AgentSystem/Pi/AgentPiToolObservation.js";
+import { createAgentToolAccessGrant } from "../../../Source/AgentSystem/ToolRuntime/AgentToolAccessGrant.js";
+import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
+import { AgentToolDescriptionProtocol } from "../../../Source/AgentSystem/ToolSearch/AgentToolMetaToolProtocol.js";
 import { AgentExtensionRegistry } from "../../../Source/AgentSystem/Extensions/AgentExtensionRegistry.js";
 import { AgentPiToolRegistryProjector } from "../../../Source/AgentSystem/Pi/AgentPiToolRegistryProjector.js";
 import type { AgentPiToolExecutionBridge } from "../../../Source/AgentSystem/Pi/AgentPiToolExecutionBridge.js";
@@ -14,12 +20,126 @@ import {
 import { AgentSkillScanner } from "../../../Source/AgentSystem/Skills/AgentSkillScanner.js";
 import type { AgentActivatedSkill } from "../../../Source/AgentSystem/Skills/AgentSkillActivation.js";
 import { AgentSystemExtensionCatalog } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolSource.js";
-import { createAgentSystemTools } from "../../../Source/AgentSystem/SystemTools/AgentSystemTools.js";
+import {
+  createAgentSystemTools,
+  listAgentSystemExtensionHostCapabilityUniverse,
+} from "../../../Source/AgentSystem/SystemTools/AgentSystemTools.js";
 import { systemToolCapability } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolCatalog.js";
 import { listDefaultAgentHostCapabilityNames } from "../../../Source/AgentSystem/AgentDefaultHostCapabilities.js";
 import { AgentTodoToolNames } from "../../../Source/AgentSystem/Todos/AgentTodoTypes.js";
+import type { AgentTodoService } from "../../../Source/AgentSystem/Todos/AgentTodoService.js";
 
 describe("Pi tool contract cache behavior", () => {
+  test("keeps delivered image contracts across UI and execution updates but invalidates hidden schema changes", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "senera-tool-identity-"));
+    try {
+      fs.mkdirSync(path.join(root, "explore"));
+      fs.copyFileSync("System/Extensions/explore/domain.json", path.join(root, "explore/domain.json"));
+      fs.cpSync("System/Extensions/explore/agent-image-tools", path.join(root, "explore/agent-image-tools"), {
+        recursive: true,
+      });
+      const file = path.join(root, "explore/agent-image-tools/tools/ImageGenerate.tool.json");
+      const source = JSON.parse(fs.readFileSync(file, "utf8"));
+      const readTool = () => {
+        const catalog = new AgentExtensionRegistry();
+        new AgentSystemExtensionCatalog().registerRoot(catalog, root, {
+          capabilities: new Set(
+            ["ImageGenerate", "ImageModels", "ImageAnalyze"].map((name) => `system.tool.agent-image-tools.${name}`),
+          ),
+        });
+        return catalog.getTool("ImageGenerate")!;
+      };
+      const original = readTool();
+      const registry = new AgentExtensionRegistry();
+      registry.registerToolExtension(original.owner, [original]);
+      const execute = vi.fn(async () => ({ content: [], details: {} }));
+      const projector = new AgentPiToolRegistryProjector({
+        config: { ModelProviders: [] },
+        registry,
+        toolPlanningMode: "baml",
+        execution: { execute } as unknown as AgentPiToolExecutionBridge,
+        availableExecutionTargets: () => ["Local"],
+      });
+      const delivery = createAgentToolContractDelivery(original, ["Local"]);
+      const context: Context = {
+        messages: [
+          {
+            role: "toolResult",
+            toolCallId: "describe",
+            toolName: "ToolDescribe",
+            isError: false,
+            timestamp: 1,
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  createAgentPiToolObservation({
+                    status: "success",
+                    execution_status: "completed",
+                    output_availability: "complete",
+                    detail: {
+                      evidence: [],
+                      result: { type: AgentToolDescriptionProtocol.type, tools: [delivery.description] },
+                    },
+                  }),
+                ),
+              },
+            ],
+            details: { senera: { toolContractReceipts: [delivery.receipt] } },
+          },
+        ],
+      };
+      const exposure = new AgentToolExposureState(
+        createAgentToolAccessGrant({
+          authorizedToolNames: [original.name],
+          exposedToolNames: [original.name],
+        }),
+      );
+      const initial = projector.createToolSet();
+      const callable = initial.materialize(() => ({}))[0]!;
+
+      source.presentation.icon = "image";
+      source.search.Capabilities[0].Title = "Create an image";
+      const manifestPath = path.join(root, "explore/agent-image-tools/extension.json");
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+      manifest.displayName = { "zh-CN": "图像工具", "en-US": "Image tools" };
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+      fs.writeFileSync(file, JSON.stringify(source));
+      const restyled = readTool();
+      registry.replaceToolExtension(restyled.owner, [restyled]);
+      expect(restyled.owner.revision).not.toBe(original.owner.revision);
+      expect(restyled.contract?.digest).toBe(original.contract?.digest);
+      expect(projector.createToolSet().fingerprint).toBe(initial.fingerprint);
+      projector.synchronizeContractEvidence(context, exposure);
+      expect(exposure.hasConfirmedContract(restyled.name, restyled.contract?.digest)).toBe(true);
+      await callable.execute("restyled", { prompt: "Draw a tree" });
+      expect(execute).toHaveBeenLastCalledWith(expect.objectContaining({ tool: restyled }));
+
+      source.runtime.MaxConcurrency = 2;
+      fs.writeFileSync(file, JSON.stringify(source));
+      const reconfigured = readTool();
+      registry.replaceToolExtension(reconfigured.owner, [reconfigured]);
+      expect(reconfigured.contract?.digest).toBe(original.contract?.digest);
+      expect(createAgentToolExecutionDigest(reconfigured)).not.toBe(createAgentToolExecutionDigest(original));
+      expect(projector.createToolSet().fingerprint).not.toBe(initial.fingerprint);
+      projector.synchronizeContractEvidence(context, exposure);
+      expect(exposure.hasConfirmedContract(reconfigured.name, reconfigured.contract?.digest)).toBe(true);
+      await expect(callable.execute("stale", { prompt: "Draw a tree" })).rejects.toThrow("ImageGenerate");
+      expect(execute).toHaveBeenCalledOnce();
+
+      source.inputSchema.properties.prompt.minLength = 2;
+      fs.writeFileSync(file, JSON.stringify(source));
+      const constrained = readTool();
+      registry.replaceToolExtension(constrained.owner, [constrained]);
+      expect(constrained.contract?.digest).not.toBe(original.contract?.digest);
+      expect(createAgentToolContractDelivery(constrained, ["Local"]).description[2]).toEqual(delivery.description[2]);
+      projector.synchronizeContractEvidence(context, exposure);
+      expect(exposure.hasConfirmedContract(constrained.name, constrained.contract?.digest)).toBe(false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("registers immutable contracts and reuses parameter schemas across turn projections", () => {
     const registry = new AgentExtensionRegistry();
     const projector = toolProjector(registry);
@@ -27,14 +147,7 @@ describe("Pi tool contract cache behavior", () => {
     const tools = registry.listTools();
 
     expect(tools.map((tool) => tool.name)).toEqual(
-      expect.arrayContaining([
-        "AgentSpawn",
-        "AgentWait",
-        "AgentInput",
-        "AgentStop",
-        "AgentResume",
-        "AgentScheduleManage",
-      ]),
+      expect.arrayContaining(["subagent", "send_message", "list_agents", "interrupt_agent", "schedule_edit"]),
     );
     for (const tool of tools) {
       expect(tool.contract?.digest).toMatch(/^[a-f0-9]{64}$/);
@@ -47,32 +160,24 @@ describe("Pi tool contract cache behavior", () => {
 
     expect(second.map((tool) => tool.parameters)).toEqual(first.map((tool) => tool.parameters));
     second.forEach((tool, index) => expect(tool.parameters).toBe(first[index]?.parameters));
-    for (const toolName of ["SkillManage", "GitInspect", "GitMutate", "AgentScheduleManage"]) {
+    for (const toolName of ["SkillManage", "GitInspect", "GitMutate", "schedule_edit"]) {
       expect(second.find((tool) => tool.name === toolName)?.parameters, toolName).toMatchObject({ type: "object" });
     }
   }, 15_000);
 
-  test("projects split Todo tools to Pi without widening the update contract", () => {
+  test("projects the full replacement Todo contract without inventing item IDs", () => {
     const registry = new AgentExtensionRegistry();
     const projector = toolProjector(registry);
     registerSystemTools(registry);
-
     const tools = projector.project();
-    expect(tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(Object.values(AgentTodoToolNames)));
-
-    const update = tools.find((tool) => tool.name === AgentTodoToolNames.Update);
-    const schema = update?.parameters as {
-      readonly properties?: {
-        readonly updates?: {
-          readonly items?: { readonly anyOf?: readonly { readonly required?: readonly string[] }[] };
-        };
-      };
-    };
-    expect(schema.properties?.updates?.items?.anyOf?.map((branch) => branch.required)).toEqual([
-      ["id", "status"],
-      ["id", "content"],
-      ["id", "content", "status"],
-    ]);
+    const write = tools.find((tool) => tool.name === AgentTodoToolNames.Write);
+    expect(write?.parameters).toMatchObject({
+      type: "object",
+      required: ["todos"],
+      additionalProperties: false,
+      properties: { todos: { type: "array", items: { required: ["content", "status"], additionalProperties: false } } },
+    });
+    expect(tools.some((tool) => ["TodoAdd", "TodoUpdate", "TodoRead"].includes(tool.name))).toBe(false);
   });
 
   test("projects the validated Skill body without discovering or reading it again", () => {
@@ -101,9 +206,6 @@ describe("Pi tool contract cache behavior", () => {
 
     expect(projectedSkill.content).toContain("# Execution Workflow");
     expect(projectedSkill.filePath).toBe(`senera://skills/${skill.name}/SKILL.md`);
-    expect(formatSkillInvocation(projectedSkill)).toContain(
-      `References are relative to senera://skills/${skill.name}.`,
-    );
   });
 
   test("uses the registry winner for colliding names and keeps an activated revision across updates", () => {
@@ -173,7 +275,7 @@ describe("Pi tool contract cache behavior", () => {
     expect(prompt).not.toContain("/skills/yaml/SKILL.md");
     expect(prompt).not.toContain("/skills/plain/SKILL.md");
     expect(prompt).not.toContain("revision:");
-    expect(prompt).toContain("load-complete-bodies-on-demand");
+    expect(prompt).toContain("on-demand");
     expect(prompt).not.toContain("<code_block>");
     expect(prompt).not.toContain("<matched_terms>");
     expect(prompt).not.toContain("<available_skills>");
@@ -186,7 +288,7 @@ describe("Pi tool contract cache behavior", () => {
 
     const first = projector.createToolSet().fingerprint;
     const tool = registry.listTools()[0]!;
-    (tool.owner as { title?: string }).title = `${tool.owner.title ?? tool.name} (updated)`;
+    tool.description = `${tool.description ?? tool.name} (updated instructions)`;
 
     expect(projector.createToolSet().fingerprint).not.toBe(first);
   });
@@ -248,9 +350,12 @@ function toolProjector(
 }
 
 function registerSystemTools(registry: AgentExtensionRegistry): void {
-  const definitions = createAgentSystemTools({ ModelProviders: [] });
+  const definitions = createAgentSystemTools({ ModelProviders: [] }, undefined, {
+    todos: {} as AgentTodoService,
+  });
   new AgentSystemExtensionCatalog().registerRoot(registry, path.resolve("System", "Extensions"), {
     capabilities: new Set([...listDefaultAgentHostCapabilityNames(), ...definitions.map(systemToolCapability)]),
+    capabilityUniverse: listAgentSystemExtensionHostCapabilityUniverse({ ModelProviders: [] }),
   });
 }
 

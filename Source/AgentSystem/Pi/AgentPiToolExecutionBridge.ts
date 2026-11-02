@@ -1,15 +1,14 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import type { ImageContent } from "@earendil-works/pi-ai";
 import { createRequestId } from "../Core/AgentIds.js";
+import { withAgentModelDiagnosticScope } from "../Diagnostics/AgentModelDiagnosticScope.js";
+import { projectAgentPiJsonValue } from "./AgentPiJsonValue.js";
+import { withEventContext } from "../Events/AgentEvent.js";
 import { AgentCancellationError, awaitWithAbortSignal } from "../Core/AgentCancellation.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import type { AgentToolExecutionArtifactRecorder } from "../Artifacts/AgentToolExecutionArtifactRecorder.js";
 import { AgentToolSourceViewInvariantError } from "../Artifacts/AgentToolSourceView.js";
 import type { SuspendChildRunControlResult } from "../ToolRuntime/AgentToolCallExecutionTypes.js";
 import type { AgentToolCallExecutor } from "../ToolRuntime/AgentToolCallExecutor.js";
-import { projectAgentToolResultForHistory, type ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
-import { AgentToolPerceptionComposer } from "../ToolRuntime/AgentToolPerceptionComposer.js";
+import type { ExecutedToolCallResult } from "../Types/ToolRuntimeTypes.js";
 import { redactArtifactSecrets, redactArtifactToolOutcome } from "../Artifacts/AgentArtifactRedaction.js";
 import { AgentPiToolResultStatuses, type AgentPiToolExecutionInput, type AgentPiToolResult } from "./AgentPiTypes.js";
 import type { AgentToolExecutionScheduler } from "../ToolRuntime/AgentToolExecutionScheduler.js";
@@ -32,25 +31,28 @@ import { AgentExecutionErrorCodes, AgentToolProcessErrorPhases } from "../Xml/Ag
 import { markAgentToolArtifactUnavailable } from "../Artifacts/AgentToolArtifactAvailability.js";
 import { escapeXml as escapeXmlText } from "../Prompt/AgentTurnRequestComposer.js";
 import { projectAgentToolCapabilityArguments } from "../ToolSearch/AgentToolCapabilityArgumentProjection.js";
-import type { AgentResourceResolverLike } from "../Resources/AgentResourceResolver.js";
 import { mergeAgentWorkspaceCaptures } from "../Artifacts/AgentWorkspaceChangeCapture.js";
+import { sanitizeAgentPiToolResultMedia } from "./AgentPiToolResultMediaSanitizer.js";
+import { projectAgentPiWorkspaceToolContext } from "./AgentPiWorkspaceContext.js";
+import { retainDeliveredToolContractReceipts } from "../ToolSearch/AgentToolContractDelivery.js";
+import { createAgentToolExecutionDigest } from "../ToolContracts/AgentToolContractIdentity.js";
 
 export interface AgentPiToolExecutionBridgeOptions {
   model: string;
   observationTokenBudget: number;
   observationCompressor: AgentToolResultObservationCompressor;
-  modelSupportsImages?: boolean;
   executeToolCall: AgentToolCallExecutor["execute"];
   recordToolArtifacts: AgentToolExecutionArtifactRecorder["record"];
-  resourceResolver?: Pick<AgentResourceResolverLike, "resolve">;
   executionScheduler?: Pick<AgentToolExecutionScheduler, "run">;
-  /** Enables attribution="tool" wrapping of BAML observation content. */
-  attributionEnabled?: () => boolean;
+  /**
+   * Wraps observation content in the BAML attribution envelope. Only the BAML
+   * XML wire renders tool observations as attributed text; native tool results
+   * stay as the bare JSON observation protocol.
+   */
+  observationAttribution?: boolean;
 }
 
 export class AgentPiToolExecutionBridge {
-  private readonly perceptionComposer = new AgentToolPerceptionComposer();
-
   constructor(private readonly options: AgentPiToolExecutionBridgeOptions) {}
 
   /**
@@ -58,13 +60,20 @@ export class AgentPiToolExecutionBridge {
    * payload is escaped so the envelope can never be broken by tool output.
    */
   private wrapObservationContent(content: string): string {
-    if (this.options.attributionEnabled?.() !== true) return content;
+    if (this.options.observationAttribution !== true) return content;
     return `<observation attribution="tool">${escapeXmlText(content)}</observation>`;
   }
 
   async execute(input: AgentPiToolExecutionInput): Promise<AgentPiToolResult> {
-    const effectiveInput = {
+    const parentToolCallId = input.context.turnState?.parentToolCallId(input.toolCallId);
+    const effectiveInput: AgentPiToolExecutionInput = {
       ...input,
+      context: parentToolCallId
+        ? {
+            ...input.context,
+            onEvent: (event) => input.context.onEvent?.(withEventContext(event, { scope: { parentToolCallId } })),
+          }
+        : input.context,
       params: projectAgentToolCapabilityArguments(
         input.tool,
         input.params,
@@ -74,7 +83,17 @@ export class AgentPiToolExecutionBridge {
     const turnState = input.context.turnState;
     if (!turnState) throw new Error("Pi tool execution requires an active turn state.");
     try {
-      return await this.executeWithLease(effectiveInput);
+      return await withAgentModelDiagnosticScope(
+        {
+          context: {
+            sessionId: input.context.sessionId,
+            requestId: input.context.requestId,
+            step: input.context.step,
+            toolCallId: input.toolCallId,
+          },
+        },
+        () => this.executeWithLease(effectiveInput),
+      );
     } catch (error) {
       if (isCancelledToolExecution(error, effectiveInput.signal)) {
         turnState.cancelWorkspaceChangeCall(input.toolCallId);
@@ -104,7 +123,7 @@ export class AgentPiToolExecutionBridge {
           {
             name: input.tool.name,
             arguments: input.params,
-            expectedContractDigest: input.tool.contract?.digest ?? null,
+            expectedExecutionDigest: createAgentToolExecutionDigest(input.tool),
             callId: input.toolCallId,
             index: turnState.toolBatchIndex(input.toolCallId),
           },
@@ -132,6 +151,7 @@ export class AgentPiToolExecutionBridge {
             onLifecycleSettled: (status) => turnState.recordExecutorLifecycleStatus(input.toolCallId, status),
             deferResultDetail: true,
             workspaceObservation: turnState.context.workspaceChangeObserver,
+            composition: input.composition,
           },
         );
       const execution = await (this.options.executionScheduler &&
@@ -146,6 +166,11 @@ export class AgentPiToolExecutionBridge {
           )
         : execute());
 
+      if (turnState.parentToolCallId(input.toolCallId) && execution.kind !== "ToolResults") {
+        throw new Error(
+          "A composed tool cannot suspend inference; declare it as Composition: model-only and invoke it directly.",
+        );
+      }
       if (execution.kind === "SuspendChildRun") {
         turnState.skipWorkspaceChangeCall(input.toolCallId);
         return await this.projectChildRunSuspension(input, execution.value, reservation);
@@ -194,9 +219,9 @@ export class AgentPiToolExecutionBridge {
       const result = persisted ?? (executed ? markAgentToolArtifactUnavailable(executed) : undefined);
       if (!result) throw new Error("Tool execution did not produce a persistable result.");
       assertExecutedToolIdentity(input, result);
+      turnState.registerExecutedToolResult(input.toolCallId, result);
       const projected = await this.projectToolResult(input, result, executed ?? result, reservation);
-      turnState.registerExecutedToolResult(input.toolCallId, projectAgentToolResultForHistory(result));
-      return projected;
+      return execution.kind === "SuspendRun" ? { ...projected, terminate: true } : projected;
     } catch (error) {
       if (isCancelledToolExecution(error, input.signal)) {
         turnState.cancelWorkspaceChangeCall(input.toolCallId);
@@ -340,19 +365,20 @@ export class AgentPiToolExecutionBridge {
   ): Promise<AgentPiToolResult> {
     const tool = input.tool;
     const outcome = redactArtifactToolOutcome(result.outcome, result.artifactPolicy);
-    const perception = this.perceptionComposer.compose({
-      declaration: tool.perception,
-      result: redactArtifactSecrets(result.result, result.artifactPolicy),
-      arguments: redactArtifactSecrets(result.arguments, result.artifactPolicy),
-    });
-    const media = await projectToolImages(
-      result,
-      this.options.modelSupportsImages === true,
-      this.options.resourceResolver,
-    );
+    const observedResult = sanitizeAgentPiToolResultMedia(redactArtifactSecrets(result.result, result.artifactPolicy));
     const turnState = input.context.turnState;
     if (!turnState) throw new Error("Pi tool observation requires an active turn state.");
-    const observation = await this.options.observationCompressor.compress({
+    if (turnState.parentToolCallId(input.toolCallId)) {
+      return {
+        content: readAgentToolFailure(outcome)
+          ? [{ type: "text", text: JSON.stringify(readAgentToolFailure(outcome)) }]
+          : [],
+        structuredContent: projectAgentPiJsonValue(observedResult.result ?? null),
+        details: projectToolDetails(tool.name, result, outcome, result.toolContractReceipts ?? []),
+        isError: outcome.assessment.status === AgentPiToolResultStatuses.Failure,
+      };
+    }
+    const observationInput = {
       requestId: input.toolCallId,
       toolName: result.name,
       status: outcome.assessment.status,
@@ -361,7 +387,9 @@ export class AgentPiToolExecutionBridge {
       arguments: redactArtifactSecrets(rawResult.arguments, rawResult.artifactPolicy),
       process: redactArtifactSecrets(rawResult.process, rawResult.artifactPolicy),
       outcome,
-      result: redactArtifactSecrets(result.result, result.artifactPolicy),
+      result: observedResult.result,
+      resultSchema: tool.contract?.outputSchema,
+      perception: tool.perception,
       ...(readAgentToolFailure(outcome) ? { error: readAgentToolFailure(outcome) } : {}),
       ...(result.artifact ? { artifact: result.artifact } : {}),
       ...(result.sourceArtifacts ? { sourceArtifacts: result.sourceArtifacts } : {}),
@@ -369,24 +397,34 @@ export class AgentPiToolExecutionBridge {
       systemPrompt: turnState.context.systemPrompt,
       currentUserMessage: turnState.context.userMessage,
       query: turnState.toolCallPurpose(input.toolCallId),
-      notice: [input.notice, media.failure?.message, perception.phrase]
+      notice: [input.notice, observedResult.notice]
         .filter((value): value is string => Boolean(value?.trim()))
         .join(" "),
       observationBudgetTokens: reservation.observationBudgetTokens,
       signal: input.signal,
-    });
+    };
+    let observation;
+    try {
+      observation = await this.options.observationCompressor.compress(observationInput);
+    } catch (error) {
+      if (isCancelledToolExecution(error, input.signal)) throw error;
+      // Observation rendering is downstream of execution and publication.
+      // A failed derived view must never rewrite the completed tool outcome.
+      observation = this.options.observationCompressor.pressure(observationInput, "observation_projection_failed", {
+        notice: "Tool execution outcome is preserved; its derived observation could not be rendered.",
+      });
+    }
     const content = this.wrapObservationContent(JSON.stringify(observation));
     reservation.commit(content);
 
     return {
-      content: [
-        {
-          type: "text",
-          text: content,
-        },
-        ...media.images,
-      ],
-      details: projectToolDetails(tool.name, result, outcome, media.failure),
+      content: [{ type: "text", text: content }],
+      details: projectToolDetails(
+        tool.name,
+        result,
+        outcome,
+        retainDeliveredToolContractReceipts(result.toolContractReceipts ?? [], observation.detail.result),
+      ),
     };
   }
 }
@@ -405,58 +443,6 @@ function projectToolResourceOwner(
   };
 }
 
-async function projectToolImages(
-  result: ExecutedToolCallResult,
-  enabled: boolean,
-  resourceResolver?: Pick<AgentResourceResolverLike, "resolve">,
-): Promise<AgentToolImagesProjection> {
-  if (!enabled) return { images: [] };
-
-  const images: ImageContent[] = [];
-  const seenResources = new Set<string>();
-  let currentResourceUri: string | undefined;
-  try {
-    const artifactRoot = result.artifact ? path.resolve(result.artifact.artifactPath) : undefined;
-    if (artifactRoot) {
-      for (const asset of result.artifact?.assets ?? []) {
-        if (!asset.mediaType.startsWith("image/")) continue;
-        currentResourceUri = asset.resourceUri;
-        const filePath = path.resolve(artifactRoot, asset.relativePath);
-        const relativePath = path.relative(artifactRoot, filePath);
-        if (relativePath === ".." || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {
-          throw new Error(`Tool artifact image path must remain inside its artifact: ${asset.relativePath}`);
-        }
-        const data = await readFile(filePath);
-        images.push({ type: "image", data: data.toString("base64"), mimeType: asset.mediaType });
-        seenResources.add(asset.resourceUri);
-      }
-    }
-
-    if (!resourceResolver) return { images };
-    for (const resource of result.presentation?.resources ?? []) {
-      if (resource.origin !== "tool" || !resource.mime.startsWith("image/") || seenResources.has(resource.uri)) {
-        continue;
-      }
-      currentResourceUri = resource.uri;
-      const resolved = await resourceResolver.resolve(resource.uri);
-      if (!resolved) throw new Error(`Published tool resource is unavailable: ${resource.uri}`);
-      const data = await readFile(resolved.filePath);
-      images.push({ type: "image", data: data.toString("base64"), mimeType: resolved.mime });
-      seenResources.add(resource.uri);
-    }
-    return { images };
-  } catch (error) {
-    return {
-      images,
-      failure: {
-        code: "media_projection_failed",
-        message: `media_projection_failed: ${errorMessage(error)}`,
-        ...(currentResourceUri ? { resourceUri: currentResourceUri } : {}),
-      },
-    };
-  }
-}
-
 function assertExecutedToolIdentity(input: AgentPiToolExecutionInput, result: ExecutedToolCallResult): void {
   if (result.callId !== input.toolCallId || result.name !== input.tool.name) {
     throw new Error(`Executed tool result identity does not match Pi call ${input.toolCallId}.`);
@@ -467,13 +453,15 @@ function projectToolDetails(
   toolName: string,
   result: ExecutedToolCallResult,
   outcome: AgentToolExecutionOutcome,
-  mediaFailure?: AgentToolMediaProjectionFailure,
+  toolContractReceipts: NonNullable<ExecutedToolCallResult["toolContractReceipts"]> = [],
 ): AgentPiToolResult["details"] {
   const context = {
     toolName,
     artifactUri: result.artifact?.artifactUri,
     ...(result.artifactAvailability ? { artifactAvailability: result.artifactAvailability } : {}),
     callId: result.callId,
+    ...(toolContractReceipts.length ? { toolContractReceipts: [...toolContractReceipts] } : {}),
+    workspaceContext: projectAgentPiWorkspaceToolContext(result),
     executionStatus: outcome.execution.status,
     outputAvailability: outcome.output.availability,
   };
@@ -484,21 +472,9 @@ function projectToolDetails(
             ...context,
             status: AgentPiToolResultStatuses.Failure,
             error: outcome.assessment.error,
-            ...(mediaFailure ? { mediaProjection: mediaFailure } : {}),
           }
-        : { ...context, status: outcome.assessment.status, ...(mediaFailure ? { mediaProjection: mediaFailure } : {}) },
+        : { ...context, status: outcome.assessment.status },
   };
-}
-
-interface AgentToolMediaProjectionFailure {
-  readonly code: "media_projection_failed";
-  readonly message: string;
-  readonly resourceUri?: string;
-}
-
-interface AgentToolImagesProjection {
-  readonly images: readonly ImageContent[];
-  readonly failure?: AgentToolMediaProjectionFailure;
 }
 
 function isCancelledToolExecution(error: unknown, signal?: AbortSignal): boolean {

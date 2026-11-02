@@ -8,11 +8,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test("model selection remains visible when no capable models are available", () => {
+test("model selection remains visible when no capable models are available", async () => {
   render(renderJsonConfigFieldInput(modelField([]), "", false, vi.fn()));
 
   const select = screen.getByRole("combobox");
-  expect(select).toHaveValue("");
+  expect(select).toHaveValue("Automatic");
+  await userEvent.setup().click(select);
   expect(screen.getByRole("option", { name: "Automatic" })).toBeInTheDocument();
 });
 
@@ -24,7 +25,8 @@ test("model selection uses one stable control for a small dynamic catalog", asyn
   expect(screen.queryByRole("button", { name: "Vision A" })).not.toBeInTheDocument();
 
   const user = userEvent.setup();
-  await user.selectOptions(select, "vision-b");
+  await user.click(select);
+  await user.click(screen.getByRole("option", { name: "Vision B" }));
 
   expect(onChange).toHaveBeenCalledWith("vision-b");
 });
@@ -34,7 +36,8 @@ test("optional model selection can return to automatic resolution", async () => 
   render(renderJsonConfigFieldInput(modelField(["vision-a"]), "vision-a", false, onChange));
 
   const user = userEvent.setup();
-  await user.selectOptions(screen.getByRole("combobox"), "");
+  await user.click(screen.getByRole("combobox"));
+  await user.click(screen.getByRole("option", { name: "Automatic" }));
 
   expect(onChange).toHaveBeenCalledWith(undefined);
 });

@@ -49,15 +49,7 @@ export type AgentOrchestrationDomainEvent =
         | typeof AgentEventKinds.ChildRunFailed
         | typeof AgentEventKinds.ChildRunCancelled;
       context: AgentEventContext;
-      data: {
-        childRunId: string;
-        ownerRunId: string;
-        nodeId: string;
-        workItemId?: string;
-        taskDigest?: string;
-        childSessionId: string;
-        agentName: string;
-        status: AgentChildRunStatus;
+      data: AgentChildRunEventIdentity & {
         contextMode: "fresh" | "fork";
         modelProviderId?: string;
         modelSelectionSource?: AgentChildRunModelSelectionSource;
@@ -99,15 +91,7 @@ export type AgentOrchestrationDomainEvent =
   | {
       kind: typeof AgentEventKinds.ChildRunMessageCreated;
       context: AgentEventContext;
-      data: {
-        childRunId: string;
-        ownerRunId: string;
-        nodeId: string;
-        workItemId?: string;
-        taskDigest?: string;
-        childSessionId: string;
-        agentName: string;
-        status: AgentChildRunStatus;
+      data: AgentChildRunEventIdentity & {
         messageId: string;
         direction: "child_to_parent" | "parent_to_child";
         messageKind: "decision" | "follow_up" | "progress" | "response" | "steering";
@@ -152,12 +136,16 @@ export type AgentOrchestrationDomainEvent =
       };
     };
 
-interface AgentChildRunEventIdentity {
+export interface AgentChildRunEventIdentity {
   readonly childRunId: string;
   readonly ownerRunId: string;
   readonly nodeId: string;
   readonly workItemId?: string;
   readonly taskDigest?: string;
+  /** Human-readable delegation description, distinct from its deduplication digest. */
+  readonly taskLabel?: string;
+  readonly startedAt?: string;
+  readonly completedAt?: string;
   readonly childSessionId: string;
   readonly agentName: string;
   readonly status: AgentChildRunStatus;

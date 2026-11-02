@@ -1,9 +1,9 @@
 import type { PanzoomEventDetail, PanzoomObject } from "@panzoom/panzoom";
-import { Maximize2, Scan, ZoomIn, ZoomOut } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type SyntheticEvent } from "react";
 import { cn } from "../../lib/util";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { useMotionLevel } from "../motion";
-import { IconButton } from "../ui";
+import { AppIcon, IconButton, StateView } from "../ui";
 
 export interface ImageCanvasViewerLabels {
   readonly actualSize: string;
@@ -55,6 +55,8 @@ export function ImageCanvasViewer({
   const modeRef = useRef<ImageViewMode>("fit");
   const [naturalSize, setNaturalSize] = useState<NaturalImageSize>();
   const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [scale, setScale] = useState(1);
   const [viewMode, setViewMode] = useState<ImageViewMode>("fit");
 
@@ -90,9 +92,10 @@ export function ImageCanvasViewer({
   useEffect(() => {
     setNaturalSize(undefined);
     setReady(false);
+    setFailed(false);
     setScale(1);
     commitMode("fit");
-  }, [commitMode, source]);
+  }, [attempt, commitMode, source]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -214,7 +217,7 @@ export function ImageCanvasViewer({
         data-image-canvas-stage
       >
         <img
-          key={source}
+          key={`${source}:${attempt}`}
           ref={imageRef}
           src={source}
           alt={alt}
@@ -236,27 +239,39 @@ export function ImageCanvasViewer({
           draggable={false}
           data-native-context-menu
           onLoad={handleImageLoad}
-          onError={onError}
+          onError={() => {
+            setReady(false);
+            setFailed(true);
+            onError?.();
+          }}
           data-image-canvas-image
         />
       </div>
 
-      <div className="absolute right-3 top-3 z-10 flex items-center gap-0.5 rounded-md border border-line bg-surface-panel/90 p-0.5 shadow-soft backdrop-blur-sm">
+      {!ready ? (
+        <StateView
+          status={failed ? "error" : "loading"}
+          title={failed ? frontendMessage("profile.imageLoadFailed") : undefined}
+          className="absolute inset-0"
+          onRetry={failed ? () => setAttempt((current) => current + 1) : undefined}
+        />
+      ) : null}
+      <div className="absolute right-3 top-3 z-10 flex items-center gap-0.5 rounded-md border border-line bg-surface-panel p-0.5 shadow-soft">
         <ImageControl
           label={labels.zoomOut}
           disabled={scale <= Math.min(ImageCanvasScale.min, fitScaleRef.current)}
           onClick={zoomOut}
         >
-          <ZoomOut className="h-4 w-4" />
+          <AppIcon icon="zoom-out" />
         </ImageControl>
         <ImageControl label={labels.fit} onClick={fitImage}>
-          <Maximize2 className="h-4 w-4" />
+          <AppIcon icon="maximize" />
         </ImageControl>
         <ImageControl label={labels.zoomIn} disabled={scale >= ImageCanvasScale.max} onClick={zoomIn}>
-          <ZoomIn className="h-4 w-4" />
+          <AppIcon icon="zoom-in" />
         </ImageControl>
         <ImageControl label={labels.actualSize} onClick={showActualSize}>
-          <Scan className="h-4 w-4" />
+          <AppIcon icon="actual-size" />
         </ImageControl>
       </div>
     </div>

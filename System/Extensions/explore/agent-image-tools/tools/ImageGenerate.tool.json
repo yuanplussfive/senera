@@ -1,0 +1,205 @@
+{
+  "name": "ImageGenerate",
+  "loading": "Dynamic",
+  "description": "Generate images from a self-contained prompt, or edit supplied reference images. Call ImageModels when the model or its capabilities are unknown. model is an exact configured Senera model ID. Supply exact resource sources from uploads or tool results. Mask editing requires declared support and a local PNG mask with transparency matching the reference dimensions. Image options follow the declared protocol: openai-images uses size, quality, n, outputFormat, outputCompression, background and moderation; openrouter-images uses aspectRatio and imageSize. Omit unspecified options. Outputs are saved image resources; never print image Base64.",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "prompt": { "type": "string", "minLength": 1 },
+      "model": { "type": "string", "minLength": 1 },
+      "images": {
+        "minItems": 1,
+        "type": "array",
+        "items": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "senera_resource" },
+                "uri": {
+                  "type": "string",
+                  "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$",
+                  "description": "Canonical Senera resource identity."
+                },
+                "path": {
+                  "description": "Workspace-relative path of the stored resource. Read it directly instead of resolving the URI again.",
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": ["kind", "uri"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "local_path" },
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Workspace-relative or absolute local path subject to the active resource access policy."
+                }
+              },
+              "required": ["kind", "path"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "const": "http_url" },
+                "url": {
+                  "type": "string",
+                  "pattern": "^https?:\\/\\/\\S+$",
+                  "description": "Public HTTP(S) resource URL; private hosts remain subject to runtime policy."
+                }
+              },
+              "required": ["kind", "url"],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "mask": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "const": "senera_resource" },
+              "uri": {
+                "type": "string",
+                "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$",
+                "description": "Canonical Senera resource identity."
+              },
+              "path": {
+                "description": "Workspace-relative path of the stored resource. Read it directly instead of resolving the URI again.",
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": ["kind", "uri"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string", "const": "local_path" },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Workspace-relative or absolute local path subject to the active resource access policy."
+              }
+            },
+            "required": ["kind", "path"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "options": {
+        "type": "object",
+        "properties": {
+          "aspectRatio": { "type": "string", "minLength": 1 },
+          "imageSize": { "type": "string", "minLength": 1 },
+          "size": { "type": "string", "minLength": 1 },
+          "quality": { "type": "string", "minLength": 1 },
+          "n": { "type": "integer", "exclusiveMinimum": 0, "maximum": 9007199254740991 },
+          "outputFormat": { "type": "string", "enum": ["png", "jpeg", "webp"] },
+          "outputCompression": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "background": { "type": "string", "enum": ["auto", "opaque", "transparent"] },
+          "moderation": { "type": "string", "enum": ["auto", "low"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "required": ["prompt"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "model": { "type": "string" },
+      "images": {
+        "minItems": 1,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "const": "senera_resource" },
+                    "uri": {
+                      "type": "string",
+                      "pattern": "^senera:\\/\\/resource\\/[A-Za-z0-9][A-Za-z0-9._~-]{0,255}$",
+                      "description": "Canonical Senera resource identity."
+                    },
+                    "path": {
+                      "description": "Workspace-relative path of the stored resource. Read it directly instead of resolving the URI again.",
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": ["kind", "uri"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "const": "local_path" },
+                    "path": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Workspace-relative or absolute local path subject to the active resource access policy."
+                    }
+                  },
+                  "required": ["kind", "path"],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "name": { "type": "string" },
+            "mime": { "type": "string" },
+            "size": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+          },
+          "required": ["source", "name", "mime", "size"],
+          "additionalProperties": false
+        }
+      },
+      "text": { "type": "string" }
+    },
+    "required": ["model", "images"],
+    "additionalProperties": false
+  },
+  "permissions": ["resources:read", "resources:write", "model:image"],
+  "resources": [
+    { "Capability": "senera.resource.source", "Pointer": "/images" },
+    { "Capability": "senera.resource.source", "Pointer": "/mask" }
+  ],
+  "execution": { "Targets": ["Local"], "Network": "Allow", "Workspace": "ReadOnly" },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "Parallel",
+    "DeadlinePolicy": "ModelAware"
+  },
+  "presentation": {
+    "category": "image-generate",
+    "icon": "image-output",
+    "activity": { "action": { "zh-CN": "生成图片", "en-US": "Generate image" }, "argumentPath": "/prompt" }
+  },
+  "search": {
+    "Summary": "生成和编辑图片",
+    "Capabilities": [
+      {
+        "Id": "host.image.generate",
+        "Title": "Image generation and editing",
+        "Description": "Create or edit images with configured models.",
+        "Aliases": ["生图", "绘图", "图片编辑"]
+      }
+    ],
+    "UseCases": ["用户需要生成图片或修改已有图片。"]
+  }
+}

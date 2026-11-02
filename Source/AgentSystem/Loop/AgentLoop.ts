@@ -4,6 +4,7 @@ import type { AgentSystemRuntime } from "../Runtime/AgentSystemRuntime.js";
 import type { AgentCompletedRunResult } from "../Runtime/AgentExecutionProjector.js";
 import { createAssistantMessageId, createOpaqueId } from "../Core/AgentIds.js";
 import { AgentModelUsageLedger, withAgentModelUsageLedger } from "../ModelEndpoints/AgentModelUsage.js";
+import { withAgentModelDiagnosticScope } from "../Diagnostics/AgentModelDiagnosticScope.js";
 import {
   createAgentTurnPreparationSnapshot,
   isAgentTurnPreparationReusable,
@@ -26,7 +27,11 @@ import {
   type AgentInteractionContext,
 } from "../Interaction/AgentInteractionContext.js";
 import { createAgentPiLogicalCacheScope } from "../Pi/AgentPiPromptCache.js";
-import { createModelProviderMetadata, type AgentEffectiveModelReceipt } from "../ModelEndpoints/AgentModelMetadata.js";
+import {
+  createModelProviderMetadata,
+  type AgentConversationEntryMetadata,
+  type AgentEffectiveModelReceipt,
+} from "../ModelEndpoints/AgentModelMetadata.js";
 import type { AgentToolResourceLeaseOwner } from "../ToolRuntime/AgentToolResourceScheduler.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 
@@ -40,11 +45,14 @@ export interface AgentRunRequest {
   /** Stable cache affinity; defaults to the durable conversation session. */
   logicalCacheScope?: string;
   requestId: string;
+  /** Durable user-message identity backing this execution request. */
+  conversationRequestId?: string;
   /** Authoritative provider receipt resolved by the session admission layer. */
   effectiveModel?: AgentEffectiveModelReceipt;
   turnNumber?: number;
   step?: number;
   input: string;
+  hostInput?: AgentConversationEntryMetadata["hostInput"];
   /** Resume the existing Pi transcript without creating a synthetic user turn. */
   continueFromTranscript?: boolean;
   /** Identifies the durable turn whose Pi transcript should be resumed. */
@@ -67,6 +75,7 @@ export interface AgentRunRequest {
   emitRunStarted?: boolean;
   preparation?: AgentTurnPreparationSnapshot;
   onPreparation?: (snapshot: AgentTurnPreparationSnapshot) => void | Promise<void>;
+  inputBoundary?: import("../Pi/AgentPiInputBoundary.js").AgentPiInputBoundaryHandler;
   onPiBranchBoundary?: (entryId: string) => void | Promise<void>;
   /** Owns terminal-event commit and publication when supplied. */
   commitTerminalEvents?: (events: AgentDomainEvent[]) => void | Promise<void>;
@@ -89,6 +98,7 @@ export class AgentLoop {
         tokenEstimator: options.runtime.tokenEstimator,
         piDiagnostics: options.runtime.piDiagnostics,
         uploadStore: options.runtime.uploadStore,
+        imageNormalization: options.runtime.imageNormalization,
         logger: options.runtime.logger,
         promptConfig: () => options.runtime.promptConfig,
       } satisfies AgentPiTurnRuntimePort,
@@ -104,7 +114,19 @@ export class AgentLoop {
     try {
       await this.options.runtime.initialize();
       await this.options.runtime.ensureExplicitActivationCapabilities(request.explicitActivations, request.signal);
-      completed = await withAgentModelUsageLedger(new AgentModelUsageLedger(), () => this.runTurn(request));
+      completed = await withAgentModelDiagnosticScope(
+        {
+          sink: this.options.runtime.piDiagnostics,
+          context: {
+            sessionId: request.sessionId,
+            requestId: request.requestId,
+            step: request.step,
+            toolCallId: undefined,
+            modelMessageIndex: undefined,
+          },
+        },
+        () => withAgentModelUsageLedger(new AgentModelUsageLedger(), () => this.runTurn(request)),
+      );
       return completed;
     } finally {
       if (!completed?.routingObservation) {
@@ -209,6 +231,7 @@ export class AgentLoop {
         requestId: request.requestId,
         step,
         input: request.input,
+        hostInput: request.hostInput,
         continueFromTranscript: request.continueFromTranscript,
         continuationSourceRequestId: request.continuationSourceRequestId,
         attachments: request.attachments,
@@ -217,6 +240,8 @@ export class AgentLoop {
         ),
         prompt: prompt.systemPrompt,
         turnContext: prompt.turnContext,
+        refreshMemoryBoundary: prompt.refreshMemoryBoundary,
+        onModelMemoryDelivered: prompt.onModelMemoryDelivered,
         rootCommand: prepared.rootCommand,
         approvalMode: request.approvalMode,
         toolAccessGrant: prepared.toolAccessGrant,
@@ -225,18 +250,9 @@ export class AgentLoop {
         activeSkills: prepared.activeSkills,
         stateCard: prepared.stateCard,
         reusableCapabilities: prepared.reusableCapabilities,
-        reusableCapabilityLookup: request.sessionId
-          ? (toolName) =>
-              this.options.runtime.services.retrieval.getReusableEvidence?.({
-                sessionId: request.sessionId,
-                logicalCacheScope,
-                toolName,
-              })
-          : undefined,
         personaActive: prompt.persona.enabled,
-        prefaceRewriteEnabled: this.options.runtime.promptConfig.PrefaceRewrite === true,
-        finalResponseRewriteEnabled: this.options.runtime.promptConfig.FinalResponseRewrite === true,
         onPiBranchBoundary: request.onPiBranchBoundary,
+        inputBoundary: request.inputBoundary,
         onFinalResponseAvailable: async (content, modelMessageIndex, modelContentIndex) => {
           if (finalAnswerPublished) return;
           finalAnswerPublished = true;
@@ -269,7 +285,7 @@ export class AgentLoop {
       modelProvider: result.modelProvider,
       usage: result.usage,
       executedTools: result.executedTools,
-      ...(result.routingObservation ? { routingObservation: result.routingObservation } : {}),
+      ...(result.routingObservation && !request.hostInput ? { routingObservation: result.routingObservation } : {}),
       loadedToolNames: [...result.loadedToolNames],
       stepTraces: result.stepTraces,
       physicalPiSessionId: result.physicalPiSessionId,
@@ -296,20 +312,6 @@ export class AgentLoop {
       await request.commitTerminalEvents(terminalEvents);
     } else {
       await this.emitAll(request.onEvent, terminalEvents);
-    }
-    try {
-      this.options.runtime.services.promptContext.commitLiveContextDelivery?.({
-        sessionId: request.sessionId,
-        memory: prompt.continuityMemory,
-      });
-    } catch (error) {
-      // Delivery receipts are derived continuity state and are written after
-      // the assistant response is available. Keep them out of run failure.
-      this.options.runtime.logger?.warn("memory.live_context_delivery_failed", {
-        sessionId: request.sessionId,
-        requestId: request.requestId,
-        message: errorMessage(error),
-      });
     }
     return completed;
   }
@@ -350,6 +352,7 @@ export class AgentLoop {
       ? await this.prepareCachedTurn(request, cached, logicalCacheScope)
       : await this.preparation.prepare({
           requestId: request.requestId,
+          conversationRequestId: request.conversationRequestId,
           userInput: request.input,
           sessionId: request.sessionId,
           logicalCacheScope,
@@ -390,11 +393,13 @@ export class AgentLoop {
   ): Promise<AgentPreparedTurn> {
     const stateCard = await this.options.runtime.services.retrieval.resolveStateCard({
       requestId: request.requestId,
+      conversationRequestId: request.conversationRequestId,
       currentRequest: request.input,
       turnIndex: request.turnNumber,
       sessionId: request.sessionId,
       logicalCacheScope,
       activeSkills: cached.activeSkills,
+      interaction: request.interaction,
       ...(request.signal ? { signal: request.signal } : {}),
     });
     const reusableCapabilities = request.sessionId

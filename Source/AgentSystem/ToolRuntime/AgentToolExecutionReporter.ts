@@ -103,7 +103,6 @@ export class AgentToolExecutionReporter {
     for (const stream of ["stdout", "stderr"] as const) {
       const text = this.decoders[stream].end();
       if (text.length > 0) {
-        this.writeOutputSink(stream, Buffer.from(text, "utf8"));
         this.enqueueOutput(stream, text, 0, this.totalBytes[stream]);
       }
     }
@@ -113,12 +112,10 @@ export class AgentToolExecutionReporter {
 
   private enqueueOutput(stream: "stdout" | "stderr", text: string, byteLength: number, totalBytes: number): void {
     const identity = this.eventIdentity();
-    if ((!identity || this.options.capabilities?.outputStreaming === false) && !this.options.outputSink) return;
+    if (!identity || this.options.capabilities?.outputStreaming === false) return;
     const outputSequence = ++this.outputSequence;
-    this.enqueueOutputTask(async () => {
-      await this.options.outputSink?.waitForDrain(stream);
-      if (!identity || this.options.capabilities?.outputStreaming === false) return;
-      await emitAgentEvent(this.options.onEvent, {
+    this.enqueue(() =>
+      emitAgentEvent(this.options.onEvent, {
         kind: AgentEventKinds.ToolCallOutput,
         context: identity.context,
         data: {
@@ -132,14 +129,17 @@ export class AgentToolExecutionReporter {
           batchId: this.options.batchId,
           resourceId: this.options.resourceId,
         },
-      }).catch(() => undefined);
-    });
+      }),
+    );
   }
 
   private writeOutputSink(stream: SeneraOutputStream, data: Uint8Array): void {
-    if (!this.options.outputSink || data.byteLength === 0) return;
+    const sink = this.options.outputSink;
+    if (!sink || data.byteLength === 0) return;
     try {
-      this.options.outputSink.write(stream, data);
+      if (!sink.write(stream, data)) {
+        this.enqueueOutputTask(() => sink.waitForDrain(stream));
+      }
     } catch (error) {
       this.outputSinkError ??= error;
     }

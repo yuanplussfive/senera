@@ -34,6 +34,7 @@ export interface AgentToolObservationContentProjectionResult {
   /** Loss introduced by content selection, excluding final structural fitting. */
   readonly contentOmissionCount: number;
   readonly strategy: AgentToolAdaptiveTextProjectionResult["strategy"];
+  readonly structuralTruncation: boolean;
 }
 
 type ContentRoute = "structured" | "sift_first" | "split_first";
@@ -140,6 +141,7 @@ export class AgentToolObservationContentPipeline {
         omissionCount: projection.omissionCount + Number(siftLossy) + adaptiveOmissionCount,
         contentOmissionCount: Number(siftLossy) + adaptiveContentOmissionCount,
         strategy: siftChanged || siftLossy || adaptiveSemantic ? "semantic" : "lexical",
+        structuralTruncation: !projection.complete,
       };
     }
     const leafCount = countTextLeaves(value);
@@ -164,6 +166,7 @@ export class AgentToolObservationContentPipeline {
         : result.some((entry) => entry.strategy === "lexical")
           ? "lexical"
           : "unchanged",
+      structuralTruncation: false,
     };
   }
 

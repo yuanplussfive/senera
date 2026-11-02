@@ -5,6 +5,7 @@ import { resolveArtifactsConfig } from "../../../Source/AgentSystem/AgentDefault
 import { AgentWorkspaceChangeObserver } from "../../../Source/AgentSystem/Artifacts/AgentWorkspaceChangeObserver.js";
 import { AgentWorkspaceChangeObserverProcess } from "../../../Source/AgentSystem/Artifacts/AgentWorkspaceChangeObserverProcess.js";
 import { AgentLogger } from "../../../Source/AgentSystem/Diagnostics/AgentLogger.js";
+import { restoreAgentWorkspaceCheckpoint } from "../../../Source/AgentSystem/Artifacts/AgentWorkspaceCheckpointRecovery.js";
 import type { ResolvedAgentArtifactsConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { createTemporaryDirectory } from "../Support/AgentTestFixtures.js";
 
@@ -19,6 +20,58 @@ afterEach(async () => {
 });
 
 describe("AgentWorkspaceChangeObserver", () => {
+  test("captures and restores an overwritten binary file after observer restart", async () => {
+    const workspaceRoot = createWorkspace();
+    const filePath = path.join(workspaceRoot, "avatar.png");
+    const original = Buffer.from([137, 80, 78, 71, 0, 255, 128, 1]);
+    await fs.writeFile(filePath, original);
+    const first = createObserver(workspaceRoot);
+    await first.beginBatch("binary-baseline", ["baseline"]);
+    await first.completeCall("binary-baseline", "baseline");
+    await first.close();
+    const observer = createObserver(workspaceRoot);
+    await observer.beginBatch("binary-edit", ["edit"]);
+    await fs.writeFile(filePath, Buffer.from([0, 1, 2, 255]));
+    const capture = await observer.completeCall("binary-edit", "edit");
+    expect(capture?.checkpoint).toBeDefined();
+    expect(capture?.changes[0]?.addedLines).toBeUndefined();
+    const result = await restoreAgentWorkspaceCheckpoint({
+      workspaceRoot,
+      checkpoint: capture!.checkpoint!,
+      target: capture!.before,
+      currentSnapshot: capture!.after,
+      targetKind: "before",
+      requireComplete: true,
+    });
+    expect(result.skippedPaths).toEqual([]);
+    expect(await fs.readFile(filePath)).toEqual(original);
+  });
+
+  test.each([true, false])(
+    "undo restores downloaded binary files and directory presence (existing=%s)",
+    async (existing) => {
+      const workspaceRoot = createWorkspace();
+      if (existing) await fs.mkdir(path.join(workspaceRoot, "downloads"));
+      const observer = createObserver(workspaceRoot);
+      await observer.beginBatch("download", ["save"]);
+      if (!existing) await fs.mkdir(path.join(workspaceRoot, "downloads"));
+      const filePath = path.join(workspaceRoot, "downloads", "image.png");
+      await fs.writeFile(filePath, Buffer.from([0, 255, 0, 128]));
+      const capture = await observer.completeCall("download", "save");
+      expect(capture?.checkpoint).toBeDefined();
+      await restoreAgentWorkspaceCheckpoint({
+        workspaceRoot,
+        checkpoint: capture!.checkpoint!,
+        target: capture!.before,
+        currentSnapshot: capture!.after,
+        targetKind: "before",
+        requireComplete: true,
+      });
+      await expect(fs.access(filePath)).rejects.toMatchObject({ code: "ENOENT" });
+      if (existing) await expect(fs.stat(path.join(workspaceRoot, "downloads"))).resolves.toBeDefined();
+      else await expect(fs.access(path.join(workspaceRoot, "downloads"))).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
   test("the observer worker keeps its baseline outside the project in the host-owned state directory", async () => {
     const workspaceRoot = createWorkspace();
     const runtimeStateRoot = createWorkspace();

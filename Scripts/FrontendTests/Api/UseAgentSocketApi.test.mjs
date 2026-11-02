@@ -3,6 +3,7 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { EventSpecs } from "../../../Frontend/src/api/generatedEventCatalog.ts";
+import { AgentChannelKinds } from "../../../Source/AgentSystem/Channels/AgentChannelTypes.ts";
 import {
   parseAgentSocketEventData,
   readAgentSocketRetryDelayMs,
@@ -65,6 +66,12 @@ test("agent socket event parser accepts string event payloads and rejects malfor
   const withoutData = { ...env };
   delete withoutData.data;
   expect(() => parseAgentSocketEventData(JSON.stringify(withoutData))).toThrow();
+});
+
+test.each(["console", ...Object.values(AgentChannelKinds)])("accepts live execution events from %s", (channel) => {
+  const frame = event(EventKinds.RunStarted, 1, { input: "channel input" });
+  const parsed = parseAgentSocketEventData(JSON.stringify({ ...frame, scope: { channel } }));
+  expect(parsed.scope.channel).toBe(channel);
 });
 
 test("agent socket owns connection state, ordered streaming delivery, malformed frames, and retry", () => {
@@ -387,6 +394,70 @@ test("workspace rebinding discards buffered and late frames from the previous co
   expect(handleRef.current.send({ type: "session.list" })).toBe(true);
   expect(old.sent).toEqual([]);
   expect(next.sent).toEqual([JSON.stringify({ type: "session.list" })]);
+});
+
+test("message acknowledgement waits for acceptance, rejects failed delivery, and is scoped to its socket", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("WebSocket", TestWebSocket);
+  const handleRef = { current: null };
+  const { rerender } = render(
+    React.createElement(SocketHarness, { handleRef, onEvent() {}, url: "ws://agent.test/a" }),
+  );
+  const socket = TestWebSocket.instances[0];
+  act(() => socket.open());
+  const request = {
+    type: "session.message",
+    sessionId: "session-a",
+    requestId: "request-a",
+    input: "",
+    attachments: [{ resourceUri: "senera://resource/a1b2c3" }],
+    approvalMode: "agent",
+  };
+  let accepted = false;
+  const pending = handleRef.current.sendAccepted(request).then(() => {
+    accepted = true;
+  });
+  await Promise.resolve();
+  expect(accepted).toBe(false);
+  act(() => socket.receive(event(EventKinds.RunStarted, 1, { input: "" })));
+  await pending;
+  expect(accepted).toBe(true);
+  const rejected = handleRef.current.sendAccepted({ ...request, requestId: "rejected" });
+  const rejectedAssertion = expect(rejected).rejects.toThrow("busy");
+  act(() =>
+    socket.receive({
+      ...event(EventKinds.SessionBusy, 2, { rejectedRequestId: "rejected", message: "busy" }),
+      requestId: "rejected",
+    }),
+  );
+  await rejectedAssertion;
+  const interrupted = handleRef.current.sendAccepted({ ...request, requestId: "interrupted" });
+  const interruptedAssertion = expect(interrupted).rejects.toThrow();
+  rerender(React.createElement(SocketHarness, { handleRef, onEvent() {}, url: "ws://agent.test/b" }));
+  await interruptedAssertion;
+  expect(handleRef.current.sendAccepted(request)).toBe(false);
+});
+
+test("foreground resume probes a healthy socket once and does not reload or reconnect it", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("WebSocket", TestWebSocket);
+  const handleRef = { current: null };
+  render(React.createElement(SocketHarness, { handleRef, onEvent() {}, url: "ws://agent.test/a" }));
+  const socket = TestWebSocket.instances[0];
+  act(() => socket.open());
+  act(() => {
+    window.dispatchEvent(new Event("senera:pause"));
+    vi.advanceTimersByTime(300_000);
+    window.dispatchEvent(new Event("senera:resume"));
+    window.dispatchEvent(new Event("senera:resume"));
+  });
+  expect(socket.sent).toEqual([JSON.stringify({ type: "profile.get" })]);
+  act(() => socket.receive(event(EventKinds.ProfileSnapshot, 1, {})));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(30_000);
+  });
+  expect(TestWebSocket.instances).toHaveLength(1);
+  expect(handleRef.current.status).toBe("open");
 });
 
 function SocketHarness({ handleRef, ...options }) {

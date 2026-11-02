@@ -4,7 +4,6 @@ import type { SettingsConfigCommands } from "../SettingsContracts";
 import { cn } from "../../../lib/util";
 import {
   AppIcon,
-  Button,
   FormHint,
   Input,
   Popover,
@@ -20,11 +19,11 @@ import {
   ModelProviderIconNames,
   ProviderMark,
   readCustomModelProviderIconSource,
-} from "../../chat/ModelProviderIcon";
+} from "../../../shared/models/ModelProviderIcon";
 import { EmptyDetail, IconAction } from "../../chat/ModelConfigPrimitives";
 import { providerIdLabel, isRedactedConfigSecret } from "../../chat/modelConfigData";
 import type { ProviderEndpointDraft } from "../../chat/modelConfigTypes";
-import { ProviderFormError } from "./ProviderConnectionFeedback";
+import { ProviderFormError, DefaultModelProviderTag } from "./ProviderConnectionFeedback";
 import { isProtectedProvider } from "./ProviderConnectionIdentity";
 
 export function ProviderConnectionEditor({
@@ -146,14 +145,14 @@ export function ProviderConnectionEditor({
   const errorMessage = localError ?? operationError;
   const connectionToggleDisabled = disabled || pending;
   const disableReason = !connectionToggleDisabled ? providerDisableReason?.(provider) : null;
-  const connectionToggle = (
+  const connectionToggle = disableReason ? (
+    <DefaultModelProviderTag reason={disableReason} />
+  ) : (
     <Switch
       checked={provider.Enabled !== false}
       size="sm"
-      disabled={connectionToggleDisabled || Boolean(disableReason)}
-      disabledReason={disableReason ?? undefined}
+      disabled={connectionToggleDisabled}
       ariaLabel={frontendMessage("settings.provider.connectionToggle", { provider: providerIdLabel(provider) })}
-      onDisabledClick={disableReason ? () => onConfirm({ Enabled: false }) : undefined}
       onCheckedChange={(next) => onConfirm({ Enabled: next })}
     />
   );
@@ -186,10 +185,14 @@ export function ProviderConnectionEditor({
           <div className="flex shrink-0 items-center gap-1.5">
             {connectionToggle}
             {errorMessage && dirty ? (
-              <Button size="sm" variant="outline" disabled={disabled || pending} onClick={() => onConfirm()}>
+              <IconAction
+                label={frontendMessage("settings.action.retry")}
+                disabled={disabled || pending}
+                className={ghostIconActionClassName}
+                onClick={() => onConfirm()}
+              >
                 <AppIcon icon="refresh" size={14} />
-                {frontendMessage("settings.action.retry")}
-              </Button>
+              </IconAction>
             ) : null}
             {onEdit ? (
               <IconAction
@@ -265,7 +268,6 @@ export function ProviderConnectionEditor({
                 ariaLabel={frontendMessage("settings.provider.apiKey")}
                 showLabel={frontendMessage("config.provider.showApiKey")}
                 hideLabel={frontendMessage("config.provider.hideApiKey")}
-                hideRevealWhenEmpty
                 className="font-mono text-[12px] placeholder:font-sans"
                 onChange={(value) => {
                   apiKeyDraftRef.current = value;
@@ -278,33 +280,6 @@ export function ProviderConnectionEditor({
                   }
                   setLocalFieldDirty("apiKey", false);
                 }}
-                trailing={
-                  <Tooltip content={frontendMessage("clipboard.pasteFromClipboard")} side="top">
-                    <button
-                      type="button"
-                      disabled={disabled}
-                      className="grid h-8 w-7 shrink-0 place-items-center rounded text-content-muted transition hover:bg-surface-hover hover:text-content-primary disabled:pointer-events-none disabled:opacity-30 active:scale-[0.95]"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={async () => {
-                        try {
-                          const clipText = await navigator.clipboard.readText();
-                          if (clipText) {
-                            apiKeyDraftRef.current = clipText;
-                            setApiKeyDraft(clipText);
-                            setLocalFieldDirty("apiKey", true);
-                            onConfirm({ ApiKey: clipText });
-                            setLocalFieldDirty("apiKey", false);
-                          }
-                        } catch {
-                          // ignore if clipboard permission denied
-                        }
-                      }}
-                      aria-label={frontendMessage("clipboard.pasteFromClipboard")}
-                    >
-                      <AppIcon icon="copy" size={13} />
-                    </button>
-                  </Tooltip>
-                }
               />
               {apiKeyUnresolved ? (
                 <FormHint className="mt-1.5 text-[11.5px] leading-snug text-brick-600">
@@ -427,31 +402,32 @@ function ProviderAvatarPicker({
           {ModelProviderIconNames.map((name) => {
             const isSelected = builtInLogo === name;
             return (
-              <button
-                key={name}
-                type="button"
-                title={formatLogoName(name)}
-                onClick={() => {
-                  customLogoDraftRef.current = "";
-                  setCustomLogoDraft("");
-                  customLogoDirtyRef.current = false;
-                  onLocalDraftChange(false);
-                  onChange({ Icon: name });
-                  onConfirm({ Icon: name });
-                  setOpen(false);
-                }}
-                className={cn(
-                  "flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border p-1 transition",
-                  isSelected
-                    ? "border-accent-border bg-accent-surface ring-1 ring-accent-focus"
-                    : "border-line-subtle bg-surface-subtle hover:border-accent-border hover:bg-surface-hover",
-                )}
-              >
-                <ModelProviderIcon icon={name} size={18} />
-                <span className="max-w-[44px] truncate text-[9.5px] text-content-secondary leading-none">
-                  {formatLogoName(name)}
-                </span>
-              </button>
+              <Tooltip content={formatLogoName(name)} key={name}>
+                <button
+                  type="button"
+
+                  onClick={() => {
+                    customLogoDraftRef.current = "";
+                    setCustomLogoDraft("");
+                    customLogoDirtyRef.current = false;
+                    onLocalDraftChange(false);
+                    onChange({ Icon: name });
+                    onConfirm({ Icon: name });
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border p-1 transition",
+                    isSelected
+                      ? "border-accent-border bg-accent-surface ring-1 ring-accent-focus"
+                      : "border-line-subtle bg-surface-subtle hover:border-accent-border hover:bg-surface-hover",
+                  )}
+                >
+                  <ModelProviderIcon icon={name} size={18} />
+                  <span className="max-w-[44px] truncate text-[9.5px] text-content-secondary leading-none">
+                    {formatLogoName(name)}
+                  </span>
+                </button>
+              </Tooltip>
             );
           })}
         </div>

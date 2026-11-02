@@ -27,10 +27,13 @@ import {
   type AgentMcpHostCapabilitySnapshot,
 } from "./AgentMcpHostRequirements.js";
 import { isAgentMcpServerEnabled } from "./AgentMcpServerEnablement.js";
+import { isAgentMcpPackageToolNameForServer } from "./AgentMcpPackageIdentity.js";
+import { createAgentMcpModelConnectionResolver } from "./AgentMcpPackageRuntime.js";
 
 export type { AgentSystemSettingsSnapshot, AgentSystemToolSettingsItem } from "./AgentMcpManagementCatalog.js";
 
 export interface AgentMcpServerSettingsItem {
+  readonly skills?: AgentSystemExtensionSettingsItem["skills"];
   readonly id: string;
   readonly packageName: string;
   readonly displayName: ReturnType<typeof createAgentExtensionLocalizedText>;
@@ -77,6 +80,14 @@ export class AgentMcpManagementService {
     return this.systemSettingsSnapshot().tools;
   }
 
+  systemSkillSources() {
+    return this.catalog.systemSkillSources(this.options.config());
+  }
+
+  materializeSystemToolArguments(name: string, args: Readonly<Record<string, unknown>>) {
+    return this.catalog.materializeSystemToolArguments(this.options.config(), name, args);
+  }
+
   listSystemExtensions(): readonly AgentSystemExtensionSettingsItem[] {
     return this.systemSettingsSnapshot().extensions;
   }
@@ -94,6 +105,8 @@ export class AgentMcpManagementService {
     const revision = sha256HexOfCanonicalJson({
       packages: packages.revision,
       inputs: this.options.inputs.revision(),
+      models: this.options.config().ModelProviders,
+      endpoints: this.options.config().ModelProviderEndpoints,
       hostCapabilities: {
         available: [...this.hostCapabilities.available].sort(),
         diagnostics: [...this.hostCapabilities.diagnostics.entries()].sort(([left], [right]) =>
@@ -172,6 +185,7 @@ export class AgentMcpManagementService {
 
   setInput(serverId: string, inputId: string, value: AgentExtensionInputValue): void {
     const definition = this.readInput(serverId, inputId);
+    this.validateModelInput(definition, value);
     this.options.inputs.set(serverId, definition, value);
   }
 
@@ -185,6 +199,9 @@ export class AgentMcpManagementService {
     deletes: readonly string[] = [],
   ): void {
     const { server } = this.readServer(serverId);
+    for (const definition of server.inputs) {
+      if (Object.hasOwn(values, definition.id)) this.validateModelInput(definition, values[definition.id]);
+    }
     this.options.inputs.update(serverId, server.inputs, { values, deletes });
   }
 
@@ -212,7 +229,15 @@ export class AgentMcpManagementService {
   }
 
   private projectServer(package_: AgentMcpPackage, server: AgentMcpPackageServer): AgentMcpServerSettingsItem {
-    const inputs = this.options.inputs.statuses(server.name, server.inputs);
+    const inputs = this.options.inputs.statuses(server.name, server.inputs).map((input) => {
+      if (!input.configured || input.modelSelection?.valueKind !== "model-connection") return input;
+      try {
+        this.validateModelInput(input, input.value);
+        return input;
+      } catch {
+        return { ...input, configured: false };
+      }
+    });
     const missingCapabilities = missingAgentMcpHostCapabilities(package_.requirements, this.hostCapabilities);
     const unavailableCapabilityDetails = missingCapabilities.map((id) => {
       const reason = this.hostCapabilities.diagnostics.get(id);
@@ -237,7 +262,17 @@ export class AgentMcpManagementService {
       enabled: status === "configured" && isAgentMcpServerEnabled(this.options.config(), server.name),
       ...(unavailableCapabilityDetails.length > 0 ? { unavailableCapabilityDetails } : {}),
       inputs,
+      skills: this.catalog
+        .declaredSystemSkills(this.options.config())
+        .filter((skill) => skill.recommendedTools.some((tool) => isAgentMcpPackageToolNameForServer(tool, server.name)))
+        .map(({ name, title, description }) => ({ name, title, description })),
     };
+  }
+
+  private validateModelInput(input: Pick<AgentMcpInputStatus, "modelSelection">, value: unknown): void {
+    if (input.modelSelection?.valueKind !== "model-connection") return;
+    if (typeof value !== "string" || !value.trim()) throw new Error("Choose a configured model for this MCP input.");
+    createAgentMcpModelConnectionResolver(this.options.config())(value, input.modelSelection.capability);
   }
 
   private readInput(serverId: string, inputId: string) {

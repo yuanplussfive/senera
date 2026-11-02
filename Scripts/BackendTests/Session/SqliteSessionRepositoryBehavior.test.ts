@@ -454,6 +454,49 @@ describe("SQLite session repository behavior", () => {
     }
   });
 
+  test("filters thinking before paging and restores it from a reopened SQLite database", () => {
+    const directory = createTemporaryDirectory("senera-thinking-history");
+    const databasePath = path.join(directory, "session.db");
+    let repository = new SqliteSessionRepository(databasePath);
+    const sessionId = "thinking-pages";
+    try {
+      repository.upsertSession({ id: sessionId, status: "idle", createdAt: "", updatedAt: "", conversation: [] });
+      for (let sequence = 1; sequence <= 6; sequence += 1) {
+        const event = runEvent(sessionId, sequence === 4 ? "other-request" : "request", sequence);
+        repository.appendRunEvent(
+          sessionId,
+          sequence % 2 === 0
+            ? {
+                ...event,
+                kind: AgentEventKinds.ModelThinkingCompleted,
+                phase: AgentEventPhases.Model,
+                data: { messageIndex: sequence, contentIndex: 0, content: `Thinking ${sequence}`, status: "complete" },
+              }
+            : event,
+        );
+      }
+      const through = repository.captureHistorySnapshot(sessionId)!.runEventHighWaterMark!;
+      repository.appendRunEvent(sessionId, {
+        ...runEvent(sessionId, "request", 7),
+        kind: AgentEventKinds.ModelThinkingCompleted,
+      });
+      repository.close();
+      repository = new SqliteSessionRepository(databasePath);
+      const query = { through, pageSize: 1, requestIds: ["request"], kinds: [AgentEventKinds.ModelThinkingCompleted] };
+      const first = repository.loadRunEventPage(sessionId, query);
+      const second = repository.loadRunEventPage(sessionId, { ...query, after: first.nextCursor });
+      expect(first.items.map((event) => event.sequence)).toEqual([2]);
+      expect(second.items.map((event) => event.sequence)).toEqual([6]);
+      expect(first.nextCursor).toBeDefined();
+      expect(second.nextCursor).toBeUndefined();
+      expect(repository.loadRunEventPage(sessionId, { ...query, requestIds: [] }).items).toEqual([]);
+      expect(repository.loadRunEventPage(sessionId, { ...query, kinds: [] }).items).toEqual([]);
+    } finally {
+      repository.close();
+      removeDirectory(directory);
+    }
+  });
+
   test("reads entries and run events with stable keyset cursors bounded by a captured snapshot", () => {
     const fixture = createRepository();
     const { repository } = fixture;

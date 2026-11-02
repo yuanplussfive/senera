@@ -2,10 +2,13 @@ import { z } from "zod";
 import { AgentLogPolicyLimits } from "../Types/AgentLogPolicyLimits.js";
 import { AgentSelfSkillSearchLimits } from "./AgentSelfSkills.js";
 import { AgentChannelKinds } from "../Channels/AgentChannelTypes.js";
+import { parseAgentTimeBoundary } from "../Time/AgentTime.js";
+import { WorkspaceAgentSelectorSchema as WorkspaceAgentIdSchema } from "../Core/AgentDirectoryContract.js";
+import { AgentMemoryDiaryKeySchema } from "../Continuity/AgentMemoryDiaryContract.js";
 
 /**
  * Single source of truth for the `senera` self-service command vocabulary.
- * Consumed by the model-facing `SeneraCommand` host tool and by the
+ * Consumed by the model-facing `senera CLI` host tool and by the
  * `POST /senera/self` HTTP endpoint the standalone CLI calls, so both entry
  * points accept exactly the same command shapes.
  */
@@ -45,7 +48,15 @@ const LogTimestampSchema = z
   .trim()
   .min(1)
   .max(64)
-  .describe("带时区的 RFC3339 时间，例如 2026-10-16T20:00:00+08:00");
+  .refine((value) => {
+    try {
+      parseAgentTimeBoundary(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }, "时间必须是 YYYY-MM-DD（上海时区自然日）或带时区的 RFC3339 时间。")
+  .describe("上海时区自然日（YYYY-MM-DD）或带时区的 RFC3339 时间，例如 2026-10-16T20:00:00+08:00");
 
 const LogsCommandSchema = z.discriminatedUnion("action", [
   z.object({ command: z.literal("logs"), action: z.literal("list") }).strict(),
@@ -227,8 +238,12 @@ const SkillsCommandSchema = z.discriminatedUnion("action", [
 ]);
 
 const PromptPresetCommandSchema = z.discriminatedUnion("action", [
-  z.object({ command: z.literal("preset"), action: z.literal("list") }).strict(),
-  z.object({ command: z.literal("preset"), action: z.literal("status") }).strict(),
+  z
+    .object({ command: z.literal("preset"), action: z.literal("list"), agentId: WorkspaceAgentIdSchema.optional() })
+    .strict(),
+  z
+    .object({ command: z.literal("preset"), action: z.literal("status"), agentId: WorkspaceAgentIdSchema.optional() })
+    .strict(),
   z
     .object({
       command: z.literal("preset"),
@@ -241,12 +256,15 @@ const PromptPresetCommandSchema = z.discriminatedUnion("action", [
       command: z.literal("preset"),
       action: z.literal("enable"),
       path: z.string().trim().min(1).max(512),
+      agentId: WorkspaceAgentIdSchema.optional(),
     })
     .strict(),
-  z.object({ command: z.literal("preset"), action: z.literal("disable") }).strict(),
+  z
+    .object({ command: z.literal("preset"), action: z.literal("disable"), agentId: WorkspaceAgentIdSchema.optional() })
+    .strict(),
 ]);
 
-const ChannelKindSchema = z.enum([AgentChannelKinds.Telegram, AgentChannelKinds.Qq, AgentChannelKinds.Discord]);
+const ChannelKindSchema = z.enum(AgentChannelKinds);
 
 const ChannelsCommandSchema = z.discriminatedUnion("action", [
   z.object({ command: z.literal("channels"), action: z.literal("list") }).strict(),
@@ -269,6 +287,24 @@ const ChannelsCommandSchema = z.discriminatedUnion("action", [
 ]);
 
 export const AgentSelfCommandSchema = z.discriminatedUnion("command", [
+  z.discriminatedUnion("action", [
+    z
+      .object({
+        command: z.literal("diary"),
+        action: z.literal("list"),
+        period: AgentMemoryDiaryKeySchema.optional(),
+        agentId: WorkspaceAgentIdSchema.optional(),
+      })
+      .strict(),
+    z
+      .object({
+        command: z.literal("diary"),
+        action: z.literal("read"),
+        period: AgentMemoryDiaryKeySchema,
+        agentId: WorkspaceAgentIdSchema.optional(),
+      })
+      .strict(),
+  ]),
   ConfigCommandSchema,
   LogsCommandSchema,
   SessionCommandSchema,
@@ -278,7 +314,13 @@ export const AgentSelfCommandSchema = z.discriminatedUnion("command", [
   z.object({ command: z.literal("workspace"), action: z.literal("info") }).strict(),
   z.object({ command: z.literal("sessions"), action: z.literal("list") }).strict(),
   z.object({ command: z.literal("plugins"), action: z.literal("list") }).strict(),
-  z.object({ command: z.literal("capabilities") }).strict(),
+  z
+    .object({
+      command: z.literal("capabilities"),
+      domain: z.string().trim().min(1).max(64).optional(),
+      operation: z.string().trim().min(1).max(64).optional(),
+    })
+    .strict(),
   z.object({ command: z.literal("status") }).strict(),
   z.object({ command: z.literal("doctor"), action: z.literal("status") }).strict(),
   z

@@ -9,20 +9,42 @@
     "icon": "file-search",
     "group": {
       "id": "artifact",
-      "title": { "zh-CN": "读取证据", "en-US": "Read artifacts" }
+      "title": {
+        "zh-CN": "读取证据",
+        "en-US": "Read artifacts"
+      }
     },
     "activity": {
-      "action": { "zh-CN": "读取归档", "en-US": "Read artifact" }
+      "action": {
+        "zh-CN": "读取归档",
+        "en-US": "Read artifact"
+      }
     }
   },
-  "version": "1.0.0",
+  "usageExamples": [
+    {
+      "title": { "zh-CN": "查看完整产物", "en-US": "Read a saved result" },
+      "prompt": {
+        "zh-CN": "刚才的结果没有显示完整，继续读取剩下的内容。",
+        "en-US": "The last result was incomplete. Read the remaining content."
+      },
+      "outcome": {
+        "zh-CN": "读取已保存的工具结果和产物，按需查看完整内容。",
+        "en-US": "Read saved tool results and artifacts to inspect their complete content."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### 查看工具保存下来的完整结果\n\n当对话里只展示摘要、结果过长，或你需要再次核对原文时，可以继续读取已经保存的产物。\n\n提供结果中的资源地址，或说明要继续查看哪次操作。Agent 可以读取相关内容，再围绕问题整理重点，避免为了看完整结果而重复执行原工具。\n\n产物可能包含文本、结构化结果和文件；具体读取范围由对应资源与工具契约决定。",
+    "en-US": "### Read the full saved result\n\nInspect stored artifacts when chat shows only a summary, a result is lengthy or the original output needs verification.\n\nProvide a resource address or identify the earlier operation. Read relevant content without repeating the original action solely to recover its output. Artifacts may contain text, structured results and files; the resource and tool contracts define access."
+  },
   "displayName": {
     "zh-CN": "产物读取",
     "en-US": "Artifact Reader"
   },
   "description": {
-    "zh-CN": "通过规范的产物 URI 读取已持久化的产物资源。",
-    "en-US": "Reads persisted artifact resources by canonical artifact URI."
+    "zh-CN": "读取已保存的工具结果与任务产物。",
+    "en-US": "Read saved tool results and task artifacts."
   },
   "priority": 8,
   "contributions": [

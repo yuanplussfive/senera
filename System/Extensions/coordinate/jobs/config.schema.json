@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "waitTimeoutMs": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 30000
+    },
+    "maxWaitTimeoutMs": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 600000
+    },
+    "completionDelivery": {
+      "type": "string",
+      "enum": ["wakeup", "quiet"],
+      "default": "wakeup"
+    },
+    "maxConsecutiveWakes": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "inlineOutputBytes": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 2048
+    }
+  },
+  "additionalProperties": false
+}

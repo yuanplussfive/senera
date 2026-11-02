@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="download_failed">无法开始下载，请检查系统下载服务。</string>
+    <string name="download_permission_required">Android 8、9 需要存储权限才能下载文件。</string>
+    <string name="connection_dns">无法解析服务地址，请检查域名以及当前网络。</string>
+    <string name="connection_tls">HTTPS 证书验证失败，请检查域名、证书和设备时间。</string>
+    <string name="connection_timeout">连接超时，请确认电脑在线、同一 Wi-Fi，并检查防火墙和路由器设备隔离。</string>
+    <string name="connection_failed">无法加载主控台，请检查电脑地址、服务与网络。</string>
+    <string name="connection_retry">重试</string>
+    <string name="connection_back">选择其他连接</string>
+</resources>

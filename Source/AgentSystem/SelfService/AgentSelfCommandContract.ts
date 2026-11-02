@@ -65,6 +65,26 @@ export function assertAgentSelfCommandContract(): void {
   throw new Error(`Senera self-service command contract drift: ${details.join("; ")}.`);
 }
 
+/** Exact argument validation for on-demand CLI discovery, generated from Zod. */
+export function projectAgentSelfCommandInputSchema(domain: string, action?: string): Readonly<Record<string, unknown>> {
+  const schema = z.toJSONSchema(AgentSelfCommandSchema, { target: "draft-7", io: "input" });
+  const branches: Record<string, unknown>[] = [];
+  const visit = (value: unknown): void => {
+    if (!isRecord(value)) return;
+    const properties = isRecord(value.properties) ? value.properties : undefined;
+    if (readConst(properties?.command) === domain && (!action || readConst(properties?.action) === action)) {
+      branches.push(value);
+      return;
+    }
+    for (const key of ["anyOf", "oneOf", "allOf"] as const) {
+      for (const branch of Array.isArray(value[key]) ? value[key] : []) visit(branch);
+    }
+  };
+  visit(schema);
+  if (branches.length === 0) throw new Error(`No built-in command schema for ${domain}${action ? `.${action}` : ""}.`);
+  return { $schema: "http://json-schema.org/draft-07/schema#", anyOf: branches };
+}
+
 function collectCommandIds(schema: unknown): string[] {
   return [...collectCommandShapes(schema).keys()].sort(compareCodePoints);
 }

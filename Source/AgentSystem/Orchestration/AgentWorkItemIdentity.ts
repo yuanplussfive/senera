@@ -14,9 +14,11 @@ export interface AgentWorkItemIdentityInput {
   readonly forkContext?: boolean;
   readonly skills?: readonly string[];
   readonly thinking?: string;
+  readonly modelProviderId?: string;
   readonly ownerRunId?: string;
   readonly nodeId?: string;
   readonly workItemId?: string;
+  readonly parentTodoId?: string;
   readonly resources?: readonly AgentToolResourceClaimDeclaration[];
 }
 
@@ -46,6 +48,8 @@ export function deriveAgentTaskDigest(input: AgentWorkItemIdentityInput): string
       ? { skills: [...input.skills].map((skill) => skill.trim()).sort() }
       : {}),
     ...(input.thinking ? { thinking: input.thinking } : {}),
+    ...(input.modelProviderId ? { modelProviderId: input.modelProviderId } : {}),
+    ...(input.parentTodoId ? { parentTodoId: input.parentTodoId } : {}),
     ...(input.resources && input.resources.length > 0 ? { resources: input.resources } : {}),
   });
 }

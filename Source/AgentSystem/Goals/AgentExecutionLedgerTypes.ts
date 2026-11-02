@@ -51,6 +51,7 @@ export interface AgentExecutionLedger {
   readonly uri: string;
   readonly sessionId: string;
   readonly requestId: string;
+  /** Authored request text; empty for event, scheduler and attachment-only turns. */
   readonly objective: string;
   readonly status: AgentExecutionStatus;
   readonly reason?: string;
@@ -68,6 +69,7 @@ export interface AgentExecutionLedgerSnapshot {
 export interface AgentExecutionPlanSyncInput {
   readonly sessionId: string;
   readonly requestId: string;
+  /** Authored request text, which is not required for structured triggers. */
   readonly objective: string;
   readonly planState: AgentPiToolPlanState;
   readonly completion?: "immediate" | "deferred";

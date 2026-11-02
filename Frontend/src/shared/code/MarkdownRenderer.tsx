@@ -22,13 +22,14 @@ import { cn } from "../../lib/util";
 import { buildResourceContentUrl } from "../../api/uploadClient";
 import { parseResourceId } from "../../api/resourceUri";
 import { downloadUrl } from "../../lib/download";
+import { openExternalUrl } from "../../app/desktopBridge";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { MotionIconSwap } from "../motion";
-import { ImagePreviewDialog } from "../media/ImagePreviewDialog";
-import { AppIcon, IconButton, Spinner, Tooltip, useClipboardCopy } from "../ui";
+import { AppIcon, Spinner, Tooltip, useClipboardCopy } from "../ui";
 import { CollapsibleCodeBlock } from "./CollapsibleCodeBlock";
 import { type CodeArtifact, readCodeArtifact } from "./CodeArtifactModel";
 import { MarkdownCitationLink } from "./MarkdownCitationLink";
+import { normalizeLiteralAutolinkBoundaries } from "./MarkdownAutolinkBoundary";
 import { parseWorkspaceResourceLocator } from "../workspace/WorkspaceResourceLocator";
 import { WorkspaceMarkdownImage } from "../workspace/WorkspaceMarkdownImage";
 import { useWorkspaceResourceController } from "../workspace/WorkspaceResourceProvider";
@@ -73,7 +74,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
       <div style={contentStyle}>
         <Markdown
           className={rendererClassName}
-          remarkPlugins={[remarkGfm]}
+          remarkPlugins={[remarkGfm, normalizeLiteralAutolinkBoundaries]}
           urlTransform={transformMarkdownUrl}
           components={{
             a: (props) => <MarkdownLink {...props} externalLinkPresentation={externalLinkPresentation} />,
@@ -118,6 +119,8 @@ function MarkdownLink({
   const external = typeof href === "string" && /^https?:\/\//i.test(href);
   const resource = parseWorkspaceResourceLocator(href);
   const resourceController = useWorkspaceResourceController();
+  const resourceContentUrl =
+    href && resourceController ? buildResourceContentUrl(resourceController.httpBaseUrl, href) : undefined;
 
   if (resource) {
     const openResource = (event: MouseEvent<HTMLAnchorElement>): void => {
@@ -151,11 +154,31 @@ function MarkdownLink({
   return (
     <a
       {...props}
-      href={href}
+      href={resourceContentUrl ?? href}
       className={cn("markdown-renderer__link", className)}
-      data-link-kind={external ? "external" : "internal"}
-      target={external ? "_blank" : props.target}
-      rel={external ? "noreferrer noopener" : props.rel}
+      data-link-kind={resourceContentUrl ? "resource" : external ? "external" : "internal"}
+      target={external || resourceContentUrl ? "_blank" : props.target}
+      rel={external || resourceContentUrl ? "noreferrer noopener" : props.rel}
+      onClick={
+        resourceContentUrl
+          ? (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void downloadUrl(resourceContentUrl, readNodeText(children)).catch((error: unknown) =>
+                toast.error(error instanceof Error ? error.message : String(error)),
+              );
+            }
+          : external
+            ? (event) => {
+                props.onClick?.(event);
+                if (event.defaultPrevented) return;
+                event.preventDefault();
+                void openExternalUrl(href!).then((result) => {
+                  if (result === "blocked") toast.error(frontendMessage("link.openFailed"));
+                });
+              }
+            : props.onClick
+      }
     >
       {children}
       {external ? (
@@ -208,7 +231,7 @@ function MarkdownImagePreview({
   className,
   ...props
 }: ImgHTMLAttributes<HTMLImageElement> & { source: string }): JSX.Element {
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const workspace = useWorkspaceResourceController();
   const [imageState, setImageState] = useState<"loading" | "ready" | "error">(source ? "loading" : "error");
   const imageLabel = alt?.trim() || frontendMessage("markdown.imagePreview");
 
@@ -224,15 +247,17 @@ function MarkdownImagePreview({
     <>
       <button
         type="button"
-        className="markdown-renderer__image-trigger"
+        className="markdown-renderer__image-trigger relative"
         aria-label={frontendMessage("chat.attachment.imagePreview", { name: imageLabel })}
-        onClick={() => setPreviewOpen(true)}
+        onClick={() =>
+          workspace?.openPreview({ name: readImageFileName(imageLabel, source), source, previewKind: "image" })
+        }
       >
         <img
           {...props}
           src={source}
           alt={alt ?? ""}
-          className={cn("markdown-renderer__image", imageState !== "ready" && "sr-only", className)}
+          className={cn("markdown-renderer__image", imageState !== "ready" && "min-h-20 min-w-32 opacity-0", className)}
           loading="lazy"
           decoding="async"
           fetchPriority="low"
@@ -240,41 +265,15 @@ function MarkdownImagePreview({
           onError={() => setImageState("error")}
         />
         {imageState !== "ready" ? (
-          <MarkdownImagePlaceholder label={imageState === "error" ? imageLabel : frontendMessage("ui.loading")} />
+          <span className="absolute inset-0 grid place-items-center">
+            <MarkdownImagePlaceholder
+              label={
+                imageState === "error" ? frontendMessage("profile.imageLoadFailed") : frontendMessage("ui.loading")
+              }
+            />
+          </span>
         ) : null}
       </button>
-      {previewOpen ? (
-        <ImagePreviewDialog
-          alt={imageLabel}
-          closeLabel={frontendMessage("ui.close")}
-          labels={{
-            actualSize: frontendMessage("chat.attachment.actualSize"),
-            fit: frontendMessage("chat.attachment.fitImage"),
-            zoomIn: frontendMessage("chat.attachment.zoomIn"),
-            zoomOut: frontendMessage("chat.attachment.zoomOut"),
-          }}
-          open={previewOpen}
-          source={source}
-          title={frontendMessage("chat.attachment.imagePreview", { name: imageLabel })}
-          headerActions={
-            <IconButton
-              label={frontendMessage("chat.attachment.downloadImage")}
-              tooltip={frontendMessage("chat.attachment.downloadImage")}
-              tooltipSide="bottom"
-              size="md"
-              className="text-content-secondary hover:bg-surface-hover hover:text-content-primary"
-              onClick={() => {
-                void downloadUrl(source, readImageFileName(imageLabel, source)).catch(() => {
-                  toast.error(frontendMessage("chat.attachment.downloadFailed"));
-                });
-              }}
-            >
-              <AppIcon icon="download" size={16} />
-            </IconButton>
-          }
-          onOpenChange={setPreviewOpen}
-        />
-      ) : null}
     </>
   );
 }

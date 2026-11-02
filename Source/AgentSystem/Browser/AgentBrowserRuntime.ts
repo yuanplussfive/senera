@@ -9,7 +9,7 @@ import { sha256Hex } from "../Core/AgentHash.js";
 import type { AgentHostToolContext } from "../ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import type { AgentToolArtifactAsset, AgentToolArtifactPayload } from "../Types/ToolRuntimeTypes.js";
 import { AgentExecutionErrorCodes } from "../Xml/AgentXmlStatus.js";
-import { createAgentResourceId, createAgentResourceUri } from "../Resources/AgentResourceUri.js";
+import { createAgentArtifactAssetLink } from "../Artifacts/AgentArtifactAssetLink.js";
 import type { AgentWebAddressResolver } from "../Web/AgentWebUrlPolicy.js";
 import { AgentExecutionApprovalModes } from "../Safety/AgentExecutionApprovalMode.js";
 import {
@@ -36,6 +36,7 @@ import type {
 import { AgentBrowserExecutableResolutionError } from "./AgentBrowserExecutableResolver.js";
 import { AgentBrowserControllerResolutionError } from "./AgentBrowserControllerResolver.js";
 import { AgentNativeBrowserDriver } from "./AgentNativeBrowserDriver.js";
+import { withAgentBrowserOperationDeadline } from "./AgentBrowserOperationDeadline.js";
 import type {
   AgentBrowserOperation,
   AgentBrowserOperationExecution,
@@ -46,7 +47,7 @@ const BrowserContentTrust = "untrusted_browser_content" as const;
 
 const ArgumentsByOperation = {
   open: ["url"],
-  render_html: ["url", "timeoutMs", "settleTimeoutMs", "settlePollMs", "stableSamples", "maxHtmlChars"],
+  render_html: ["url", "settleTimeoutMs", "settlePollMs", "stableSamples", "maxHtmlChars"],
   read: ["url"],
   snapshot: ["selector", "interactive", "compact", "includeUrls", "depth"],
   click: ["selector", "newTab"],
@@ -58,9 +59,11 @@ const ArgumentsByOperation = {
   select: ["selector", "values"],
   scroll: ["direction", "amount", "selector"],
   wait_ms: ["ms"],
-  wait_for_selector: ["selector", "waitTimeoutMs"],
-  wait_for_text: ["text", "waitTimeoutMs"],
-  wait_for_load: ["state", "waitTimeoutMs"],
+  wait_for_selector: ["selector"],
+  wait_for_text: ["text"],
+  wait_for_load: ["state"],
+  wait_for_url: ["urlPattern"],
+  wait_for_function: ["expression"],
   screenshot: ["fullPage", "selector", "annotate", "format"],
   get_text: ["selector"],
   get_url: [],
@@ -73,7 +76,7 @@ const ArgumentsByOperation = {
   tab_list: [],
   tab_switch: ["tab"],
   tab_close: ["tab"],
-  download: ["selector"],
+  download: ["selector", "url"],
   computer: ["actions"],
 } as const satisfies Record<AgentBrowserOperation, readonly string[]>;
 
@@ -94,6 +97,8 @@ const OperationSummary = {
   wait_for_selector: "Waited for a browser element.",
   wait_for_text: "Waited for browser text.",
   wait_for_load: "Waited for the page load state.",
+  wait_for_url: "Waited for the browser URL.",
+  wait_for_function: "Waited for the page condition.",
   screenshot: "Captured a browser screenshot.",
   get_text: "Read browser element text.",
   get_url: "Read the current browser URL.",
@@ -127,7 +132,7 @@ export interface AgentBrowserRuntimeOptions {
   readonly configuration: AgentBrowserConfiguration;
   readonly driver?: AgentBrowserDriver;
   readonly resolveHostAddresses?: AgentWebAddressResolver;
-  readonly resolveExecutable?: () => string;
+  readonly resolveExecutable?: () => string | undefined;
   readonly resolveController?: () => string;
   readonly resourcesPath?: string;
   /** Host-owned browser profile root; never derived from a project workspace. */
@@ -178,49 +183,59 @@ export class AgentBrowserRuntime {
     operation: AgentBrowserOperation,
     input: Readonly<Record<string, unknown>>,
     context: AgentHostToolContext,
+    hostBudgetMs = this.configuration.runtime.requestTimeoutMs,
   ): Promise<AgentBrowserOperationExecution> {
     if (this.closed) throw new AgentBrowserRuntimeError("The controlled browser runtime is closed.");
-    const signal = composeBrowserSignals(context.signal, this.shutdownController.signal);
-    assertNotAborted(signal);
-    const executionContext = context.signal === signal ? context : { ...context, signal };
-    const state = this.sessionFor(executionContext, browserContextForOperation(operation, this.configuration));
-    await this.reclaimIdleSessions(state.key);
+    const parentSignal = composeBrowserSignals(context.signal, this.shutdownController.signal);
+    const timeoutMs = Math.min(hostBudgetMs, this.configuration.runtime.requestTimeoutMs);
+    context.deadline?.extendTo?.(timeoutMs);
+    return withAgentBrowserOperationDeadline({ timeoutMs, signal: parentSignal }, async (options) => {
+      const signal = options.signal!;
+      assertNotAborted(signal);
+      const executionContext = context.signal === signal ? context : { ...context, signal };
+      const state = this.sessionFor(executionContext, browserContextForOperation(operation, this.configuration));
+      await this.reclaimIdleSessions(state.key);
 
-    return this.runInSession(state.key, signal, async () => {
-      if (this.closed) throw new AgentBrowserRuntimeError("The controlled browser runtime is closed.");
-      state.fullAccessActive = executionContext.approvalMode === AgentExecutionApprovalModes.FullAccess;
-      state.activeTargetAuthorization = executionContext.browserTargetAuthorization;
-      try {
-        executionContext.reporter?.progress({ message: OperationSummary[operation] });
-        const prepared = await this.prepareArguments(operation, input, signal, state);
-        const raw =
-          operation === "close" && !state.driverSession && !state.opening
-            ? { content: "Controlled browser session closed." }
-            : await (
-                await this.driverSessionFor(state, signal)
-              ).execute(operation, prepared.arguments, {
-                timeoutMs: prepared.timeoutMs,
-                signal,
-              });
-        const projection = this.projectResult(operation, raw, prepared.arguments);
-        if (operation === "close") await this.disposeSession(state);
-        state.lastActivityAt = Date.now();
-        return { result: projection.result, artifactPayload: projection.artifactPayload };
-      } catch (error) {
-        state.lastActivityAt = Date.now();
-        if (signal.aborted) {
-          await this.disposeSession(state).catch(() => undefined);
-          throw new AgentBrowserRuntimeError(
-            errorMessage(signal.reason ?? error),
-            AgentExecutionErrorCodes.ToolProcessCancelled,
-            { cause: error },
-          );
+      return this.runInSession(state.key, signal, async () => {
+        if (this.closed) throw new AgentBrowserRuntimeError("The controlled browser runtime is closed.");
+        state.fullAccessActive = executionContext.approvalMode === AgentExecutionApprovalModes.FullAccess;
+        state.activeTargetAuthorization = executionContext.browserTargetAuthorization;
+        try {
+          executionContext.reporter?.progress({ message: OperationSummary[operation] });
+          const prepared = await this.prepareArguments(operation, input, signal, state);
+          const raw =
+            operation === "close" && !state.driverSession && !state.opening
+              ? { content: "Controlled browser session closed." }
+              : await (await this.driverSessionFor(state, signal)).execute(operation, prepared, options);
+          const projection = this.projectResult(operation, raw, prepared);
+          if (operation === "close") await this.disposeSession(state);
+          state.lastActivityAt = Date.now();
+          return { result: projection.result, artifactPayload: projection.artifactPayload };
+        } catch (error) {
+          state.lastActivityAt = Date.now();
+          if (parentSignal.aborted) {
+            await this.disposeSession(state).catch(() => undefined);
+            throw new AgentBrowserRuntimeError(
+              errorMessage(parentSignal.reason ?? error),
+              AgentExecutionErrorCodes.ToolProcessCancelled,
+              { cause: error },
+            );
+          }
+          throw this.toRuntimeError(error);
+        } finally {
+          state.fullAccessActive = false;
+          state.activeTargetAuthorization = undefined;
         }
-        throw this.toRuntimeError(error);
-      } finally {
-        state.fullAccessActive = false;
-        state.activeTargetAuthorization = undefined;
+      });
+    }).catch((error: unknown) => {
+      if (parentSignal.aborted) {
+        throw new AgentBrowserRuntimeError(
+          errorMessage(parentSignal.reason ?? error),
+          AgentExecutionErrorCodes.ToolProcessCancelled,
+          { cause: error },
+        );
       }
+      throw this.toRuntimeError(error);
     });
   }
 
@@ -301,13 +316,15 @@ export class AgentBrowserRuntime {
     });
     const queued = predecessor.catch(() => undefined).then(() => completion);
     this.sessionQueues.set(key, queued);
+    void queued.then(() => {
+      if (this.sessionQueues.get(key) === queued) this.sessionQueues.delete(key);
+    });
     try {
       await awaitBrowserQueueTurn(predecessor, signal);
       if (this.closed) throw new AgentBrowserRuntimeError("The controlled browser runtime is closed.");
       return await operation();
     } finally {
       release();
-      if (this.sessionQueues.get(key) === queued) this.sessionQueues.delete(key);
     }
   }
 
@@ -316,7 +333,7 @@ export class AgentBrowserRuntime {
     input: Readonly<Record<string, unknown>>,
     signal: AbortSignal,
     state: AgentBrowserSessionState,
-  ): Promise<PreparedBrowserArguments> {
+  ): Promise<Record<string, unknown>> {
     const arguments_ = pickBrowserArguments(operation, input);
     if (
       operation === "open" ||
@@ -331,10 +348,7 @@ export class AgentBrowserRuntime {
       arguments_.format =
         requested === "jpeg" || requested === "png" ? requested : this.configuration.capture.defaultFormat;
     }
-    return {
-      arguments: arguments_,
-      timeoutMs: resolveBrowserOperationTimeout(operation, input, this.configuration),
-    };
+    return arguments_;
   }
 
   private async admitNavigationUrl(
@@ -435,37 +449,33 @@ export class AgentBrowserRuntime {
     signal: AbortSignal,
   ): Promise<AgentBrowserDriverSession> {
     if (state.driverSession) return state.driverSession;
-    const opening =
-      state.opening ??
-      this.driver.createSession({
-        sessionId: state.key,
-        context: state.context,
-        requestTimeoutMs: this.configuration.runtime.requestTimeoutMs,
-        maxDownloadBytes: this.configuration.capture.maxDownloadBytes,
-        assertRequestPermitted: (url, kind, sourceUrl) => this.assertRequestPermitted(url, kind, sourceUrl, state),
-      });
-    state.opening = opening;
-    void opening
-      .then((session) => {
-        if (this.closed || this.sessions.get(state.key) !== state) void session.close().catch(() => undefined);
-      })
-      .catch(() => undefined);
-    try {
-      const session = await awaitBrowserCreation(opening, signal);
-      if (this.closed || this.sessions.get(state.key) !== state) {
-        await session.close().catch(() => undefined);
-        throw new AgentBrowserRuntimeError(
-          "The controlled browser session was closed while starting.",
-          AgentExecutionErrorCodes.ToolProcessCancelled,
-        );
-      }
-      state.driverSession = session;
-      state.opening = undefined;
-      return session;
-    } catch (error) {
-      if (state.opening === opening) state.opening = undefined;
-      throw error;
+    if (!state.opening) {
+      const opening = this.driver
+        .createSession({
+          sessionId: state.key,
+          context: state.context,
+          requestTimeoutMs: this.configuration.runtime.requestTimeoutMs,
+          maxDownloadBytes: this.configuration.capture.maxDownloadBytes,
+          assertRequestPermitted: (url, kind, sourceUrl) => this.assertRequestPermitted(url, kind, sourceUrl, state),
+        })
+        .then(async (session) => {
+          if (this.closed || this.sessions.get(state.key) !== state) {
+            await session.close().catch(() => undefined);
+            throw new AgentBrowserRuntimeError(
+              "The controlled browser session was closed while starting.",
+              AgentExecutionErrorCodes.ToolProcessCancelled,
+            );
+          }
+          state.driverSession = session;
+          return session;
+        });
+      state.opening = opening;
+      const clearOpening = () => {
+        if (state.opening === opening) state.opening = undefined;
+      };
+      void opening.then(clearOpening, clearOpening);
     }
+    return awaitBrowserCreation(state.opening, signal);
   }
 
   private async disposeSession(state: AgentBrowserSessionState): Promise<void> {
@@ -505,12 +515,13 @@ export class AgentBrowserRuntime {
       truncated: content.truncated,
       ...(content.value ? { content: content.value } : {}),
       ...(raw.page ? { page: raw.page } : {}),
+      ...(raw.navigation ? { navigation: raw.navigation } : {}),
       ...(screenshot
         ? {
             screenshot: {
               assetId: screenshot.id,
               mediaType: screenshot.mediaType,
-              markdown: `![Browser screenshot](${createAgentResourceUri(createAgentResourceId(screenshot.id))})`,
+              markdown: `![Browser screenshot](${createAgentArtifactAssetLink(screenshot.id)})`,
             },
           }
         : {}),
@@ -520,14 +531,22 @@ export class AgentBrowserRuntime {
               assetId: download.asset.id,
               fileName: download.asset.fileName,
               mediaType: download.asset.mediaType,
-              markdown: `[${download.asset.fileName}](${createAgentResourceUri(createAgentResourceId(download.asset.id))})`,
+              markdown: `[${download.asset.fileName}](${createAgentArtifactAssetLink(download.asset.id)})`,
             },
           }
         : {}),
     };
     return {
       result,
-      artifactPayload: this.createArtifactPayload(operation, content.value, raw.page, screenshot, download, arguments_),
+      artifactPayload: this.createArtifactPayload(
+        operation,
+        content.value,
+        raw.page,
+        raw.navigation,
+        screenshot,
+        download,
+        arguments_,
+      ),
     };
   }
 
@@ -569,6 +588,7 @@ export class AgentBrowserRuntime {
     operation: AgentBrowserOperation,
     content: string,
     page: AgentBrowserDriverOperationResult["page"],
+    navigation: AgentBrowserDriverOperationResult["navigation"],
     screenshot: AgentToolArtifactAsset | undefined,
     download: BrowserDownloadProjection | undefined,
     arguments_: Readonly<Record<string, unknown>>,
@@ -585,6 +605,7 @@ export class AgentBrowserRuntime {
         input: sanitizeBrowserInput(arguments_),
         ...(content ? { content } : {}),
         ...(page ? { page } : {}),
+        ...(navigation ? { navigation } : {}),
         ...(screenshot ? { screenshot: { assetId: screenshot.id, mediaType: screenshot.mediaType } } : {}),
         ...(download
           ? {
@@ -691,35 +712,6 @@ function browserContextForOperation(
   // Rendered fetches are host-internal, read-only work. Keeping them temporary
   // preserves the user's interactive browser state boundary and allows headless rendering.
   return operation === "render_html" ? "temporary" : configuration.runtime.context;
-}
-
-interface PreparedBrowserArguments {
-  readonly arguments: Record<string, unknown>;
-  readonly timeoutMs: number;
-}
-
-function resolveBrowserOperationTimeout(
-  operation: AgentBrowserOperation,
-  input: Readonly<Record<string, unknown>>,
-  configuration: AgentBrowserConfiguration,
-): number {
-  const requested = input.timeoutMs ?? (isConditionalBrowserWait(operation) ? input.waitTimeoutMs : undefined);
-  if (requested === undefined) return configuration.runtime.requestTimeoutMs;
-  if (
-    typeof requested !== "number" ||
-    !Number.isInteger(requested) ||
-    requested < 1_000 ||
-    requested > configuration.runtime.maxOperationTimeoutMs
-  ) {
-    throw new AgentBrowserRuntimeError(
-      `Browser timeoutMs must be an integer between 1000 and ${configuration.runtime.maxOperationTimeoutMs}.`,
-    );
-  }
-  return requested;
-}
-
-function isConditionalBrowserWait(operation: AgentBrowserOperation): boolean {
-  return operation === "wait_for_selector" || operation === "wait_for_text" || operation === "wait_for_load";
 }
 
 function pickBrowserArguments(

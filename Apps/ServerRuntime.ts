@@ -6,12 +6,15 @@ import type { AgentCompletedRunResult } from "../Source/AgentSystem/Runtime/Agen
 import { AgentSessionManager } from "../Source/AgentSystem/Session/AgentSessionManager.js";
 import { AgentSessionStore } from "../Source/AgentSystem/Session/AgentSessionStore.js";
 import { AgentWebSocketServer } from "../Source/AgentSystem/WebSocket/AgentWebSocketServer.js";
+import { agentOneBot11ClientPath } from "../Source/AgentSystem/Channels/AgentChannelClientRoutes.js";
 import { AgentWebSocketTransport } from "../Source/AgentSystem/WebSocket/AgentWebSocketTransport.js";
+import { withAgentModelsDevPricing } from "../Source/AgentSystem/ModelEndpoints/AgentModelPricing.js";
 import { resolveAgentApplicationPaths } from "../Source/AgentSystem/Core/AgentApplicationPaths.js";
 import { AgentSqliteRunEventWriter } from "../Source/AgentSystem/WebSocket/AgentSqliteRunEventWriter.js";
 import { AgentCallbackRunEventWriter } from "../Source/AgentSystem/WebSocket/AgentCallbackRunEventWriter.js";
 import {
   resolvePersistenceConfig,
+  resolveContinuityLearningConfig,
   resolveAgentLoopConfig,
   resolveArtifactsConfig,
   resolveSandboxRuntimeConfig,
@@ -19,14 +22,21 @@ import {
   resolveToolExecutionConfig,
   resolveAgentTodosConfig,
   resolveUploadsConfig,
-  resolveActionPlannerConfig,
   resolveAgentMcpConnectionsConfig,
   resolveAgentPromptConfig,
+  resolveModelProviderConfig,
 } from "../Source/AgentSystem/AgentDefaults.js";
+import { AgentModelTokenEstimator } from "../Source/AgentSystem/Text/AgentTextBudget.js";
 import type { AgentSystemConfig } from "../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { AgentUserProfileManager } from "../Source/AgentSystem/Session/AgentUserProfile.js";
+import { AgentDirectory } from "../Source/AgentSystem/Profile/AgentDirectory.js";
+import { readAgentMarkdownPromptPreset } from "../Source/AgentSystem/Prompt/AgentMarkdownPromptPreset.js";
 import { AgentProfileAvatarStore } from "../Source/AgentSystem/Session/AgentProfileAvatarStore.js";
 import { createAgentContinuityRuntime } from "../Source/AgentSystem/Continuity/AgentContinuityRuntime.js";
+import { createAgentSelfDiaryPort } from "../Source/AgentSystem/SelfService/AgentSelfDiary.js";
+import { AgentContinuityRuntimePool } from "../Source/AgentSystem/Continuity/AgentContinuityRuntimePool.js";
+import { migrateWorkspaceLearning } from "../Source/AgentSystem/Continuity/AgentLearningStorage.js";
+import { AgentDirectoryLifecycle } from "../Source/AgentSystem/Profile/AgentDirectoryLifecycle.js";
 import type { AgentConfigSourceOptions } from "../Source/AgentSystem/Config/AgentConfigService.js";
 import { AgentEventKinds } from "../Source/AgentSystem/Events/AgentEvent.js";
 import { serializeError } from "../Source/AgentSystem/Diagnostics/AgentErrorSerializer.js";
@@ -41,7 +51,9 @@ import { AgentPiActiveSessionRegistry } from "../Source/AgentSystem/Pi/AgentPiAc
 import { AgentPiSessionMutationService } from "../Source/AgentSystem/Pi/AgentPiSessionMutationService.js";
 import { AgentPiSessionCleanupService } from "../Source/AgentSystem/Pi/AgentPiSessionCleanupService.js";
 import { createAgentPiDiagnosticLoggerForDetail } from "../Source/AgentSystem/Diagnostics/AgentPiDiagnostics.js";
+import { createAgentProviderStreamDiagnosticSink } from "../Source/AgentSystem/Diagnostics/AgentProviderStreamDiagnostics.js";
 import { AgentSystemRuntimeCache } from "../Source/AgentSystem/Runtime/AgentSystemRuntimeCache.js";
+import { projectAgentStateCardConversationHistory } from "../Source/AgentSystem/StateCard/AgentStateCardRuntime.js";
 import { AgentSessionApprovalLeaseStore } from "../Source/AgentSystem/Safety/AgentSessionApprovalLeaseStore.js";
 import { AgentSandboxRuntimeService } from "../Source/AgentSystem/Sandbox/AgentSandboxRuntimeService.js";
 import { AgentExecutionResourceBroker } from "../Source/AgentSystem/ExecutionResources/AgentExecutionResourceBroker.js";
@@ -76,6 +88,7 @@ import { AgentRunDispatchGateway } from "../Source/AgentSystem/Orchestration/Age
 import { AgentSessionRunDispatcher } from "../Source/AgentSystem/Session/AgentSessionRunDispatcher.js";
 import { AgentOrchestrationDatabase } from "../Source/AgentSystem/Orchestration/AgentOrchestrationDatabase.js";
 import { AgentSqliteChildRunRepository } from "../Source/AgentSystem/Orchestration/AgentSqliteChildRunRepository.js";
+import { isAgentChildRunBackgroundCompletionDeliverable } from "../Source/AgentSystem/Orchestration/AgentChildRunTypes.js";
 import { AgentSqliteWorkflowRepository } from "../Source/AgentSystem/Orchestration/AgentSqliteWorkflowRepository.js";
 import { AgentSqliteScheduledTaskStore } from "../Source/AgentSystem/Orchestration/AgentSqliteScheduledTaskStore.js";
 import { AgentOrchestrationEventRelay } from "../Source/AgentSystem/Orchestration/AgentOrchestrationEventRelay.js";
@@ -84,16 +97,13 @@ import {
   type AgentDelegationCompletionPort,
 } from "../Source/AgentSystem/Orchestration/AgentDelegationService.js";
 import { AgentDelegationCompletionDelivery } from "../Source/AgentSystem/Orchestration/AgentDelegationCompletionDelivery.js";
-import {
-  createAgentDelegationSessionWakeHandler,
-  isTerminalDetachedChildRun,
-} from "../Source/AgentSystem/Orchestration/AgentDelegationSessionWake.js";
 import { AgentWorkflowService } from "../Source/AgentSystem/Orchestration/AgentWorkflowService.js";
 import {
   AgentSubagentRoleCatalog,
   resolveAgentSubagentBuiltinRoleDirectory,
 } from "../Source/AgentSystem/Orchestration/AgentSubagentRoleCatalog.js";
 import { AgentScheduleRuntime } from "../Source/AgentSystem/Orchestration/AgentScheduleRuntime.js";
+import { AgentJobRuntime } from "../Source/AgentSystem/Orchestration/AgentJobRuntime.js";
 import type { AgentIdentityDisplayValues } from "../Source/AgentSystem/Text/AgentTextParts.js";
 import {
   AgentScheduledTaskDeliveryGateway,
@@ -111,15 +121,28 @@ import { ingestAgentChannelAttachment } from "../Source/AgentSystem/Channels/Age
 import { parseAgentQqApprovalInteraction } from "../Source/AgentSystem/Channels/AgentQqApprovalInteraction.js";
 import { AgentChannelSessionMappingStore } from "../Source/AgentSystem/Channels/AgentChannelSessionMappingStore.js";
 import { AgentChannelService, type AgentChannelStatus } from "../Source/AgentSystem/Channels/AgentChannelService.js";
-import { createAgentChannelFinalResponseRewriter } from "../Source/AgentSystem/Channels/AgentChannelFinalResponse.js";
 import { createDefaultAgentChannelRegistry } from "../Source/AgentSystem/Channels/AgentChannelAdapterRegistry.js";
+import { AgentChannelSessionLifecycle } from "../Source/AgentSystem/Channels/AgentChannelSessionLifecycle.js";
+import { AgentPiHistoryBoundaryReader } from "../Source/AgentSystem/Pi/AgentPiHistoryBoundaryReader.js";
+import { AgentChannelParticipationStore } from "../Source/AgentSystem/Channels/AgentChannelParticipationStore.js";
+import { AgentChannelConversationStore } from "../Source/AgentSystem/Channels/AgentChannelConversationStore.js";
+import { AgentInteractionIdentityStore } from "../Source/AgentSystem/Interaction/AgentInteractionIdentityStore.js";
+import { AgentEntityReferenceRegistry } from "../Source/AgentSystem/Identity/AgentEntityReferenceRegistry.js";
+import { AgentChannelOutbox } from "../Source/AgentSystem/Channels/AgentChannelOutbox.js";
+import { AgentChannelIngress } from "../Source/AgentSystem/Channels/AgentChannelIngress.js";
+import {
+  AgentOneBot11MessageStore,
+  agentOneBot11MessageStorePath,
+} from "../Source/AgentSystem/Channels/Adapters/AgentOneBot11MessageStore.js";
 import { resolveAgentChannelsConfig } from "../Source/AgentSystem/Channels/AgentChannelsConfig.js";
 import { AgentChannelWebhookApi } from "../Source/AgentSystem/Channels/AgentChannelWebhookApi.js";
+import { AgentChannelToolGateway } from "../Source/AgentSystem/Channels/AgentChannelToolPort.js";
 import { AgentResourceResolver } from "../Source/AgentSystem/Resources/AgentResourceResolver.js";
 import { AgentToolResourceLeaseCoordinator } from "../Source/AgentSystem/ToolRuntime/AgentToolResourceScheduler.js";
 import {
   resolveAgentDelegationConfiguration,
   resolveAgentSchedulerConfiguration,
+  resolveAgentJobsConfiguration,
 } from "../Source/AgentSystem/Orchestration/AgentOrchestrationConfig.js";
 import { AgentRuntimeUpdateDeployments } from "../Source/AgentSystem/Runtime/AgentRuntimeUpdateContract.js";
 import {
@@ -134,6 +157,7 @@ import {
 } from "./ServerRuntimeSupport.js";
 
 export { probeSeneraReadiness } from "./ServerRuntimeSupport.js";
+import type { AgentServerAccessProfile } from "../Source/AgentSystem/Auth/AgentServerAccessPolicy.js";
 
 export interface SeneraServerOptions {
   workspaceRoot?: string;
@@ -143,6 +167,7 @@ export interface SeneraServerOptions {
   onWorkspaceOpened?: (root: string, workspaceId: string) => void;
   configPath?: string;
   staticFrontendRoot?: string;
+  developmentFrontendUrl?: string;
   /**
    * Root containing the application manifest. Electron keeps package.json in
    * app.asar while extraResources are exposed from the physical resources root.
@@ -164,8 +189,8 @@ export interface SeneraServerOptions {
   dockerEngineWorker?: SeneraSandboxWorkerClient;
   /** Guest-side workspace root shared by the application and sandbox mounts. */
   sandboxGuestWorkspaceRoot?: string;
-  /** Enables automatic loopback HTTP for container-local browser access. */
-  automaticLoopbackHttp?: boolean;
+  /** Access policy owned by the process entrypoint, independent of workspace settings. */
+  accessProfile?: AgentServerAccessProfile;
   upgradeStateRoot?: string;
   upgradeDataRoots?: readonly string[];
   runtimeImageReference?: string;
@@ -268,6 +293,9 @@ async function startSeneraServerHost(
       return { ...config, Server: projected.Server };
     };
     const defaultWorkspaceId = catalog.register(workspaceRoot).id;
+    const developmentFrontend = options.developmentFrontendUrl
+      ? (await import("./DevelopmentFrontendProxy.js")).createDevelopmentFrontendProxy(options.developmentFrontendUrl)
+      : undefined;
     const transport = new AgentWebSocketTransport({
       applicationRoot: applicationStateRoot,
       config: transportConfig,
@@ -278,7 +306,8 @@ async function startSeneraServerHost(
       },
       forgetWorkspace: async (id) => host.forgetWorkspace(id),
       staticFrontendRoot: options.staticFrontendRoot,
-      automaticLoopbackHttp: options.automaticLoopbackHttp,
+      developmentFrontend,
+      accessProfile: options.accessProfile,
     });
     cleanup.defer(() => transport.stop());
     const runtimes = new Map<string, SeneraWorkspaceHandle>();
@@ -458,14 +487,17 @@ async function startSeneraServerRuntime(
   const piSessionRegistry = new AgentPiActiveSessionRegistry();
   const deployment = options.deployment;
   const projectRuntimeConfig = (config: AgentSystemConfig): AgentSystemConfig =>
-    projectSeneraWorkspaceRuntimeConfig({
-      config,
-      workspaceRoot,
-      workspaceLayout,
-      local: deployment === SeneraServerDeployments.Local,
-      project: options.runtimeConfigProjection,
-      disableSandbox: disableSandboxRuntime,
-    });
+    withAgentModelsDevPricing(
+      projectSeneraWorkspaceRuntimeConfig({
+        config,
+        workspaceRoot,
+        workspaceLayout,
+        local: deployment === SeneraServerDeployments.Local,
+        project: options.runtimeConfigProjection,
+        disableSandbox: disableSandboxRuntime,
+      }),
+      host.transport.modelsDevCatalog,
+    );
   const initialSnapshot = configService.snapshot();
   const initialConfig = projectRuntimeConfig(initialSnapshot.value);
   const configSnapshot = (): AgentSystemConfig => projectRuntimeConfig(configService.snapshot().value);
@@ -474,6 +506,8 @@ async function startSeneraServerRuntime(
     root: workspaceLayout.logsRoot,
     policy: createSeneraWorkspaceLogPolicy(configSnapshot),
   });
+  deferResourceCleanup(() => logStore.close());
+  logStore.start();
   const logger = new AgentLogger({
     verbose: eventLogDetail === "verbose",
     eventDisplayMode: eventLogDetail,
@@ -485,7 +519,21 @@ async function startSeneraServerRuntime(
     detail: eventLogDetail,
     persistHiddenEvents: () => resolvePersistenceConfig(configSnapshot()).Logs.CaptureHiddenEvents,
   });
-  const piDiagnostics = createAgentPiDiagnosticLoggerForDetail(logger, eventLogDetail);
+  const providerDiagnostics = createAgentProviderStreamDiagnosticSink({
+    sink: createAgentPiDiagnosticLoggerForDetail(logger, eventLogDetail),
+    policy: () => {
+      const logs = resolvePersistenceConfig(configSnapshot()).Logs;
+      return {
+        enabled: logs.Enabled,
+        raw: eventLogDetail === "verbose",
+        maxBytes: logs.DetailMaxBytes,
+        maxConcurrentWrites: logs.DetailMaxConcurrentWrites,
+      };
+    },
+    publishDetail: (value) => logStore.publishDetail(value),
+  });
+  deferResourceCleanup(() => providerDiagnostics.close());
+  const piDiagnostics = providerDiagnostics.sink;
   const continuityLogger = logger.scoped(AgentWorkspaceLogStreamNames.memos);
   const learningLogger = logger.scoped(AgentWorkspaceLogStreamNames.learning);
   const runtimeDependencies = createSeneraWorkspaceRuntimeDependencies({
@@ -598,6 +646,22 @@ async function startSeneraServerRuntime(
   });
   const scheduledTasks = new AgentSqliteScheduledTaskStore(orchestrationDatabase);
   const schedulerConfiguration = resolveAgentSchedulerConfiguration(initialConfig);
+  const jobs: AgentJobRuntime = new AgentJobRuntime({
+    database: orchestrationDatabase,
+    broker: executionResources,
+    workspaceRoot,
+    inbox: {
+      acceptHostInput: (request) =>
+        sessionManager.acceptHostInput({ ...request, onEvent: (event) => orchestrationEvents.emit(event) }),
+      withdrawHostInput: (sessionId, deliveryId) => sessionManager.withdrawHostInput(sessionId, deliveryId),
+    },
+    configuration: () => resolveAgentJobsConfiguration(configSnapshot()),
+    readCommittedToolCalls: (sessionId) => piHistoryBoundaries.readCommittedToolCalls(sessionId),
+    pendingInputs: (sessionId) => sessionManager.listQueuedInputs(sessionId),
+    retryDelayMs: schedulerConfiguration.polling.intervalMs,
+    onError: (error) => logger.error("job.notification.failed", { error: errorMessage(error) }),
+  });
+  deferResourceCleanup(() => jobs.stop());
   const delegation = new AgentDelegationService({
     workspaceRoot,
     configuration: () => {
@@ -611,10 +675,12 @@ async function startSeneraServerRuntime(
     dispatcher: runDispatch,
     events: orchestrationEvents,
     completion: delegationCompletion,
+    logger,
     roleCatalog: subagentRoles,
     resourceCoordinator,
   });
   deferResourceCleanup(() => delegation.shutdown());
+  jobs.bindAgents(delegation);
   const workflows = new AgentWorkflowService({
     repository: workflowRepository,
     delegation,
@@ -647,54 +713,126 @@ async function startSeneraServerRuntime(
     workspaceLayout.databases.sessions,
   );
   deferResourceCleanup(() => repository.close());
-  const identityDisplayValues = (): AgentIdentityDisplayValues => {
+  const profileAvatarStore = new AgentProfileAvatarStore(workspaceRoot);
+  await new AgentUserProfileManager(repository, profileAvatarStore).emitSnapshot({});
+  const legacyPreset =
+    repository.loadAgentDirectory() === undefined
+      ? readAgentMarkdownPromptPreset(workspaceRoot, resolveServerConfig(initialConfig).RequestMaxBytes)
+      : undefined;
+  if (legacyPreset?.error) throw new Error(`Cannot migrate the prompt preset: ${legacyPreset.error}`);
+  const entityReferences = new AgentEntityReferenceRegistry(workspaceLayout.databases.identities, upgradeSession);
+  deferResourceCleanup(() => entityReferences.close());
+  const agentDirectory = new AgentDirectory(
+    repository,
+    {
+      assistant: repository.loadUserProfile().assistant,
+      ...(legacyPreset?.selection ? { preset: { version: 1, ...legacyPreset.selection } } : {}),
+    },
+    entityReferences,
+  );
+  const legacyAgentId = agentDirectory.snapshot().agents[0].id;
+  for (const session of repository.listSessionMetadata()) {
+    if (session.metadata?.agentId) continue;
+    session.metadata = { ...session.metadata, agentId: legacyAgentId };
+    repository.upsertSession(session);
+  }
+  const identityDisplayValues = (sessionId?: string): AgentIdentityDisplayValues => {
     const profile = repository.loadUserProfile();
-    return { user: profile.name, assistant: profile.assistant.name };
+    const agentId = sessionId ? repository.loadSession(sessionId)?.metadata?.agentId : undefined;
+    return { user: profile.name, assistant: agentDirectory.get(agentId).name };
   };
   const sessionStore = new AgentSessionStore({ repository });
   const sessionApprovals = new AgentSessionApprovalLeaseStore();
   const todoConfig = resolveAgentTodosConfig(initialConfig);
   const inferenceBudget = createSeneraServerInferenceBudget(() => configSnapshot());
-  const continuityRuntime = createAgentContinuityRuntime({
-    databasePath: workspaceLayout.databases.memory,
-    memosDatabasePath: workspaceLayout.databases.memos,
-    identityPath: workspaceLayout.continuityIdentity,
-    workspaceId,
-    upgradeSession,
-    configSnapshot,
-    todoPolicy: {
-      maxItems: todoConfig.MaxItems,
-      maxContentCharacters: todoConfig.MaxContentCharacters,
-      maxResultCharacters: todoConfig.MaxResultCharacters,
+  await migrateWorkspaceLearning(workspaceLayout, legacyAgentId);
+  const resolveSessionAgentId = (sessionId: string): string => {
+    const visited = new Set<string>();
+    let current = sessionId;
+    while (!visited.has(current)) {
+      visited.add(current);
+      const session = repository.loadSession(current);
+      if (session?.metadata?.agentId) return session.metadata.agentId;
+      const child = childRuns.getByChildSession(current);
+      if (!child) break;
+      current = child.parentSessionId;
+    }
+    throw new Error(`Session ${sessionId} has no authoritative Agent identity.`);
+  };
+  const channelsDatabase = new AgentChannelsDatabase(workspaceLayout.databases.channels, upgradeSession);
+  deferResourceCleanup(() => channelsDatabase.close());
+  const interactionIdentities = new AgentInteractionIdentityStore(channelsDatabase.connection, entityReferences);
+  interactionIdentities.owner();
+  const continuityRuntime = new AgentContinuityRuntimePool({
+    layout: workspaceLayout,
+    assertAgent: (id) => {
+      agentDirectory.get(id);
     },
-    embeddingClient: workspaceRuntime.embedding.client,
-    embeddingModel: () => workspaceRuntime.embedding.model,
-    identityDisplayValues,
-    logger: continuityLogger,
-    learningLogger,
+    sessionAgentId: resolveSessionAgentId,
+    create: (agentId, paths) =>
+      createAgentContinuityRuntime({
+        canonicalSubject: (subject) => interactionIdentities.canonicalSubject(subject),
+        agentId,
+        ...paths,
+        workspaceId,
+        upgradeSession,
+        configSnapshot,
+        todoPolicy: {
+          maxItems: todoConfig.MaxItems,
+          maxContentCharacters: todoConfig.MaxContentCharacters,
+          maxResultCharacters: todoConfig.MaxResultCharacters,
+          allowParallelInProgress: todoConfig.AllowParallelInProgress,
+        },
+        embeddingClient: workspaceRuntime.embedding.client,
+        embeddingModel: () => workspaceRuntime.embedding.model,
+        identityDisplayValues: () => ({
+          user: repository.loadUserProfile().name,
+          assistant: agentDirectory.get(agentId).name,
+        }),
+        logger: continuityLogger,
+        learningLogger,
+        diagnostics: piDiagnostics,
+      }),
   });
   deferResourceCleanup(() => continuityRuntime.close());
-  const {
-    memory: memoryService,
-    promptContext: continuityMemory,
-    lifecycle: continuityLifecycle,
-    executionLedger,
-    todos,
-  } = continuityRuntime;
-  delegation.bindTodoService(todos);
+  delegation.bindTodoService({
+    add: (input) => continuityRuntime.forSession(input.sessionId).todos.add(input),
+    update: (input) => continuityRuntime.forSession(input.sessionId).todos.update(input),
+    read: (id) => continuityRuntime.forSession(id).todos.read(id),
+    fingerprint: (id) => continuityRuntime.forSession(id).todos.fingerprint(id),
+  });
   const platform = await createSeneraServerRuntimePlatform({
+    diaries: createAgentSelfDiaryPort({
+      defaultSubject: () => interactionIdentities.owner().id,
+      store: (agentId) => continuityRuntime.forAgent(agentDirectory.get(agentId).id).diaries,
+      config: () => resolveContinuityLearningConfig(configSnapshot()).Diary,
+    }),
     resourceRoot,
     workspaceRoot,
     workspaceLayout,
     configPath,
     configSnapshot,
+    systemSkillSources: () => mcpManagement.systemSkillSources(),
+    agentDirectory,
     configService,
     sessionStore,
+    resolveSessionAgentId,
     logStore,
     logger,
   });
   const { pluginHost, selfService } = platform;
   deferResourceCleanup(() => platform.stop());
+  const stateCardHistory = (sessionId: string, excludedRequestId?: string) => {
+    const session = sessionStore.get(sessionId);
+    if (session.kind === "missing") return [];
+    return projectAgentStateCardConversationHistory(
+      session.session.conversation,
+      continuityRuntime.forSession(sessionId).memos.readStateCardHistory(sessionId, excludedRequestId),
+      excludedRequestId,
+    );
+  };
+  const channelToolPortRef: { current?: AgentChannelService } = {};
+  const channelTools = new AgentChannelToolGateway(() => channelToolPortRef.current);
   const runtimeCache = new AgentSystemRuntimeCache({
     workspaceRoot,
     configPath,
@@ -715,17 +853,23 @@ async function startSeneraServerRuntime(
     sandboxGuestWorkspaceRoot,
     mcpInputs,
     workspaceRuntime,
-    orchestration: { delegation, schedules },
-    continuityMemory,
-    continuityIdentity: continuityRuntime.identity,
+    orchestration: { delegation, schedules, jobs },
     identityDisplayValues,
-    continuityLifecycle,
-    continuityRecall: continuityRuntime.recall,
-    continuityMemOS: continuityRuntime.memos,
-    executionLedger,
-    todos,
+    agentServices: (agent) => {
+      const scope = continuityRuntime.forAgent(agentDirectory.get(agent?.id).id);
+      return {
+        continuityMemory: scope.promptContext,
+        continuityIdentity: scope.identity,
+        continuityLifecycle: scope.lifecycle,
+        continuityRecall: scope.recall,
+        continuityMemOS: scope.memos,
+        executionLedger: scope.executionLedger,
+        todos: scope.todos,
+        learningRequests: scope.learningRequests,
+      };
+    },
+    stateCardHistory,
     inferenceBudget,
-    learningRequests: continuityRuntime.learningRequests,
     learningLogger,
     selfService,
     pluginHost,
@@ -733,13 +877,18 @@ async function startSeneraServerRuntime(
     mcpHostCapabilities,
     mcpActivationEntries: () => mcpManagement.activationEntries(),
     systemActivationEntries: () => mcpManagement.systemActivationEntries(),
+    channelTools,
   });
   deferResourceCleanup(() => runtimeCache.clear());
   runtimeCache.setObserved(false);
   const { selfHttpApi } = platform;
 
-  const loopFactory = (modelProviderId?: string) => {
-    const lease = runtimeCache.acquire(modelProviderId);
+  const loopFactory = (
+    modelProviderId?: string,
+    session?: import("../Source/AgentSystem/Session/AgentSession.js").AgentSession,
+  ) => {
+    const agent = agentDirectory.resolve(session?.metadata?.agentId);
+    const lease = runtimeCache.acquire(modelProviderId ?? agent.modelProviderId ?? undefined, agent);
     try {
       const loop = new AgentLoop({
         runtime: lease.runtime,
@@ -784,10 +933,14 @@ async function startSeneraServerRuntime(
     }
   };
   const piSessionMutations = new AgentPiSessionMutationService({
-    acquireRuntime: (modelProviderId) => runtimeCache.acquire(modelProviderId),
+    acquireRuntime: (modelProviderId) => runtimeCache.acquire(modelProviderId, agentDirectory.resolve()),
     diagnostics: piDiagnostics,
   });
   const piSessionCleanup = new AgentPiSessionCleanupService({
+    workspaceRoot,
+    sessionsRoot: workspaceLayout.piSessionsRoot,
+  });
+  const piHistoryBoundaries = new AgentPiHistoryBoundaryReader({
     workspaceRoot,
     sessionsRoot: workspaceLayout.piSessionsRoot,
   });
@@ -805,19 +958,88 @@ async function startSeneraServerRuntime(
     onError: (error) => logger.warn("artifact.retention.failed", { error: serializeError(error) }),
   });
   deferResourceCleanup(() => artifactRetention.close());
-  const sessionManager = new AgentSessionManager({
+  const channelSessionMappings = new AgentChannelSessionMappingStore(channelsDatabase.connection);
+  const channelParticipation = new AgentChannelParticipationStore(channelsDatabase.connection);
+  const channelConversations = new AgentChannelConversationStore(channelsDatabase.connection);
+  for (const lane of channelSessionMappings.listAll()) {
+    if (lane.platform === "onebot11" && !lane.authority && lane.chatType === "group" && !lane.agentId)
+      channelSessionMappings.adoptAgentLane({ ...lane, agentId: legacyAgentId });
+  }
+  const oneBot11RuntimeDirectory = path.join(workspaceLayout.stateRoot, "onebot11");
+  const oneBot11MessageStore = new AgentOneBot11MessageStore(agentOneBot11MessageStorePath(oneBot11RuntimeDirectory));
+  deferResourceCleanup(() => oneBot11MessageStore.close());
+  const channelRegistry = createDefaultAgentChannelRegistry({
+    agentDirectory,
+    oneBot11RuntimeDirectory,
+    oneBot11MessageStore,
+    participationStore: channelParticipation,
+    uploadStore: workspaceRuntime.uploadStore,
+    oneBot11MediaBasePath: `${agentOneBot11ClientPath(workspaceId)}media`,
+    oneBot11OperatorDisplayName: () => identityDisplayValues().user,
+  });
+  const channelSessionLifecycle = new AgentChannelSessionLifecycle(
+    channelSessionMappings,
+    channelRegistry,
+    channelParticipation,
+  );
+  const sessionManager: AgentSessionManager = new AgentSessionManager({
+    onQueuedInputAccepted: (input) => jobs.inputAccepted(input),
+    canWakeQueuedInputs: (inputs) => jobs.canWakeQueuedInputs(inputs),
+    activateQueuedInput: (input, onEvent) => delegation.activateQueuedInput(input.request, onEvent),
+    onTurnStart: ({ sessionId, requestId, onEvent }) => {
+      continuityRuntime.forSession(sessionId).todos.write({ sessionId, requestId, onEvent, todos: [], source: "host" });
+    },
+    resolveInteraction: (interaction) => {
+      if (interaction?.surface === "channel") {
+        if (!interaction.actor && interaction.wake?.reason !== "time")
+          throw new Error("Channel admission requires a host-resolved actor.");
+        return interaction;
+      }
+      return { ...interaction, surface: "console", actor: interactionIdentities.owner() };
+    },
+    historyResources: [
+      {
+        id: "onebot11_task_history",
+        release: async ({ sessionId, requestIds }) => oneBot11MessageStore.removeRequests(sessionId, requestIds),
+      },
+      {
+        id: "channel_participation_history",
+        release: async ({ sessionId, requestIds }) => channelParticipation.removeRequests(sessionId, requestIds),
+      },
+      {
+        id: "context_inspection_history",
+        release: ({ sessionId, requestIds }) =>
+          workspaceRuntime.uploadStore.deletePersistentOwned({ sessionId, requestIds }),
+      },
+    ],
     loopFactory,
+    resolveAgentId: (id) => agentDirectory.resolve(id).id,
+    agentModelProviderId: (id) => agentDirectory.resolve(id).modelProviderId ?? undefined,
     store: sessionStore,
+    readHistoryBoundary: (sessionId) => piHistoryBoundaries.read(sessionId),
+    readCommittedInputs: (sessionId) => piHistoryBoundaries.readCommittedInputs(sessionId),
     createHistoryPresentationResolver: () =>
       createAgentSystemToolHistoryPresentationResolver(mcpManagement.systemSettingsSnapshot()),
     managedSessionIds: new Set(childRuns.listAll().map((run) => run.childSessionId)),
-    memoryService,
+    memoryService: continuityRuntime.memory,
     logger,
     runResources: [
       createAgentRequestCancellationResource("approval", approvalRuntime),
       createAgentRequestCancellationResource("interaction_input", interactionInput),
     ],
     sessionResources: [
+      {
+        id: "onebot11_task_history",
+        release: async ({ sessionId }) => oneBot11MessageStore.removeSession(sessionId),
+      },
+      {
+        id: "channel_participation_tasks",
+        release: async ({ sessionId }) => channelParticipation.removeSession(sessionId),
+      },
+      {
+        id: "channel_history",
+        release: ({ sessionId }) => channelSessionLifecycle.release(sessionId),
+      },
       {
         id: "approval_session_leases",
         release: async ({ sessionId }) => sessionApprovals.revoke(sessionId),
@@ -827,13 +1049,22 @@ async function startSeneraServerRuntime(
         release: ({ sessionId }) => executionResources.releaseAll({ workspaceRoot, sessionId }),
       },
       {
+        id: "background_job_results",
+        release: async ({ sessionId }) => jobs.removeOwnerSession(sessionId),
+      },
+      {
         id: "scheduled_tasks",
         release: ({ sessionId }) => schedules.removeOwnerSession(sessionId),
+      },
+      {
+        id: "context_inspection_session",
+        release: ({ sessionId }) => workspaceRuntime.uploadStore.deletePersistentOwned({ sessionId }),
       },
     ],
     piSessions: piSessionRegistry,
     piDiagnostics,
     uploadStore: workspaceRuntime.uploadStore,
+    imageNormalization: workspaceRuntime.imageNormalization,
     piSessionMutations,
     piSessionManagement: piSessionMutations,
     piSessionCleanup,
@@ -844,12 +1075,6 @@ async function startSeneraServerRuntime(
     },
     artifactSessionCleanup: artifactRetention,
   });
-  const channelsDatabase = new AgentChannelsDatabase(workspaceLayout.databases.channels, upgradeSession);
-  deferResourceCleanup(() => channelsDatabase.close());
-  const channelSessionMappings = new AgentChannelSessionMappingStore(channelsDatabase.connection);
-  const channelFinalResponseRewriter = createAgentChannelFinalResponseRewriter(
-    () => resolveActionPlannerConfig(configSnapshot()).FinalAnswerClient.ModelProvider,
-  );
   const publishChannelServer: { current?: AgentWebSocketServer } = {};
   const publishChannelStatuses = (statuses: readonly AgentChannelStatus[]): void => {
     const server = publishChannelServer.current;
@@ -863,10 +1088,27 @@ async function startSeneraServerRuntime(
       .catch((error) => logger.warn("消息渠道状态广播失败", { error: errorMessage(error) }));
   };
   const channelService = new AgentChannelService({
+    identities: interactionIdentities,
+    conversations: channelConversations,
     config: () => resolveAgentChannelsConfig(configSnapshot()),
-    registry: createDefaultAgentChannelRegistry(),
+    registry: channelRegistry,
+    sessionLifecycle: channelSessionLifecycle,
     sessionManager,
     mappingStore: channelSessionMappings,
+    outbox: new AgentChannelOutbox(channelsDatabase.connection),
+    ingress: new AgentChannelIngress(channelsDatabase.connection),
+    participationStore: channelParticipation,
+    inboxBudget: (source, modelProviderId) => {
+      const agent = agentDirectory.resolve(source.agentId);
+      const defaults = mcpManagement.materializeSystemToolArguments("ChannelReadHistory", {});
+      if (!defaults.ok || typeof defaults.value.limit !== "number")
+        throw new Error("The channel history contract must declare a valid default page size.");
+      const config = configSnapshot();
+      const provider = resolveModelProviderConfig(config, modelProviderId ?? agent.modelProviderId ?? undefined);
+      const estimator = new AgentModelTokenEstimator({ model: provider.Model });
+      const capacity = resolveArtifactsConfig(config).ToolObservationMaxTokens;
+      return { pageSize: defaults.value.limit, fits: (text) => estimator.inspect(text, capacity).withinLimit };
+    },
     attachmentResolver: (attachment, _source, requestHeaders) =>
       ingestAgentChannelAttachment(workspaceRuntime.uploadStore, attachment, requestHeaders),
     resourceResolver: new AgentResourceResolver({
@@ -875,7 +1117,6 @@ async function startSeneraServerRuntime(
       config: configSnapshot,
       uploadStore: workspaceRuntime.uploadStore,
     }),
-    finalResponseRewriter: channelFinalResponseRewriter,
     onInteraction: async (interaction) => {
       if (interaction.source.platform !== "qq") return;
       const parsed = parseAgentQqApprovalInteraction(interaction.buttonData);
@@ -905,6 +1146,7 @@ async function startSeneraServerRuntime(
     },
     onStatusChanged: publishChannelStatuses,
   });
+  channelToolPortRef.current = channelService;
   deferResourceCleanup(() => channelService.stop());
   const channelWebhookApi = new AgentChannelWebhookApi({ channels: channelService });
   const unbindScheduledTaskDelivery = scheduledTaskDelivery.bind({
@@ -927,27 +1169,37 @@ async function startSeneraServerRuntime(
     dispose: (sessionId) => sessionManager.disposeScheduledTaskSession(sessionId),
   });
   deferResourceCleanup(unbindScheduledTaskExecutionSessions);
-  const unbindDelegationCompletion = delegationCompletion.bind({
-    id: "senera.session-wake",
-    // One parent wake is enough for a parallel AgentSpawn batch. The durable
-    // completion rows still remain per child so channel adapters can project
-    // each result independently.
-    completed: createAgentDelegationSessionWakeHandler({
-      childRuns,
-      sessionManager,
-      onEvent: (event) => orchestrationEvents.emit(event),
+  const unbindDelegationCompletionPorts = (options.delegationCompletionPorts ?? []).map((port) =>
+    delegationCompletion.bind(port),
+  );
+  const unbindAgentInbox = delegation.bindInbox((request) => sessionManager.acceptHostInput(request));
+  deferResourceCleanup(
+    sessionManager.registerInputSource({
+      beforeInput: () => {},
+      observed: (boundary) => jobs.observed(boundary),
     }),
+  );
+  deferResourceCleanup(unbindAgentInbox);
+  const unbindScheduleInstructions = schedules.bindInstructions({
+    admit: (task, run, tools) =>
+      sessionManager.acceptScheduledInstruction(task, run, tools, (event) => orchestrationEvents.emit(event)),
   });
-  deferResourceCleanup(unbindDelegationCompletion);
-  const unbindDelegationCompletionPorts = [
-    channelService.createCompletionPort(),
-    ...(options.delegationCompletionPorts ?? []),
-  ].map((port) => delegationCompletion.bind(port));
+  deferResourceCleanup(unbindScheduleInstructions);
+  const unbindParentWake = delegationCompletion.bind({
+    id: "senera.agent-inbox",
+    completed: async (record) => {
+      if (record.parentResultDeliveredAt) return;
+      await jobs.deliverAgentCompletion(record);
+      if (childRuns.get(record.id)?.childRequestId === record.childRequestId)
+        childRuns.markParentResultDelivered(record.id);
+    },
+  });
+  deferResourceCleanup(unbindParentWake);
   deferResourceCleanup(() => {
     for (const unbind of unbindDelegationCompletionPorts) unbind();
   });
   for (const record of childRuns.listAll()) {
-    if (!isTerminalDetachedChildRun(record.status, record)) continue;
+    if (!isAgentChildRunBackgroundCompletionDeliverable(record)) continue;
     void delegationCompletion.completed(record).catch(() => undefined);
   }
   const unbindRunDispatch = runDispatch.bind(new AgentSessionRunDispatcher(sessionManager));
@@ -963,8 +1215,84 @@ async function startSeneraServerRuntime(
         })
       : new AgentCallbackRunEventWriter((events) => sessionManager.recordRunEvents(events));
   const cancelEventWriterCleanup = deferResourceCleanup(() => eventWriter.close());
-  const profileAvatarStore = new AgentProfileAvatarStore(workspaceRoot);
-  const userProfileManager = new AgentUserProfileManager(repository, profileAvatarStore);
+  const userProfileManager = new AgentUserProfileManager(repository, profileAvatarStore, agentDirectory);
+  const agentDirectoryCommands = new AgentDirectoryLifecycle({
+    directory: agentDirectory,
+    cleanup: async (agent) => {
+      const ownedSessions = new Set<string>();
+      const settledSessions = new Set<string>();
+      // Stop producers before deleting anything. Descendants created during cancellation
+      // are discovered from persisted ownership and the child-run graph, never display names.
+      while (true) {
+        for (const session of repository.listSessionMetadata()) {
+          if (session.metadata?.agentId === agent.id) ownedSessions.add(session.id);
+        }
+        for (const run of childRuns.listAll()) {
+          if (ownedSessions.has(run.parentSessionId)) ownedSessions.add(run.childSessionId);
+        }
+        const pending = [...ownedSessions].filter((id) => !settledSessions.has(id));
+        if (!pending.length) break;
+        await Promise.all(
+          pending.map(async (sessionId) => {
+            await sessionManager.requestActiveRunCancellation({ sessionId });
+            await schedules.removeOwnerSession(sessionId);
+            for (const workflow of workflows.list(sessionId)) await workflows.cancel(workflow.id, sessionId);
+            for (const run of childRuns.listForParent(sessionId)) {
+              await delegation.stop(run.id, sessionId);
+              await delegation.wait(run.id, sessionId);
+            }
+            await sessionManager.waitForIdle(sessionId);
+            settledSessions.add(sessionId);
+          }),
+        );
+      }
+      const ownedLanes = channelSessionMappings
+        .listAll()
+        .filter(
+          (lane) =>
+            ownedSessions.has(lane.sessionId) ||
+            lane.agentId === agent.id ||
+            (lane.platform === "onebot11" &&
+              !lane.authority &&
+              lane.chatType === "direct" &&
+              agent.qqUserId !== null &&
+              lane.chatId === String(agent.qqUserId)),
+        );
+      orchestrationDatabase.removeSessions(ownedSessions);
+      for (const id of ownedSessions)
+        await sessionManager.closeSession({
+          sessionId: id,
+          onEvent: (event) => publishChannelServer.current?.broadcast(event),
+        });
+      for (const lane of ownedLanes) channelSessionMappings.removeLane(lane);
+      const snapshot = agentDirectory.snapshot();
+      if (agent.qqUserId !== null) oneBot11MessageStore.removeSender(String(agent.qqUserId));
+      if (snapshot.operatorId !== null) {
+        const conversations = [
+          ...(agent.qqUserId === null ? [] : [{ chatType: "direct" as const, chatId: String(agent.qqUserId) }]),
+          ...snapshot.groups
+            .filter((group) => group.memberAgentIds.every((id) => id === agent.id))
+            .map((group) => ({ chatType: "group" as const, chatId: String(group.id) })),
+        ];
+        for (const conversation of conversations) {
+          const source = { ...conversation, platform: "onebot11" as const, userId: String(snapshot.operatorId) };
+          oneBot11MessageStore.clear(source);
+          channelParticipation.clear(source);
+        }
+      }
+      await runtimeCache.retireAgent(agent.id);
+      await continuityRuntime.remove(agent.id);
+      if (
+        agent.avatarPath &&
+        !agentDirectory
+          .snapshot()
+          .agents.some((other) => other.id !== agent.id && other.avatarPath === agent.avatarPath)
+      ) {
+        await profileAvatarStore.remove("assistant", agent.avatarPath);
+      }
+    },
+  });
+  await agentDirectoryCommands.recover();
   const listener = host.transport.listener;
   const server = new AgentWebSocketServer({
     artifactManifestIndex: workspaceRuntime.artifactManifestIndex,
@@ -981,7 +1309,7 @@ async function startSeneraServerRuntime(
     },
     config: initialConfig,
     workspaceRoot,
-    automaticLoopbackHttp: options.automaticLoopbackHttp,
+    accessProfile: options.accessProfile,
     staticFrontendRoot: options.staticFrontendRoot,
     configService,
     configSnapshot,
@@ -1004,6 +1332,17 @@ async function startSeneraServerRuntime(
     channelWebhookApi,
     selfApi: selfHttpApi,
     channelControl: channelService,
+    channelClient: {
+      extensions: host.clientExtensions,
+      product,
+      resourcesRoot: resourceRoot,
+      developmentFrontendUrl: options.developmentFrontendUrl,
+      mediaRoot: path.join(workspaceLayout.stateRoot, "onebot11", "media"),
+      resolveMediaMetadata: (name) => oneBot11MessageStore.mediaMetadata(name),
+      conversations: channelService,
+    },
+    agentDirectory,
+    agentDirectoryCommands,
     workspaceInfo: () => host.snapshot(workspaceRoot),
     workspaceSwitchRequest: async (nextWorkspaceRoot) => {
       const outcome = await host.switchWorkspace(workspaceRoot, nextWorkspaceRoot);
@@ -1020,6 +1359,13 @@ async function startSeneraServerRuntime(
     }),
   });
   publishChannelServer.current = server;
+  deferResourceCleanup(
+    agentDirectory.subscribe(() => {
+      void server
+        .broadcast({ kind: AgentEventKinds.AgentDirectorySnapshot, context: {}, data: agentDirectory.snapshot() })
+        .catch((error: unknown) => logger.warn("agents.broadcast_failed", { error: serializeError(error) }));
+    }),
+  );
   const unsubscribeConfiguration = bindSeneraServerRuntimeConfigurationSynchronization({
     workspaceRoot,
     configService,
@@ -1030,12 +1376,18 @@ async function startSeneraServerRuntime(
   });
   deferResourceCleanup(unsubscribeConfiguration);
   channelService.setEventSink((event) => server.broadcast(event));
+  sessionManager.setQueuedInputSink((input) =>
+    input.request.interaction?.surface === "channel"
+      ? channelService.queuedInputSink(input)
+      : (event) => server.broadcast(event),
+  );
   cancelEventWriterCleanup();
   deferResourceCleanup(() => server.stop());
   approvalRuntime.setEventSink((event) => server.broadcast(event));
   interactionInput.setEventSink((event) => server.broadcast(event));
   executionResources.setEventSink((event) => server.broadcast(event));
   orchestrationEvents.setSink((event) => server.broadcast(event));
+  await jobs.replay();
   const unsubscribeSandboxStatus = sandboxRuntimeService.subscribe((snapshot) => {
     void server
       .broadcast({
@@ -1058,7 +1410,14 @@ async function startSeneraServerRuntime(
     port: listener.port,
     workspaceId: host.catalog.register(workspaceRoot).id,
   });
-  if (workspaceRoot === host.initialWorkspaceRoot) await channelService.start();
+  if (workspaceRoot === host.initialWorkspaceRoot) {
+    // Channels report their own connecting/connected/failed state. External
+    // handshakes are not a prerequisite for the console's HTTP/WS listener.
+    // The service lifecycle queue also owns startup during shutdown/reconfigure.
+    void channelService.start().catch((error) => {
+      logger.error("渠道启动失败", { error: errorMessage(error) });
+    });
+  }
   await schedules.start();
   artifactRetention.start();
   startSandboxRuntimePreparation({
@@ -1069,6 +1428,8 @@ async function startSeneraServerRuntime(
   });
 
   const stop = createSeneraServerRuntimeStop({
+    oneBot11MessageStore,
+    entityReferences,
     unsubscribeConfiguration,
     unsubscribeSandboxStatus,
     sessionManager,
@@ -1085,7 +1446,6 @@ async function startSeneraServerRuntime(
       unbindScheduledTaskDelivery();
       unbindScheduledTaskSourceContext();
       unbindScheduledTaskExecutionSessions();
-      unbindDelegationCompletion();
       for (const unbind of unbindDelegationCompletionPorts) unbind();
     },
     runtimeDependencies,
@@ -1095,6 +1455,7 @@ async function startSeneraServerRuntime(
     interactionInput,
     mcpInputs,
     artifactRetention,
+    logStore,
     sandboxRuntimeService,
     continuityRuntime,
     repository,

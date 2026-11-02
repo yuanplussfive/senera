@@ -42,6 +42,22 @@ export type AgentSessionDomainEvent =
       };
     }
   | {
+      kind: typeof AgentEventKinds.SessionMessageQueued;
+      context: Required<Pick<AgentEventContext, "sessionId" | "requestId">>;
+      data: {
+        sessionId: string;
+        requestId: string;
+        parentRequestId: string;
+        mode: import("./AgentSessionMessageQueueMode.js").AgentSessionMessageQueueMode;
+        status?: import("./AgentSessionQueuedInput.js").AgentSessionInputState;
+        message?: string;
+        entry?: Extract<
+          import("../Conversation/AgentConversation.js").AgentConversationEntry,
+          { kind: "user.message" }
+        >;
+      };
+    }
+  | {
       kind: typeof AgentEventKinds.SessionNotFound;
       context: Required<Pick<AgentEventContext, "sessionId">>;
       data: {
@@ -79,6 +95,7 @@ export type AgentSessionDomainEvent =
         totalEntries: number;
         messageCount: number;
         refresh?: boolean;
+        window?: import("./AgentSessionHistoryWindow.js").AgentSessionHistoryWindow;
       };
     }
   | {
@@ -104,6 +121,16 @@ export type AgentSessionDomainEvent =
       data: {
         sessionId: string;
         events: AgentEventEnvelope[];
+      };
+    }
+  | {
+      kind: typeof AgentEventKinds.SessionRunHistoryDetail;
+      context: Required<Pick<AgentEventContext, "sessionId" | "requestId">>;
+      data: {
+        sessionId: string;
+        requestId: string;
+        events: AgentEventEnvelope[];
+        complete: boolean;
       };
     }
   | {
@@ -138,11 +165,12 @@ export type AgentSessionDomainEvent =
     }
   | {
       kind: typeof AgentEventKinds.SessionCompacted;
-      context: Required<Pick<AgentEventContext, "sessionId">>;
+      context: AgentEventContext & Required<Pick<AgentEventContext, "sessionId">>;
       data: {
         sessionId: string;
         tokensBefore: number;
         estimatedTokensAfter?: number;
+        boundaryId?: string;
       };
     }
   | {
@@ -165,6 +193,7 @@ export type AgentSessionDomainEvent =
     };
 
 interface AgentSessionSnapshotData {
+  agentId?: string;
   sessionId: string;
   status: string;
   createdAt: string;

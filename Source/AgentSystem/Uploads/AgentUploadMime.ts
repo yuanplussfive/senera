@@ -3,10 +3,12 @@ import { extension, lookup } from "mime-types";
 export const UnknownBinaryMimeType = "application/octet-stream";
 
 export const AgentInlineImageMimeTypes = [
+  "image/apng",
   "image/avif",
   "image/gif",
   "image/jpeg",
   "image/png",
+  "image/svg+xml",
   "image/tiff",
   "image/webp",
 ] as const;
@@ -44,9 +46,9 @@ export function isAgentInlineImageMime(value: string | undefined): value is Agen
 }
 
 /**
- * Only browser-renderable media and plain text are served inline. Office files,
- * archives, SVG, and unknown binaries remain downloads to preserve the upload
- * boundary and avoid turning arbitrary uploads into active documents.
+ * Browser-renderable media and text keep their native MIME under the resource
+ * response's sandbox policy. Office files, archives and unknown binaries remain
+ * downloads. SVG can render as an image without gaining access to the host.
  */
 export function isAgentInlinePreviewMime(value: string | undefined): boolean {
   if (!value) return false;

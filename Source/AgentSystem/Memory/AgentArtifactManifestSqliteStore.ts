@@ -9,6 +9,7 @@ import { AgentSqliteDatabaseKernel } from "../Database/AgentSqliteDatabaseKernel
 import { SeneraWorkspaceBoundary } from "../Execution/SeneraWorkspaceBoundary.js";
 import { normalizeAgentArtifactUri, toWorkspaceRelativePath } from "../Artifacts/AgentArtifactLocator.js";
 import { normalizeAgentResourceUri } from "../Resources/AgentResourceUri.js";
+import { findAgentResourceRecord, registerAgentArtifactResource } from "../Resources/AgentResourceRegistry.js";
 import type { ArtifactManifestRecord } from "./AgentArtifactMemoryTypes.js";
 import { readArtifactManifest, type ArtifactManifestFileFingerprint } from "./AgentArtifactManifestReader.js";
 import { AgentArtifactManifestIndexContract } from "./AgentArtifactManifestSqlSchema.js";
@@ -186,7 +187,9 @@ export class AgentArtifactManifestSqliteStore {
       "SELECT artifact_id, artifact_uri, manifest_path, relative_dir, fingerprint_size, fingerprint_mtime_ms, fingerprint_ctime_ms, fingerprint_ino, status, error_message, checkpoint_id, checkpoint_captured_at FROM artifact_manifest_index WHERE artifact_root = ? AND artifact_id = ?",
     );
     for (const artifactId of ids) {
-      const row = statement.get(root, artifactId);
+      const resource = findAgentResourceRecord(workspaceRoot, artifactId);
+      if (resource?.state === "deleted") continue;
+      const row = statement.get(root, resource?.kind === "artifact" ? resource.entity_id : artifactId);
       if (!row || row.status !== "valid") continue;
       let indexed: Awaited<ReturnType<typeof readArtifactManifest>>;
       try {
@@ -196,6 +199,11 @@ export class AgentArtifactManifestSqliteStore {
         throw error;
       }
       if (!indexed.manifest || !sameFingerprint(row, indexed.fingerprint)) continue;
+      registerAgentArtifactResource(workspaceRoot, {
+        artifactId: indexed.manifest.artifactId,
+        artifactUri: indexed.manifest.artifactUri,
+        manifestPath: row.manifest_path,
+      });
       output.set(artifactId, indexed.manifest);
     }
     return output;
@@ -346,6 +354,11 @@ export class AgentArtifactManifestSqliteStore {
         `Duplicate Artifact manifest for ${manifest.artifactId}: ${manifestPath} conflicts with ${previous.manifest_path}.`,
       );
     }
+    registerAgentArtifactResource(workspaceRoot, {
+      artifactId: manifest.artifactId,
+      artifactUri: manifest.artifactUri,
+      manifestPath,
+    });
 
     const write = this.db.transaction(() => {
       this.deleteManifest.run({

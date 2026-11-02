@@ -1,11 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import {
-  useStore,
-  type ConversationProfileUpdate,
-  type SessionRecord,
-  type UserProfile,
-} from "../../store/sessionStore";
+import { useStore, type ConversationProfileUpdate, type UserProfile } from "../../store/sessionStore";
 import { cn } from "../../lib/util";
 import { ConfirmationDialog, RenameDialog } from "./SessionDialogs";
 import { UserFooter } from "./ProfileFooter";
@@ -14,7 +9,9 @@ import { SessionPanelBody } from "./SessionPanelBody";
 import type { ConfirmationIntent } from "./types";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { EventSourceChannel } from "../../api/eventTypes";
+import type { SocketStatus } from "../../api/useAgentSocket";
 import type { SettingsSectionId } from "../settings/types";
+import { useSessionList, type SessionListEntry } from "../../store/selectors/chatSelectors";
 
 interface Props {
   onNewSession: () => void;
@@ -27,7 +24,8 @@ interface Props {
   userProfile: UserProfile;
   onUpdateUserProfile: (profile: ConversationProfileUpdate) => void;
   onLogout?: () => Promise<void>;
-  socketStatus: string;
+  socketStatus: SocketStatus;
+  onReconnectSocket?: () => void;
   onSettingsIntent?: () => void;
   onOpenSettings: (section?: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
   httpBaseUrl?: string;
@@ -53,6 +51,7 @@ export function SessionList({
   onUpdateUserProfile,
   onLogout,
   socketStatus,
+  onReconnectSocket,
   onSettingsIntent,
   onOpenSettings,
   httpBaseUrl,
@@ -61,11 +60,8 @@ export function SessionList({
   onSessionSelected,
   onClosePanel,
 }: Props): JSX.Element {
-  const sessions = useStore((s) => s.sessions);
-  const order = useStore((s) => s.sessionOrder);
+  const sessionList = useSessionList();
   const active = useStore((s) => s.activeSessionId);
-  const historyLoadingIds = useStore((s) => s.historyLoadingIds);
-  const missingOnServerIds = useStore((s) => s.missingOnServerIds);
   const sessionCatalogSynced = useStore((s) => s.catalogSynced.sessions);
   const select = useStore((s) => s.selectSession);
   const toggleSidebar = useStore((s) => s.toggleSidebar);
@@ -79,19 +75,11 @@ export function SessionList({
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedSessionIds, setSelectedSessionIds] = useState<ReadonlySet<string>>(() => new Set());
 
-  const sessionList = useMemo(
-    () =>
-      order
-        .map((id) => sessions[id])
-        .filter((session): session is SessionRecord => !!session && !missingOnServerIds[session.sessionId]),
-    [missingOnServerIds, order, sessions],
-  );
-
   const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase();
   const filteredSessions = useMemo(
     () =>
       sessionList.filter((session) => {
-        const matchesChannel = channelFilter === "all" || (session.channel?.platform ?? "console") === channelFilter;
+        const matchesChannel = channelFilter === "all" || session.platform === channelFilter;
         const matchesQuery =
           !normalizedSearchQuery || session.title.toLocaleLowerCase().includes(normalizedSearchQuery);
         return matchesChannel && matchesQuery;
@@ -108,7 +96,7 @@ export function SessionList({
     });
   }, [sessionList]);
 
-  const openRename = (session: SessionRecord, returnFocus: HTMLElement | null = null): void => {
+  const openRename = (session: SessionListEntry, returnFocus: HTMLElement | null = null): void => {
     dialogReturnFocusRef.current = returnFocus?.isConnected ? returnFocus : null;
     setRenaming({ sessionId: session.sessionId, title: session.title });
     setRenameDraft(session.title);
@@ -126,7 +114,7 @@ export function SessionList({
     toast.success(frontendMessage("session.renameSucceeded"));
   };
 
-  const confirmDeleteSession = (session: SessionRecord, returnFocus: HTMLElement | null = null): void => {
+  const confirmDeleteSession = (session: SessionListEntry, returnFocus: HTMLElement | null = null): void => {
     dialogReturnFocusRef.current = returnFocus?.isConnected ? returnFocus : null;
     setConfirmation({
       title: frontendMessage("session.deleteCurrentTitle"),
@@ -222,7 +210,6 @@ export function SessionList({
     query: searchQuery,
     onQueryChange: setSearchQuery,
     activeSessionId: active,
-    historyLoadingIds,
     onNewSession,
     onSelectSession: (sessionId: string) => {
       select(sessionId);
@@ -267,6 +254,7 @@ export function SessionList({
   const userFooterProps = {
     profile: userProfile,
     socketStatus,
+    onReconnectSocket,
     onSettingsIntent,
     onOpenSettings,
     onUpdateProfile: onUpdateUserProfile,

@@ -12,6 +12,21 @@ import type {
 } from "../../../Source/AgentSystem/Mcp/AgentMcpToolClient.js";
 import { AgentMcpTaskDetachedError } from "../../../Source/AgentSystem/Mcp/AgentMcpToolClient.js";
 import { AgentInteractionInputRuntime } from "../../../Source/AgentSystem/Interaction/AgentInteractionInputRuntime.js";
+import { createAgentMcpToolListChangedHandlers } from "../../../Source/AgentSystem/Mcp/AgentMcpToolCatalogChange.js";
+
+test("reports synchronous catalog publication failures through the MCP error boundary", async () => {
+  const failure = new Error("Tool declaration is invalid.");
+  const onError = vi.fn();
+  const handlers = createAgentMcpToolListChangedHandlers({
+    server: connection().server,
+    onToolsChanged: () => {
+      throw failure;
+    },
+    onError,
+  });
+  expect(() => handlers?.tools?.onChanged(null, [])).not.toThrow();
+  await vi.waitFor(() => expect(onError).toHaveBeenCalledExactlyOnceWith(failure));
+});
 
 describe("MCP tool client pool", () => {
   test("cancels one opening lease without interrupting another and never opens for an aborted request", async () => {

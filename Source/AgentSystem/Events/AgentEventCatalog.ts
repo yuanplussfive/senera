@@ -28,12 +28,14 @@ export const AgentEventKinds = {
   SessionSnapshot: "session.snapshot",
   SessionClosed: "session.closed",
   SessionBusy: "session.busy",
+  SessionMessageQueued: "session.message.queued",
   SessionNotFound: "session.not_found",
   SessionListSnapshot: "session.list.snapshot",
   SessionHistoryStarted: "session.history.started",
   SessionHistoryChunk: "session.history.chunk",
   SessionHistorySteps: "session.history.steps",
   SessionRunHistoryChunk: "session.run_history.chunk",
+  SessionRunHistoryDetail: "session.run_history.detail",
   SessionHistoryCompleted: "session.history.completed",
   SessionTruncated: "session.truncated",
   SessionForked: "session.forked",
@@ -71,6 +73,7 @@ export const AgentEventKinds = {
   ApprovalResolved: "approval.resolved",
   InteractionInputRequested: "interaction.input.requested",
   InteractionInputResolved: "interaction.input.resolved",
+  FeedbackRecorded: "feedback.recorded",
   ExecutionResourceCreated: "execution.resource.created",
   ExecutionResourceOutput: "execution.resource.output",
   ExecutionResourceResized: "execution.resource.resized",
@@ -118,6 +121,7 @@ export const AgentEventKinds = {
   ProviderModelsSnapshot: "provider.models.snapshot",
   ProviderModelsFailed: "provider.models.failed",
   ProfileSnapshot: "profile.snapshot",
+  AgentDirectorySnapshot: "agents.snapshot",
   SystemToolSnapshot: "system_tool.snapshot",
   McpServerSnapshot: "mcp_server.snapshot",
   ChannelStatusSnapshot: "channel.status.snapshot",
@@ -157,6 +161,10 @@ export const AgentEventSpecTable: {
     layer: AgentEventLayers.Error,
     phase: AgentEventPhases.Session,
   },
+  [AgentEventKinds.SessionMessageQueued]: {
+    layer: AgentEventLayers.Progress,
+    phase: AgentEventPhases.Session,
+  },
   [AgentEventKinds.SessionNotFound]: {
     layer: AgentEventLayers.Error,
     phase: AgentEventPhases.Session,
@@ -178,6 +186,10 @@ export const AgentEventSpecTable: {
     phase: AgentEventPhases.Session,
   },
   [AgentEventKinds.SessionRunHistoryChunk]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Session,
+  },
+  [AgentEventKinds.SessionRunHistoryDetail]: {
     layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Session,
   },
@@ -328,6 +340,10 @@ export const AgentEventSpecTable: {
   [AgentEventKinds.InteractionInputResolved]: {
     layer: AgentEventLayers.Progress,
     phase: AgentEventPhases.Tool,
+  },
+  [AgentEventKinds.FeedbackRecorded]: {
+    layer: AgentEventLayers.Snapshot,
+    phase: AgentEventPhases.Session,
   },
   [AgentEventKinds.ExecutionResourceCreated]: {
     layer: AgentEventLayers.Snapshot,
@@ -517,6 +533,7 @@ export const AgentEventSpecTable: {
     layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Config,
   },
+  [AgentEventKinds.AgentDirectorySnapshot]: { layer: AgentEventLayers.Snapshot, phase: AgentEventPhases.Session },
   [AgentEventKinds.SystemToolSnapshot]: {
     layer: AgentEventLayers.Snapshot,
     phase: AgentEventPhases.Config,

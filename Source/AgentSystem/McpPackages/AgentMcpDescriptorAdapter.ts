@@ -5,12 +5,14 @@ import { AgentBaseError } from "../Core/AgentBaseError.js";
 import {
   createAgentExtensionLocalizedText,
   type AgentExtensionLocalizedText,
+  AgentExtensionLocalizedTextSchema,
 } from "../Extensions/AgentExtensionLocalization.js";
 import {
   AgentPluginBrandIconNames,
   AgentToolPresentationIconNames,
-  type AgentPluginIdentityPresentation,
+  type AgentPluginPresentation,
 } from "../Types/AgentToolPresentationTypes.js";
+import { AgentPluginUsageExamplesSchema } from "../Extensions/AgentPluginUsageExamples.js";
 
 export interface AgentMcpDescriptorContext {
   readonly packageRoot: string;
@@ -24,7 +26,7 @@ export interface AgentMcpDescriptorProjection {
   readonly displayName?: AgentExtensionLocalizedText;
   readonly description?: AgentExtensionLocalizedText;
   readonly descriptorKind: "mcpb" | "registry" | "legacy" | "connection";
-  readonly presentation?: AgentPluginIdentityPresentation;
+  readonly presentation?: AgentPluginPresentation;
   readonly execution?: AgentMcpExecution;
   readonly requirements?: AgentMcpHostRequirements;
   readonly servers: readonly AgentMcpPackageServer[];
@@ -96,10 +98,10 @@ export function readMcpPluginIdentityPresentation(
   value: unknown,
   label: string,
   path: readonly PropertyKey[] = [],
-): AgentPluginIdentityPresentation | undefined {
+): AgentPluginPresentation | undefined {
   if (value === undefined) return undefined;
   const presentation = requireMcpRecord(value, label, path);
-  const allowedKeys = new Set(["icon", "brandIcon"]);
+  const allowedKeys = new Set(["icon", "brandIcon", "usageExamples", "documentation"]);
   for (const key of Object.keys(presentation)) {
     if (!allowedKeys.has(key)) {
       throw new AgentMcpDescriptorError(`${label} has an unrecognized key: ${key}.`, [...path, key]);
@@ -122,8 +124,28 @@ export function readMcpPluginIdentityPresentation(
   if (icon === undefined && brandIcon === undefined) {
     throw new AgentMcpDescriptorError(`${label} must declare icon or brandIcon.`, path);
   }
+  const examples = AgentPluginUsageExamplesSchema.optional().safeParse(presentation.usageExamples);
+  if (!examples.success) {
+    const issue = examples.error.issues[0];
+    throw new AgentMcpDescriptorError(`${label}.usageExamples: ${issue.message}`, [
+      ...path,
+      "usageExamples",
+      ...issue.path,
+    ]);
+  }
+  const documentation = AgentExtensionLocalizedTextSchema.optional().safeParse(presentation.documentation);
+  if (!documentation.success) {
+    const issue = documentation.error.issues[0];
+    throw new AgentMcpDescriptorError(`${label}.documentation: ${issue.message}`, [
+      ...path,
+      "documentation",
+      ...issue.path,
+    ]);
+  }
   return {
-    ...(typeof icon === "string" ? { icon: icon as AgentPluginIdentityPresentation["icon"] } : {}),
-    ...(typeof brandIcon === "string" ? { brandIcon: brandIcon as AgentPluginIdentityPresentation["brandIcon"] } : {}),
+    ...(typeof icon === "string" ? { icon: icon as AgentPluginPresentation["icon"] } : {}),
+    ...(typeof brandIcon === "string" ? { brandIcon: brandIcon as AgentPluginPresentation["brandIcon"] } : {}),
+    ...(examples.data ? { usageExamples: examples.data } : {}),
+    ...(documentation.data ? { documentation: documentation.data } : {}),
   };
 }

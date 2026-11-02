@@ -20,17 +20,12 @@
         "VerifyBackendTestCoverage.js",
         "VerifyRuntimeEventContract.js",
         "VerifyWebSocketProtocolReference.js",
-        "VerifyAgentErrorI18n.js",
-        "VerifyFrontendErrorI18n.js",
-        "VerifyAgentRuntimeI18n.js",
-        "VerifyFrontendRuntimeI18n.js",
         "VerifyToolExecutionPolicy.js",
         "VerifyWorkspaceApplyPatchTool.js",
         "VerifyToolSignatureMappingAndPlanValidation.js",
         "VerifyModelProviderEndpointConfig.js",
         "VerifyProviderModelDomainCommands.js",
         "VerifyPiModelRequestProjection.js",
-        "VerifyAgentConfigFormProjection.js",
         "VerifyModelTimeoutConfig.js",
         "VerifyAgentRuntimeServices.js",
         "VerifyMemorySourceIdempotency.js",
@@ -50,8 +45,8 @@
       ]
     },
     "frontend": {
-      "description": "Frontend test governance and UI behavior through Vitest.",
-      "patterns": ["VerifyFrontendTestCoverage.js"]
+      "description": "Frontend test and Ladle governance; behavior tests run through the test commands.",
+      "patterns": ["VerifyFrontendTestCoverage.js", "VerifyFrontendLadleContracts.js"]
     },
     "integration": {
       "description": "Cross-component protocol, frontend bridge, and runtime integration governance.",
@@ -73,7 +68,9 @@
         "VerifyDesktopRuntimePaths.js",
         "VerifyDesktopFrontendSource.js",
         "VerifyDesktopLiveFrontendServer.js",
-        "VerifyDesktopLiveLifecycle.js"
+        "VerifyDesktopLiveLifecycle.js",
+        "VerifyDesktopServerBundle.js",
+        "VerifyDesktopStartupSurface.js"
       ]
     },
     "release": {
@@ -86,8 +83,12 @@
       ]
     },
     "all-local": {
-      "description": "Every maintained local verification script except the suite runner.",
-      "patterns": ["Verify*.js", "!VerifySuite.js"]
+      "description": "All standalone contract suites; excludes test runners and probes requiring a live deployment.",
+      "includes": ["workspace", "core", "frontend", "integration", "e2e", "platform", "release", "documentation"]
+    },
+    "documentation": {
+      "description": "Documentation links, command references, and runtime version governance.",
+      "patterns": ["VerifyDocumentation.js"]
     }
   }
 }

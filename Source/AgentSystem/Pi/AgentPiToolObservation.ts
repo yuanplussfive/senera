@@ -59,7 +59,7 @@ export function readAgentPiToolObservationFailureMessage(content: string): strin
  * the same text, so every observation reader must remove the envelope before
  * validating the JSON protocol.
  */
-function unwrapAttributedToolObservation(content: string): string {
+export function unwrapAttributedToolObservation(content: string): string {
   const prefix = '<observation attribution="tool">';
   const suffix = "</observation>";
   if (!content.startsWith(prefix) || !content.endsWith(suffix)) return content;

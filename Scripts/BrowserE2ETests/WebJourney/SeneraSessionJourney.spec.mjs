@@ -3,8 +3,6 @@ import { createBrowserE2eHarness, expect, test } from "../browserE2eTest.mjs";
 
 let harness;
 
-test.describe.configure({ mode: "serial" });
-
 test.describe("session lifecycle and sidebar management", () => {
   test.beforeAll(async () => {
     harness = await createBrowserE2eHarness({ authenticationMode: "disabled" });
@@ -62,6 +60,7 @@ test.describe("session lifecycle and sidebar management", () => {
     const sessionRow = page.locator("[data-session-row]").first();
     const selection = sessionRow.getByRole("button", { name: /^打开会话：/ });
     await expect(selection).toBeVisible();
+    await expect(sessionRow.getByRole("button", { name: "more" })).toHaveCount(0);
 
     await selection.focus();
     await selection.press("Shift+F10");
@@ -81,7 +80,7 @@ test.describe("session lifecycle and sidebar management", () => {
     const renameDialog = page.getByRole("dialog", { name: "重命名会话" });
     await expectPortaledOutsideSessionSidebar(renameDialog);
     await expect(renameDialog.getByRole("textbox")).toBeFocused();
-    await renameDialog.getByRole("textbox").fill("E2E Session Journey Rename");
+    await renameDialog.getByRole("textbox").fill("  E2E Session Journey Rename  ");
     await renameDialog.getByRole("button", { name: "保存" }).click();
 
     const renamedSelection = page.getByRole("button", { name: "打开会话：E2E Session Journey Rename" });

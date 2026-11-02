@@ -1,0 +1,206 @@
+{
+  "name": "ChannelReplyMessage",
+  "loading": "Bootstrap",
+  "description": "Reply here with an ordered messages array. Omit messageId to answer the triggering message; native quoting depends on supportsQuotedReplies, while official QQ uses its passive-response ID. Normally send one message; use up to three only for distinct useful content. Send in its own tool batch. Native mentions and quoting apply only to the first item. Use ChannelSendMedia for attachments. Console answers are not delivered. messageIds lists confirmed sends; needs_review or failed stops the remainder. Review the receipt and inbox before continuing; never resend confirmed or uncertain deliveries.",
+  "presentation": {
+    "category": "channel-message",
+    "icon": "answer",
+    "activity": {
+      "action": {
+        "zh-CN": "回复 QQ 消息",
+        "en-US": "Reply in QQ"
+      },
+      "argumentPath": "/messages/0"
+    },
+    "preview": {
+      "body": {
+        "pointer": "/status",
+        "from": "result"
+      }
+    }
+  },
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "taskId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Durable task ID from conversation_tasks or ChannelUpdateConversation; scope review/wait to its verified participants."
+      },
+      "allowUnread": {
+        "type": "boolean",
+        "default": false,
+        "description": "Deliberately send despite unread activity only when the contribution remains valid independently of it. Otherwise the batch stops with needs_review before its next message."
+      },
+      "mentionIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "minItems": 1,
+        "uniqueItems": true,
+        "description": "Verified participant IDs on channels supporting native mentions; applies only to the first message."
+      },
+      "messageId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Optional native message ID from this conversation. Copy it exactly, including letters. Omit to respond to this turn's original message."
+      },
+      "messages": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "minItems": 1,
+        "maxItems": 3,
+        "description": "Literal messages in delivery order. Default to one coherent message; do not split each sentence or bypass the limit with repeated or parallel calls."
+      }
+    },
+    "required": ["messages"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "status": {
+            "const": "sent"
+          },
+          "messageIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 3,
+            "description": "Confirmed deliveries in input order. Check status and code before retrying any unconfirmed item.",
+            "minItems": 1
+          }
+        },
+        "required": ["status", "messageIds"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "status": {
+            "const": "needs_review"
+          },
+          "inbox": {
+            "type": "object",
+            "properties": {
+              "afterSequence": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "throughSequence": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "hasMore": {
+                "type": "boolean"
+              },
+              "entries": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "required": ["afterSequence", "throughSequence", "hasMore", "entries"],
+            "additionalProperties": false
+          },
+          "messageIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 3,
+            "description": "Confirmed deliveries in input order. Check status and code before retrying any unconfirmed item."
+          }
+        },
+        "required": ["status", "messageIds", "inbox"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "status": {
+            "const": "failed"
+          },
+          "messageIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 3,
+            "description": "Confirmed deliveries in input order. Check status and code before retrying any unconfirmed item."
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["status", "messageIds", "code", "error"],
+        "additionalProperties": false
+      }
+    ]
+  },
+  "permissions": ["channel:send"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [],
+  "surfaces": ["channel"],
+  "platforms": ["onebot11", "qq", "onebot"],
+  "search": {
+    "Summary": "引用回复本轮 QQ 消息，也可指定当前会话中的消息。",
+    "Tags": ["QQ", "回复"],
+    "Capabilities": [
+      {
+        "Id": "channel.reply",
+        "Title": "Reply to current-channel message",
+        "Description": "Quote this turn's original message or a specified message in the active lane.",
+        "Facets": {
+          "Actions": ["reply"],
+          "Targets": ["current-channel-message"],
+          "Inputs": ["message-text-array"],
+          "Outputs": ["message-ids"],
+          "Effects": ["external-message-send"]
+        },
+        "Aliases": ["回复 QQ", "reply channel message"],
+        "Risk": {
+          "SideEffect": "external-communication",
+          "Permission": "channel-send"
+        }
+      }
+    ],
+    "UseCases": ["需要明确引用当前渠道消息"],
+    "Examples": ["回复当前渠道消息"],
+    "Avoid": ["没有当前入站消息时不要调用"]
+  },
+  "evidenceCapabilities": []
+}

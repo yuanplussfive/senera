@@ -251,11 +251,12 @@ export function readRegularTextFileSnapshotSync(
   subject = "File",
   previous?: AgentRegularTextFileSnapshot,
 ): AgentRegularTextFileSnapshot {
+  const entry = fs.lstatSync(filePath);
   const noFollow = typeof fs.constants.O_NOFOLLOW === "number" ? fs.constants.O_NOFOLLOW : 0;
   const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | noFollow);
   try {
     const stat = fs.fstatSync(descriptor);
-    if (!stat.isFile()) throw new Error(`${subject} is not a regular file: ${filePath}`);
+    assertRegularFileIdentity(entry, stat, filePath, subject);
     if (
       previous &&
       previous.mtimeMs === stat.mtimeMs &&
@@ -284,17 +285,57 @@ export function readRegularFileSync(
   subject = "File",
   options: { readonly maxBytes?: number } = {},
 ): Buffer {
+  const entry = fs.lstatSync(filePath);
   const noFollow = typeof fs.constants.O_NOFOLLOW === "number" ? fs.constants.O_NOFOLLOW : 0;
   const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | noFollow);
   try {
     const stat = fs.fstatSync(descriptor);
-    if (!stat.isFile()) throw new Error(`${subject} is not a regular file: ${filePath}`);
+    assertRegularFileIdentity(entry, stat, filePath, subject);
     if (options.maxBytes !== undefined && stat.size > options.maxBytes) {
       throw new Error(`${subject} exceeds the ${options.maxBytes} byte limit: ${filePath}`);
     }
     return fs.readFileSync(descriptor);
   } finally {
     fs.closeSync(descriptor);
+  }
+}
+
+/** Validate and read the same opened file; bound bytes even if another writer grows it. */
+export async function readRegularFile(
+  filePath: string,
+  subject = "File",
+  options: { readonly maxBytes?: number } = {},
+): Promise<Buffer> {
+  const entry = await fs.promises.lstat(filePath);
+  const noFollow = typeof fs.constants.O_NOFOLLOW === "number" ? fs.constants.O_NOFOLLOW : 0;
+  const handle = await fs.promises.open(filePath, fs.constants.O_RDONLY | noFollow);
+  try {
+    const stat = await handle.stat();
+    assertRegularFileIdentity(entry, stat, filePath, subject);
+    const assertSize = (size: number) => {
+      if (options.maxBytes !== undefined && size > options.maxBytes) {
+        throw new Error(`${subject} exceeds the ${options.maxBytes} byte limit: ${filePath}`);
+      }
+    };
+    assertSize(stat.size);
+    const chunks: Buffer[] = [];
+    let size = 0;
+    for await (const chunk of handle.createReadStream({ autoClose: false })) {
+      size += chunk.length;
+      assertSize(size);
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks, size);
+  } finally {
+    await handle.close();
+  }
+}
+
+function assertRegularFileIdentity(entry: fs.Stats, opened: fs.Stats, filePath: string, subject: string): void {
+  if (!entry.isFile() || !opened.isFile() || entry.dev !== opened.dev || entry.ino !== opened.ino) {
+    throw new Error(
+      `${subject} is not a regular file or changed after opening (symbolic links are not allowed): ${filePath}`,
+    );
   }
 }
 

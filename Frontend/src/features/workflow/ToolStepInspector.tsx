@@ -4,12 +4,13 @@ import { frontendFeatureMessage } from "../../i18n/frontendFeatureMessageCatalog
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { TimelineStep } from "../../store/sessionStore";
 import { DataView } from "./DataView";
+import { ToolResultDetail } from "./ToolResultDetail";
 import { projectToolStagePresentation } from "./toolStagePresentation";
 import { readStepStatusLabel } from "./stepPresentation";
-import { readToolResultValue } from "./toolResultProjection";
+import { readToolFailureMessage, readToolResultValue } from "./toolResultProjection";
 import { readWorkflowStepDurationMs } from "./workflowPresentationProjection";
 import { ToolActionIcon } from "./ToolActionIcon";
-import { AppIcon } from "../../shared/ui";
+import { AppIcon, IconButton, InlineError, useClipboardCopy } from "../../shared/ui";
 
 export function ToolStepInspector({
   step,
@@ -19,7 +20,10 @@ export function ToolStepInspector({
   showHeader?: boolean;
 }): JSX.Element {
   const toolName = step.toolName?.trim() || step.title;
-  const result = readToolResultValue(step);
+  const [loadedResult, setLoadedResult] = useState<{ readonly callId: string; readonly value: unknown }>();
+  const resultIdentity = `${step.callId ?? step.id}\u0000${step.toolPresentation?.artifactUri ?? ""}`;
+  const result = loadedResult?.callId === resultIdentity ? loadedResult.value : readToolResultValue(step);
+  const failureMessage = readToolFailureMessage(step);
   const durationMs = readWorkflowStepDurationMs(step);
   const stagePresentation = projectToolStagePresentation({ steps: [step] });
 
@@ -45,13 +49,50 @@ export function ToolStepInspector({
       ) : null}
 
       <div className="min-w-0 w-full px-3" data-tool-inspector-sections>
-        <InspectorSection label={frontendFeatureMessage("workflow.inspector.action")} testId="action">
-          <DataView value={step.toolArgs ?? {}} />
+        <InspectorSection
+          label={frontendFeatureMessage("workflow.inspector.action")}
+          copyLabel={frontendFeatureMessage("workflow.inspector.copyAction")}
+          copyValue={step.toolArgs}
+          testId="action"
+        >
+          {step.toolArgs !== undefined ? (
+            <DataView value={step.toolArgs} />
+          ) : (
+            <p className="text-[12px] leading-5 text-content-secondary">
+              {frontendFeatureMessage("workflow.inspector.argumentsUnavailable")}
+            </p>
+          )}
         </InspectorSection>
 
-        {result !== undefined ? (
-          <InspectorSection label={frontendFeatureMessage("workflow.inspector.result")} testId="result">
-            <DataView value={result} />
+        {failureMessage ? (
+          <InspectorSection label={frontendMessage("workflow.node.section.error")} testId="error">
+            <InlineError>{failureMessage}</InlineError>
+          </InspectorSection>
+        ) : null}
+
+        {result !== undefined || step.toolPresentation?.artifactUri || step.toolResultAvailability === "available" ? (
+          <InspectorSection
+            label={frontendFeatureMessage("workflow.inspector.result")}
+            copyLabel={frontendFeatureMessage("workflow.inspector.copyResult")}
+            copyValue={result}
+            testId="result"
+          >
+            {result === undefined && !step.toolPresentation?.artifactUri ? (
+              <p className="text-[12px] leading-5 text-content-secondary">
+                {frontendFeatureMessage("workflow.inspector.emptyResult")}
+              </p>
+            ) : (
+              <ToolResultDetail
+                key={resultIdentity}
+                value={result}
+                artifactUri={step.toolPresentation?.artifactUri}
+                onLoaded={(value) => setLoadedResult({ callId: resultIdentity, value })}
+              />
+            )}
+          </InspectorSection>
+        ) : step.toolResultAvailability === "unavailable" ? (
+          <InspectorSection label={frontendFeatureMessage("workflow.inspector.result")} testId="result-unavailable">
+            <HistoricalResultUnavailable step={step} />
           </InspectorSection>
         ) : null}
 
@@ -63,10 +104,14 @@ export function ToolStepInspector({
 
 function InspectorSection({
   label,
+  copyLabel,
+  copyValue,
   children,
   testId,
 }: {
   label: string;
+  copyLabel?: string;
+  copyValue?: unknown;
   children: ReactNode;
   testId?: string;
 }): JSX.Element {
@@ -78,10 +123,55 @@ function InspectorSection({
       <div className="mb-2 flex items-center gap-2">
         <span className="h-1 w-1 shrink-0 rounded-full bg-accent-solid" aria-hidden="true" />
         <h4 className="text-[10.5px] font-medium text-content-muted">{label}</h4>
+        {copyLabel && copyValue !== undefined ? (
+          <InspectorCopyAction label={copyLabel} value={copyValue} testId={testId} />
+        ) : null}
       </div>
       <div className="min-w-0 border-l border-line-subtle pl-3">{children}</div>
     </section>
   );
+}
+
+function HistoricalResultUnavailable({ step }: { step: TimelineStep }): JSX.Element {
+  const summary = step.toolPresentation?.summary || step.toolPresentation?.headline;
+  return (
+    <div className="space-y-1.5 text-[12px] leading-5 text-content-secondary" data-tool-result-unavailable>
+      {summary ? <p className="text-content-primary">{summary}</p> : null}
+      <p>{frontendFeatureMessage("workflow.inspector.resultUnavailable")}</p>
+    </div>
+  );
+}
+
+function InspectorCopyAction({
+  label,
+  value,
+  testId,
+}: {
+  readonly label: string;
+  readonly value: unknown;
+  readonly testId?: string;
+}): JSX.Element {
+  const { copied, copyText } = useClipboardCopy();
+
+  return (
+    <IconButton
+      label={label}
+      tooltip={label}
+      tooltipSide="right"
+      size="sm"
+      className="ml-auto h-5 w-5 rounded text-content-muted hover:bg-surface-hover hover:text-content-primary"
+      data-tool-inspector-copy={testId}
+      onClick={() => void copyText(serializeInspectorValue(value))}
+    >
+      <AppIcon icon={copied ? "checkmark" : "copy"} size={12} aria-hidden="true" />
+    </IconButton>
+  );
+}
+
+function serializeInspectorValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  const serialized = JSON.stringify(value, null, 2);
+  return serialized ?? String(value);
 }
 
 function ToolTechnicalDetails({ step }: { step: TimelineStep }): JSX.Element {

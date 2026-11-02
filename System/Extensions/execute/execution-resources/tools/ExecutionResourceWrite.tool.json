@@ -25,7 +25,8 @@
     "type": "object",
     "properties": {
       "resourceId": {
-        "type": "string"
+        "type": "string",
+        "pattern": "^res_[a-fA-F0-9]{32}$"
       },
       "input": {
         "type": "string"
@@ -46,7 +47,6 @@
   },
   "runtime": {
     "Lifecycle": "Immediate",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "SelfManaged"
   },

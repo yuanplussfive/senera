@@ -6,6 +6,7 @@ import { ApprovalRequestStrip } from "../../../Frontend/src/features/chat/Approv
 import {
   formatModelProviderName,
   readChatModelProviders,
+  readConfiguredChatModelProviderId,
   readSelectedModelProvider,
 } from "../../../Frontend/src/features/chat/modelProvider.ts";
 import {
@@ -33,6 +34,8 @@ test("chat model provider helpers select chat-capable models and readable labels
   ];
 
   expect(readChatModelProviders(models).map((item) => item.id)).toEqual(["chat-default", "chat-selected"]);
+  expect(readConfiguredChatModelProviderId(models, "rerank")).toBe("rerank");
+  expect(readConfiguredChatModelProviderId(models, "missing")).toBeUndefined();
   expect(readSelectedModelProvider(models, "chat-selected")?.id).toBe("chat-selected");
   expect(readSelectedModelProvider(models, "missing")?.id).toBe("chat-default");
   expect(formatModelProviderName(models[1])).toBe("chat-default-model");
@@ -150,6 +153,8 @@ function model(id, chat, isDefault) {
     id,
     icon: "",
     capabilities: { Chat: chat },
+    toolPlanningMode: "baml",
+    stream: true,
     kind: "OpenAICompatible",
     endpoint: "ChatCompletions",
     baseUrl: "https://example.invalid/v1",

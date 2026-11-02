@@ -2,8 +2,7 @@ export interface AgentActionPlannerConfig {
   Enabled?: boolean;
   MaxRepairAttempts?: number;
   Evidence?: AgentActionPlannerEvidenceConfig;
-  Client?: AgentActionPlannerClientConfig;
-  PlanningClient?: AgentActionPlannerClientConfig;
+  Client?: AgentActionPlannerTuningClientConfig;
   FinalAnswerClient?: AgentActionPlannerClientConfig;
 }
 
@@ -11,11 +10,14 @@ export interface AgentActionPlannerEvidenceConfig {
   StalledStepLag?: number;
 }
 
-export interface AgentActionPlannerClientConfig {
-  ModelProviderId?: string;
+export interface AgentActionPlannerTuningClientConfig {
   Temperature?: number;
   /** -1 means do not send a provider token limit field. */
   MaxTokens?: number;
+}
+
+export interface AgentActionPlannerClientConfig extends AgentActionPlannerTuningClientConfig {
+  ModelProviderId?: string;
 }
 
 export interface ResolvedAgentActionPlannerConfig {
@@ -23,7 +25,6 @@ export interface ResolvedAgentActionPlannerConfig {
   MaxRepairAttempts: number;
   Evidence: Required<AgentActionPlannerEvidenceConfig>;
   Client: ResolvedAgentActionPlannerClientConfig;
-  PlanningClient: ResolvedAgentActionPlannerClientConfig;
   FinalAnswerClient: ResolvedAgentActionPlannerClientConfig;
 }
 

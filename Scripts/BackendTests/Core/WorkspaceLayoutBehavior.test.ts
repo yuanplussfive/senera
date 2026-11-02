@@ -44,6 +44,8 @@ describe("agent workspace layout", () => {
       memos: path.join(root, ".senera", "data", "memos", "memos.sqlite"),
       orchestration: path.join(root, ".senera", "data", "orchestration", "orchestration.sqlite"),
       channels: path.join(root, ".senera", "data", "channels", "channels.sqlite"),
+      resources: path.join(root, ".senera", "data", "resources", "identities.sqlite"),
+      identities: path.join(root, ".senera", "data", "identities", "references.sqlite"),
       artifactManifestIndex: path.join(root, ".senera", "data", "artifacts", "manifest-index.sqlite"),
       workspaceObserver: path.join(root, ".senera", "data", "workspace-observer", "workspace-observer.sqlite"),
     });

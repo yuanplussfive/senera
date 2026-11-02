@@ -2,10 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentResourceResolver } from "../../../Source/AgentSystem/Resources/AgentResourceResolver.js";
+import { SeneraLocalExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
 import { createDocumentExtractSystemTool } from "../../../Source/AgentSystem/SystemTools/DocumentExtractSystemTool.js";
 import type { AgentHostToolContext } from "../../../Source/AgentSystem/ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
+import { loadSystemToolContractByCapability } from "./SystemToolContractTestSupport.js";
 
 describe("DocumentExtract resource sources", () => {
   const temporaryDirectories: string[] = [];
@@ -52,7 +54,7 @@ describe("DocumentExtract resource sources", () => {
       ),
     );
     const tool = createDocumentExtractSystemTool();
-    expect(tool.metadata.execution?.Network).toBe("Allow");
+    expect(loadSystemToolContractByCapability(tool.capability).contract.execution.Network).toBe("Allow");
     const output = await tool.execute(
       { source: { kind: "http_url", url: "http://127.0.0.1/document.txt" }, mode: "auto" },
       createContext(workspaceRoot, {
@@ -93,9 +95,41 @@ describe("DocumentExtract resource sources", () => {
 
     expect(output).toMatchObject({
       document: {
-        source: { kind: "senera_resource", uri: resourceUri },
+        source: { kind: "senera_resource", uri: resourceUri, path: "uploaded.txt" },
         extraction: { textPreview: "A canonical resource document." },
       },
+    });
+  });
+
+  it("keeps the URI alone when a resource lives outside the active workspace", async () => {
+    const workspaceRoot = createTemporaryDirectory("senera-document-resource-external");
+    const storeRoot = createTemporaryDirectory("senera-document-external-store");
+    temporaryDirectories.push(workspaceRoot, storeRoot);
+    const filePath = path.join(storeRoot, "external.txt");
+    fs.writeFileSync(filePath, "external bytes");
+    const resourceUri = "senera://resource/external-document";
+    const output = await createDocumentExtractSystemTool().execute(
+      { source: { kind: "senera_resource", uri: resourceUri }, mode: "auto" },
+      {
+        workspaceRoot,
+        config: createContext(workspaceRoot).config,
+        resourceResolver: {
+          resolve: vi.fn().mockResolvedValue({
+            resourceUri,
+            filePath,
+            name: "external.txt",
+            mime: "text/plain",
+            size: fs.statSync(filePath).size,
+            sha256: "b".repeat(64),
+            origin: "upload",
+          }),
+        },
+      } as unknown as AgentHostToolContext,
+    );
+
+    expect((output as { document: { source: unknown } }).document.source).toEqual({
+      kind: "senera_resource",
+      uri: resourceUri,
     });
   });
 
@@ -111,7 +145,7 @@ describe("DocumentExtract resource sources", () => {
         { source: { kind: "local_path", path: outsidePath }, mode: "auto" },
         createContext(workspaceRoot),
       ),
-    ).rejects.toThrow("Local resource path is missing or outside the workspace.");
+    ).rejects.toMatchObject({ code: "permission_denied" });
   });
 });
 
@@ -127,6 +161,7 @@ function createContext(workspaceRoot: string, overrides: Partial<AgentSystemConf
     workspaceRoot,
     config,
     uploadStore,
+    executionEnv: new SeneraLocalExecutionEnv({ workspaceRoot }),
     resourceResolver: new AgentResourceResolver({ workspaceRoot, config, uploadStore }),
   } as unknown as AgentHostToolContext;
 }

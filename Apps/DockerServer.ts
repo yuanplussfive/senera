@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { SeneraServerDeployments, startSeneraServer } from "./ServerRuntime.js";
+import { AgentServerAccessProfiles } from "../Source/AgentSystem/Auth/AgentServerAccessPolicy.js";
 import {
   resolveFrontendConfig,
   resolveSandboxRuntimeConfig,
@@ -100,7 +101,7 @@ async function main(): Promise<void> {
     sandboxRuntimeAvailability: { kind: "available", provider: sandboxProvider },
     dockerEngineWorker: worker,
     sandboxGuestWorkspaceRoot: WorkspaceRoot,
-    automaticLoopbackHttp: true,
+    accessProfile: AgentServerAccessProfiles.Container,
   });
   installAgentProcessShutdownGuard({
     logger: dockerProcessLogger,

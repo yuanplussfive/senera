@@ -4,9 +4,13 @@ import type {
   AgentChannelSource,
   AgentChannelSendReplyOptions,
 } from "./AgentChannelTypes.js";
+import { serializeAgentChannelLane } from "./AgentChannelSessionIdentity.js";
+import { createOpaqueId } from "../Core/AgentIds.js";
+import type { AgentChannelOutbox, AgentChannelOutboxEntry } from "./AgentChannelOutbox.js";
+import { AgentChannelHttpError } from "./AgentChannelHttpTransport.js";
 
 export const AgentChannelDeliveryDefaults = Object.freeze({
-  /** Attempts per individual send before it is dropped and reported. */
+  /** Attempts per individual send before a terminal failure is reported. */
   maxAttempts: 3,
   /** Exponential backoff base for transient network failures. */
   retryBaseDelayMs: 1_000,
@@ -19,12 +23,14 @@ export const AgentChannelDeliveryDefaults = Object.freeze({
 
 export interface AgentChannelDeliveryOptions {
   readonly adapter: AgentChannelAdapter;
+  readonly outbox?: AgentChannelOutbox;
+  readonly authorize?: (source: AgentChannelSource) => boolean;
   readonly maxAttempts?: number;
   readonly retryBaseDelayMs?: number;
   readonly retryMaxDelayMs?: number;
   readonly laneQueueLimit?: number;
   readonly floodRetryMultiplierMs?: number;
-  readonly onError?: (error: unknown, source: AgentChannelSource) => void;
+  readonly onError?: (error: unknown, source?: AgentChannelSource) => void;
   readonly onDropped?: (
     content: string,
     source: AgentChannelSource,
@@ -33,7 +39,8 @@ export interface AgentChannelDeliveryOptions {
   ) => void;
 }
 
-export type AgentChannelDeliveryFailureCode = "queue_full" | "stopped" | "unsupported" | "retry_exhausted";
+export type AgentChannelDeliveryFailureCode =
+  "queue_full" | "stopped" | "unsupported" | "retry_exhausted" | "delivery_unknown" | "revoked" | "storage_failed";
 
 export type AgentChannelDeliveryReceipt =
   | {
@@ -51,18 +58,22 @@ export type AgentChannelDeliveryReceipt =
 interface LaneMaterial {
   readonly queue: SendJob[];
   running: boolean;
+  current?: SendJob;
 }
 
 interface SendJob {
+  readonly id: string;
   source: AgentChannelSource;
   content: string;
   options?: AgentChannelSendReplyOptions;
   attempt: number;
+  retryAt?: number;
+  sending?: boolean;
   readonly resolve: (receipt: AgentChannelDeliveryReceipt) => void;
 }
 
 /**
- * Per-lane in-memory delivery pump. Preserves message order inside one
+ * Per-lane delivery pump with durable payloads and platform receipts. Preserves message order inside one
  * conversation lane, retries transient platform failures with backoff, and
  * honors flood-control windows. Delivery failures beyond the configured
  * policy are surfaced through `onError`/`onDropped` instead of being silently
@@ -76,6 +87,7 @@ export class AgentChannelDelivery {
   private readonly floodRetryMultiplierMs: number;
   private readonly lanes = new Map<string, LaneMaterial>();
   private stopped = false;
+  private readonly inFlight = new Map<string, Promise<AgentChannelDeliveryReceipt>>();
 
   constructor(private readonly options: AgentChannelDeliveryOptions) {
     this.maxAttempts = positiveInteger(options.maxAttempts ?? AgentChannelDeliveryDefaults.maxAttempts, "maxAttempts");
@@ -121,6 +133,7 @@ export class AgentChannelDelivery {
     source: AgentChannelSource,
     content: string,
     options?: AgentChannelSendReplyOptions,
+    recovered?: AgentChannelOutboxEntry,
   ): { accepted: boolean; completion: Promise<AgentChannelDeliveryReceipt> } {
     if (this.stopped) {
       return {
@@ -135,20 +148,47 @@ export class AgentChannelDelivery {
     }
     const laneId = laneKey(source);
     const lane = this.lanes.get(laneId) ?? { queue: [], running: false };
-    this.lanes.set(laneId, lane);
+    const id = recovered?.id ?? options?.deliveryId ?? createOpaqueId("channel_delivery");
+    const entry =
+      recovered ?? this.options.outbox?.accept({ id, source, content, options, attempts: 0, state: "pending" });
+    const existingPromise = this.inFlight.get(id);
+    if (existingPromise) return { accepted: true, completion: existingPromise };
+    if (entry?.state === "sending") {
+      const receipt = {
+        status: "failed",
+        code: "delivery_unknown",
+        attempts: entry.attempts,
+        error: new Error("The previous send has no committed platform receipt."),
+      } as const;
+      this.options.outbox?.save({ ...entry, state: "uncertain", receipt });
+      return { accepted: false, completion: Promise.resolve(receipt) };
+    }
+    if (entry?.receipt) return { accepted: entry.state === "sent", completion: Promise.resolve(entry.receipt) };
     if (lane.queue.length >= this.laneQueueLimit) {
       const error = new Error("Lane queue is full.");
+      const receipt = { status: "failed", code: "queue_full", attempts: entry?.attempts ?? 0, error } as const;
+      if (entry) this.options.outbox?.save({ ...entry, state: "failed", receipt });
       this.reportDropped(source, content, error, options);
-      return {
-        accepted: false,
-        completion: Promise.resolve({ status: "failed", code: "queue_full", attempts: 0, error }),
-      };
+      return { accepted: false, completion: Promise.resolve(receipt) };
     }
     let resolve: (receipt: AgentChannelDeliveryReceipt) => void = () => undefined;
     const completion = new Promise<AgentChannelDeliveryReceipt>((settle) => {
       resolve = settle;
     });
-    lane.queue.push({ source, content, options, attempt: 0, resolve });
+    this.inFlight.set(id, completion);
+    this.lanes.set(laneId, lane);
+    lane.queue.push({
+      id,
+      source,
+      content,
+      options,
+      attempt: entry?.attempts ?? 0,
+      retryAt: entry?.retryAt,
+      resolve: (receipt) => {
+        this.inFlight.delete(id);
+        resolve(receipt);
+      },
+    });
     if (!lane.running) {
       lane.running = true;
       void this.pumpLane(laneId, lane);
@@ -162,12 +202,51 @@ export class AgentChannelDelivery {
     }
   }
 
+  /** Called only after the adapter reconnects and its permissions are known. */
+  resume(): void {
+    if (this.stopped || !this.options.outbox) return;
+    try {
+      for (const entry of this.options.outbox.recover(this.options.adapter.kind, new Set(this.inFlight.keys()))) {
+        if (entry.state === "uncertain") {
+          this.reportDropped(
+            entry.source,
+            entry.content,
+            entry.receipt?.status === "failed" ? entry.receipt.error : undefined,
+            entry.options,
+          );
+        } else {
+          if (this.options.adapter.getConnectionState(entry.source) !== "connected") continue;
+          if ((this.lanes.get(laneKey(entry.source))?.queue.length ?? 0) >= this.laneQueueLimit) continue;
+          this.enqueueJob(entry.source, entry.content, entry.options, entry);
+        }
+      }
+    } catch (error) {
+      this.reportError(error);
+    }
+  }
+
   stop(): void {
     this.stopped = true;
     const error = new Error("Delivery is stopped.");
     for (const lane of this.lanes.values()) {
       for (const job of lane.queue) {
         job.resolve({ status: "failed", code: "stopped", attempts: job.attempt, error });
+      }
+      if (lane.current) {
+        const job = lane.current;
+        const receipt: AgentChannelDeliveryReceipt = {
+          status: "failed",
+          code: job.sending ? "delivery_unknown" : "stopped",
+          attempts: job.attempt,
+          error,
+        };
+        try {
+          if (job.sending) this.persist(job, "uncertain", receipt);
+        } catch (storageError) {
+          this.reportError(storageError, job.source);
+        } finally {
+          job.resolve(receipt);
+        }
       }
     }
     this.lanes.clear();
@@ -181,16 +260,22 @@ export class AgentChannelDelivery {
   }
 
   private async pumpLane(laneId: string, lane: LaneMaterial): Promise<void> {
+    let storageHealthy = true;
     while (!this.stopped && lane.queue.length > 0) {
       const job = lane.queue.shift();
       if (!job) continue;
+      lane.current = job;
       try {
         job.resolve(await this.deliver(job));
       } catch (error) {
+        // Storage errors are not platform rejections. Leave durable state
+        // intact and stop automatic refill so a broken DB cannot spin retries.
+        storageHealthy = false;
         this.reportError(error, job.source);
         this.reportDropped(job.source, job.content, error, job.options);
-        job.resolve({ status: "failed", code: "retry_exhausted", attempts: job.attempt + 1, error });
+        job.resolve({ status: "failed", code: "storage_failed", attempts: job.attempt, error });
       }
+      lane.current = undefined;
     }
     lane.running = false;
     if (lane.queue.length === 0) this.lanes.delete(laneId);
@@ -198,40 +283,84 @@ export class AgentChannelDelivery {
       lane.running = true;
       void this.pumpLane(laneId, lane);
     }
+    if (!this.stopped && storageHealthy) this.resume();
   }
 
   private async deliver(job: SendJob): Promise<AgentChannelDeliveryReceipt> {
-    while (true) {
+    if (job.retryAt && job.retryAt > Date.now()) await this.sleep(job.retryAt - Date.now());
+    while (!this.stopped) {
+      if (this.options.authorize?.(job.source) === false) {
+        const receipt: AgentChannelDeliveryReceipt = {
+          status: "failed",
+          code: "revoked",
+          attempts: job.attempt,
+          error: new Error("Channel delivery permission was revoked."),
+        };
+        this.persist(job, "failed", receipt);
+        return receipt;
+      }
+      job.attempt += 1;
+      this.persist(job, "sending");
+      let result: AgentChannelSendResult;
       try {
-        // The lane accepts one send at a time; only the head job is attempted.
-        const result = await this.options.adapter.send(job.source, job.content, job.options);
-        if (result.kind === "sent" || result.kind === "edited") {
-          return { status: "sent", messageId: result.messageId, attempts: job.attempt + 1 };
-        }
-        const error = new Error("Channel adapter does not support this delivery.");
-        this.reportDropped(job.source, job.content, error, job.options);
-        return { status: "failed", code: "unsupported", attempts: job.attempt + 1, error };
+        job.sending = true;
+        result = await this.options.adapter.send(job.source, job.content, job.options);
       } catch (error) {
+        job.sending = false;
+        if (isAgentChannelDeliveryUncertain(error)) {
+          const receipt = { status: "failed", code: "delivery_unknown", attempts: job.attempt, error } as const;
+          if (!this.stopped) this.persist(job, "uncertain", receipt);
+          this.reportDropped(job.source, job.content, error, job.options);
+          return receipt;
+        }
         const retryDelay = this.resolveRetryDelay(error, job);
         if (retryDelay < 0) {
           this.reportDropped(job.source, job.content, error, job.options);
-          return { status: "failed", code: "retry_exhausted", attempts: job.attempt + 1, error };
+          const receipt = { status: "failed", code: "retry_exhausted", attempts: job.attempt, error } as const;
+          if (!this.stopped) this.persist(job, "failed", receipt);
+          return receipt;
         }
-        job.attempt += 1;
-        if (retryDelay > 0) {
-          await this.sleep(retryDelay);
-        }
+        job.retryAt = Date.now() + retryDelay;
+        if (!this.stopped) this.persist(job, "pending");
+        if (retryDelay > 0) await this.sleep(retryDelay);
+        continue;
       }
+      job.sending = false;
+      // Receipt persistence errors must never retry an accepted platform send.
+      if (result.kind === "sent" || result.kind === "edited") {
+        const receipt = { status: "sent", messageId: result.messageId, attempts: job.attempt } as const;
+        if (!this.stopped) this.persist(job, "sent", receipt);
+        return receipt;
+      }
+      const error = new Error("Channel adapter does not support this delivery.");
+      this.reportDropped(job.source, job.content, error, job.options);
+      const receipt = { status: "failed", code: "unsupported", attempts: job.attempt, error } as const;
+      if (!this.stopped) this.persist(job, "failed", receipt);
+      return receipt;
     }
+    return { status: "failed", code: "stopped", attempts: job.attempt, error: new Error("Delivery is stopped.") };
+  }
+
+  private persist(job: SendJob, state: AgentChannelOutboxEntry["state"], receipt?: AgentChannelDeliveryReceipt): void {
+    this.options.outbox?.save({
+      id: job.id,
+      source: job.source,
+      content: job.content,
+      options: job.options,
+      state,
+      attempts: job.attempt,
+      retryAt: job.retryAt,
+      receipt,
+    });
   }
 
   private resolveRetryDelay(error: unknown, job: SendJob): number {
-    if (job.attempt + 1 >= this.maxAttempts) return -1;
+    if (job.attempt >= this.maxAttempts) return -1;
     if (isNonRetryableError(error)) return -1;
     if (isFloodControlError(error)) {
       return floodRetryDelay(error, this.floodRetryMultiplierMs);
     }
-    const base = this.retryBaseDelayMs * 2 ** job.attempt;
+    const base = this.retryBaseDelayMs * 2 ** (job.attempt - 1);
     return Math.min(base, this.retryMaxDelayMs);
   }
 
@@ -240,7 +369,7 @@ export class AgentChannelDelivery {
   }
 
   private reportError(error: unknown, source?: AgentChannelSource): void {
-    if (source) this.options.onError?.(error, source);
+    this.options.onError?.(error, source);
   }
 
   private reportDropped(
@@ -257,6 +386,17 @@ export class AgentChannelDelivery {
  * daily media quota) so the generic pump does not waste retries. */
 export function isNonRetryableError(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as { retryable?: unknown }).retryable === false;
+}
+
+/** A transport interruption cannot tell us whether the remote side committed. */
+export function isAgentChannelDeliveryUncertain(error: unknown): boolean {
+  if (error instanceof AgentChannelHttpError) return error.status === 0;
+  if (error instanceof TypeError) return true;
+  const code = typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+  return (
+    typeof code === "string" &&
+    ["ECONNRESET", "ETIMEDOUT", "EPIPE", "UND_ERR_SOCKET", "UND_ERR_HEADERS_TIMEOUT"].includes(code)
+  );
 }
 
 export function isFloodControlError(error: unknown): boolean {
@@ -284,7 +424,7 @@ function deliveryErrorRecord(
 }
 
 function laneKey(source: AgentChannelSource): string {
-  return `${source.platform}/${source.chatId}/${source.threadId ?? ""}/${source.userId}`;
+  return serializeAgentChannelLane(source);
 }
 
 function positiveInteger(value: number, label: string): number {

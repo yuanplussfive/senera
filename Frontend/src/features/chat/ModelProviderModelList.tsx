@@ -18,7 +18,11 @@ import {
   StatusToken,
   Tooltip,
 } from "../../shared/ui";
-import { inferModelProviderEndpointIcon, inferModelProviderIcon, ModelProviderIcon } from "./ModelProviderIcon";
+import {
+  inferModelProviderEndpointIcon,
+  inferModelProviderIcon,
+  ModelProviderIcon,
+} from "../../shared/models/ModelProviderIcon";
 import {
   defaultModelCapabilities,
   modelConfigId,
@@ -482,7 +486,7 @@ function ProviderModelRow({
   const isDefault = configured?.Id === defaultModelId;
   const capabilities = configured
     ? readModelCapabilities(configured, modelTemplate, model.modelsDev)
-    : defaultModelCapabilities(modelTemplate, model.id, providerId, model.modelsDev);
+    : defaultModelCapabilities(modelTemplate, model.modelsDev);
   const modelActionClassName = groupedCards
     ? "grid h-6 w-6 shrink-0 place-items-center rounded-[5px] border border-transparent bg-transparent text-content-secondary transition hover:border-line-subtle hover:bg-surface-hover hover:text-content-primary active:scale-[0.97] disabled:pointer-events-none disabled:opacity-45"
     : iconButtonClassName;

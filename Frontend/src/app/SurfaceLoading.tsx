@@ -1,3 +1,4 @@
+import { ChatLoadingHeader, ChatLoadingComposer, ChatLoadingRows } from "../shared/chat/ChatLoadingChrome";
 import { useRef } from "react";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import { cn } from "../lib/util";
@@ -41,47 +42,14 @@ export function ApplicationSurfaceLoading(): JSX.Element {
       </aside>
 
       <section className="relative flex min-w-0 flex-1 flex-col bg-surface-canvas" data-application-loading-main>
-        <header className="flex h-[var(--senera-top-chrome-height)] shrink-0 items-center gap-3 border-b border-line-subtle px-4 sm:px-6">
-          <Skeleton className="h-4 w-36" />
-          <Skeleton className="h-4 w-20" />
-          <div className="ml-auto flex items-center gap-2">
-            <Skeleton className="h-7 w-7 rounded-lg" />
-            <Skeleton className="h-7 w-7 rounded-lg" />
-          </div>
-        </header>
+        <ChatLoadingHeader />
 
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-hidden" aria-hidden="true" data-application-loading-content>
-            <div className="conversation-frame conversation-frame--wide py-10 sm:py-12">
-              <div className="w-full space-y-10">
-                <div className="ml-auto w-[min(78%,42rem)] space-y-2">
-                  <Skeleton className="ml-auto h-12 w-[82%] rounded-2xl" />
-                  <Skeleton className="ml-auto h-3 w-28" />
-                </div>
-                <div className="w-full max-w-[54rem] space-y-3">
-                  <Skeleton className="h-4 w-44" />
-                  <Skeleton className="h-3 w-[92%]" />
-                  <Skeleton className="h-3 w-[76%]" />
-                  <Skeleton className="h-3 w-[84%]" />
-                </div>
-              </div>
-            </div>
+            <ChatLoadingRows />
           </div>
 
-          <div className="shrink-0 bg-transparent pb-6 pt-4" aria-hidden="true">
-            <div className="conversation-frame conversation-frame--composer" data-application-loading-composer>
-              <div className="flex min-h-[110px] min-w-0 flex-col justify-between gap-2 rounded-2xl border border-line-subtle bg-surface-raised px-4 pb-3 pt-3.5 shadow-soft">
-                <Skeleton className="h-10 w-[72%] max-w-[520px]" />
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <Skeleton className="h-8 w-8 rounded-lg" />
-                    <Skeleton className="h-7 w-24 rounded-lg" />
-                  </div>
-                  <Skeleton className="h-9 w-9 rounded-full" />
-                </div>
-              </div>
-            </div>
-          </div>
+          <ChatLoadingComposer data-application-loading-composer />
         </div>
       </section>
 
@@ -110,7 +78,8 @@ export function SettingsSurfaceLoading({
   const shell = (
     <section
       className={cn(
-        "settings-loading-shell relative flex h-full min-h-0 w-full overflow-hidden border border-line-subtle bg-surface-canvas text-content-primary",
+        "settings-loading-shell relative flex h-full min-h-0 w-full overflow-hidden bg-surface-canvas text-content-primary",
+        presentation !== "embedded" && "border border-line-subtle",
         presentation === "overlay" && "rounded-[10px] max-sm:rounded-none max-sm:border-0",
         presentation === "embedded" && "rounded-none border-0",
       )}
@@ -181,9 +150,7 @@ export function SettingsSurfaceLoading({
     </section>
   );
 
-  if (presentation === "embedded") {
-    return shell;
-  }
+  if (presentation === "embedded") return shell;
 
   if (presentation === "desktop") {
     return <div className="h-dvh min-h-[320px] w-full bg-surface-canvas">{shell}</div>;

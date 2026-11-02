@@ -7,6 +7,7 @@ import { AgentPiSessionCustomEntryTypes } from "./AgentPiSessionEntries.js";
 import type { AgentPiSession, AgentPiSessionEventListener } from "./AgentPiRuntimeTypes.js";
 import type { AgentPiMutableSessionFrame } from "./AgentPiCodingAgentSessionFrame.js";
 import { mergeAgentPiTurnContext, projectAgentPiTurnContext } from "./AgentPiTurnContextMessage.js";
+import { readAgentPiCommittedReceipts } from "./AgentPiInputBoundary.js";
 
 export class AgentPiCodingAgentSession implements AgentPiSession {
   private released = false;
@@ -63,7 +64,14 @@ export class AgentPiCodingAgentSession implements AgentPiSession {
     throwIfAssistantFailed(lastAssistantMessage(this.session.messages));
   }
 
-  prepareContinuation(sourceRequestId?: string): void {
+  async prepareContinuation(sourceRequestId?: string): Promise<void> {
+    const receipts = readAgentPiCommittedReceipts(this.sessionManager);
+    await this.frame.snapshot().inputBoundary?.({
+      phase: "start",
+      continuation: true,
+      committedInputs: receipts.inputs,
+      committedToolCalls: receipts.toolCalls,
+    });
     this.session.refreshContext();
     if (this.session.agent.hasQueuedMessages()) return;
 
@@ -103,12 +111,12 @@ export class AgentPiCodingAgentSession implements AgentPiSession {
     throwIfAssistantFailed(lastAssistantMessage(this.session.messages));
   }
 
-  steer(text: string, images?: readonly ImageContent[]): Promise<void> {
-    return this.session.steer(text, images ? [...images] : undefined);
+  async steer(text: string, images?: readonly ImageContent[]): Promise<void> {
+    await this.session.steer(text, images ? [...images] : undefined);
   }
 
-  followUp(text: string, images?: readonly ImageContent[]): Promise<void> {
-    return this.session.followUp(text, images ? [...images] : undefined);
+  async followUp(text: string, images?: readonly ImageContent[]): Promise<void> {
+    await this.session.followUp(text, images ? [...images] : undefined);
   }
 
   async requestFinalAnswer(instruction: string): Promise<boolean> {

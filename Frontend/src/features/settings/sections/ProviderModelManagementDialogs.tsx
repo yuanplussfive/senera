@@ -24,7 +24,8 @@ import {
 } from "../../chat/modelConfigData";
 import { ModelCapabilityIconItems } from "../../chat/ModelCapabilityControls";
 import { ModelsDevMetadataSummary, SearchInput } from "../../chat/ModelConfigPrimitives";
-import { inferModelProviderIcon, ModelProviderIcon } from "../../chat/ModelProviderIcon";
+import { inferModelProviderIcon, ModelProviderIcon } from "../../../shared/models/ModelProviderIcon";
+import { ModelSelect, type ModelSelectOption } from "../../../shared/models/ModelSelect";
 import type { ModelCapabilitiesDraft, ModelProviderDraft, ProviderModelInfo } from "../../chat/modelConfigTypes";
 
 export function ProviderModelCatalogDialog({
@@ -119,6 +120,7 @@ export function ProviderModelManualAddDialog({
   onOpenChange,
   open,
   providerId,
+  modelOptions = [],
 }: {
   disabled: boolean;
   modelTemplate: Record<string, unknown>;
@@ -126,11 +128,12 @@ export function ProviderModelManualAddDialog({
   onOpenChange: (open: boolean) => void;
   open: boolean;
   providerId: string;
+  modelOptions?: readonly ModelSelectOption[];
 }): JSX.Element {
   const [modelId, setModelId] = useState("");
   const [modelName, setModelName] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [capabilities, setCapabilities] = useState(() => defaultModelCapabilities(modelTemplate, "", providerId));
+  const [capabilities, setCapabilities] = useState(() => defaultModelCapabilities(modelTemplate));
   const [contextWindowTokens, setContextWindowTokens] = useState("");
   const [maxModelOutputTokens, setMaxModelOutputTokens] = useState("");
   const [maxOutputTokens, setMaxOutputTokens] = useState("");
@@ -140,7 +143,7 @@ export function ProviderModelManualAddDialog({
     setModelId("");
     setModelName("");
     setAdvancedOpen(false);
-    setCapabilities(defaultModelCapabilities(modelTemplate, "", providerId));
+    setCapabilities(defaultModelCapabilities(modelTemplate));
     setContextWindowTokens("");
     setMaxModelOutputTokens("");
     setMaxOutputTokens("");
@@ -193,16 +196,14 @@ export function ProviderModelManualAddDialog({
           <div className="space-y-3 px-1 pb-1">
             <div className="grid gap-2.5 sm:grid-cols-[100px_minmax(0,1fr)] sm:items-center">
               <FormLabel required>{frontendMessage("settings.modelManagement.modelIdLabel")}</FormLabel>
-              <Input
-                autoFocus
-                aria-label={frontendMessage("settings.modelManagement.modelIdLabel")}
-                className="h-8 rounded-md px-2.5 text-[12px]"
+              <ModelSelect
+                allowCustom
+                disabled={disabled}
+                ariaLabel={frontendMessage("settings.modelManagement.modelIdLabel")}
                 value={modelId}
+                options={modelOptions}
                 placeholder={frontendMessage("settings.modelManagement.modelIdPlaceholder")}
-                onChange={(event) => setModelId(event.currentTarget.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") submit();
-                }}
+                onChange={setModelId}
               />
               <FormLabel>{frontendMessage("config.model.modelName")}</FormLabel>
               <Input

@@ -70,7 +70,6 @@ test("event journal preserves native memory and strips internal delivery state",
     event(EventKinds.ContinuitySnapshot, {
       ...{
         enabled: true,
-        periodDigests: [],
         eventCandidates: [
           {
             id: "1",
@@ -84,7 +83,6 @@ test("event journal preserves native memory and strips internal delivery state",
           },
         ],
         selection: {
-          digests: { available: 0, matched: 0, selected: 0 },
           events: { available: 1, matched: 1, selected: 1 },
           usedTokens: 24,
           maxTokens: 2048,

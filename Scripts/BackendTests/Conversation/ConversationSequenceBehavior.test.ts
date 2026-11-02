@@ -19,6 +19,8 @@ describe("Conversation message formatting", () => {
 
     expect(projection).toContain("<current_user_message>");
     expect(projection).toContain("<resourceUri>senera://resource/upload-a</resourceUri>");
+    expect(projection).toContain("2026-08-02T08:00:01.000+08:00");
+    expect(projection).not.toContain("2026-08-02T00:00:01.000Z");
     expect(projection).not.toContain('"attachments"');
   });
 

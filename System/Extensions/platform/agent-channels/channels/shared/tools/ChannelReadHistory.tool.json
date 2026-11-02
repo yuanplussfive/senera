@@ -1,0 +1,170 @@
+{
+  "name": "ChannelReadHistory",
+  "loading": "Bootstrap",
+  "description": "Read chronological live events with text, native segments and attachments. Default starts after your observed cursor; contiguous reads acknowledge throughSequence. Explicit afterSequence never acknowledges skipped events.",
+  "presentation": {
+    "category": "channel-message",
+    "icon": "history",
+    "activity": {
+      "action": {
+        "zh-CN": "读取 QQ 消息",
+        "en-US": "Read QQ messages"
+      }
+    },
+    "preview": {
+      "body": {
+        "pointer": "/entries",
+        "from": "result"
+      }
+    }
+  },
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 200,
+        "default": 40
+      },
+      "afterSequence": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Optional exclusive event sequence. Omit to read the next unobserved page; use throughSequence to continue while hasMore is true."
+      }
+    },
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "entries": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "sequence": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "message": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "text": {
+                  "type": "string"
+                },
+                "senderId": {
+                  "type": "string"
+                },
+                "sentAt": {
+                  "type": "string"
+                },
+                "replyToMessageId": {
+                  "type": "string"
+                },
+                "replyToSenderId": {
+                  "type": "string"
+                },
+                "segments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "event": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "required": ["source", "text"],
+              "additionalProperties": false
+            },
+            "actor": {
+              "type": "object",
+              "properties": {
+                "reference": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": ["user", "agent"]
+                }
+              },
+              "required": ["reference", "kind"],
+              "additionalProperties": false
+            },
+            "attachments": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          },
+          "required": ["sequence", "message"],
+          "additionalProperties": false
+        }
+      },
+      "throughSequence": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "hasMore": {
+        "type": "boolean"
+      }
+    },
+    "required": ["entries", "throughSequence", "hasMore"],
+    "additionalProperties": false
+  },
+  "permissions": ["channel:read"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [],
+  "surfaces": ["channel"],
+  "platforms": ["onebot11", "qq", "onebot"],
+  "search": {
+    "Summary": "按持久化事件游标完整读取当前会话中尚未观察的消息、多媒体和平台事件。",
+    "Tags": ["QQ", "历史", "消息"],
+    "Capabilities": [
+      {
+        "Id": "channel.history",
+        "Title": "Read current-channel history",
+        "Description": "Read and acknowledge chronological event pages from the current conversation's durable inbox.",
+        "Facets": {
+          "Actions": ["read"],
+          "Targets": ["current-channel-lane-history"],
+          "Inputs": ["limit"],
+          "Outputs": ["external-messages"],
+          "Effects": ["read-only"]
+        },
+        "Aliases": ["读取 QQ 历史", "read channel history"],
+        "Risk": {
+          "SideEffect": "read-only",
+          "Permission": "channel-read"
+        }
+      }
+    ],
+    "UseCases": ["需要确认当前渠道会话已经发生的外部消息"],
+    "Examples": ["查看最近渠道消息"],
+    "Avoid": ["普通会话上下文已足够时不要重复读取"]
+  },
+  "evidenceCapabilities": []
+}

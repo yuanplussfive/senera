@@ -1,33 +1,7 @@
-import type { AgentApprovalRuntime } from "../Approvals/AgentApprovalRuntime.js";
-import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
-import type { AgentPiActiveSessionRegistry } from "../Pi/AgentPiActiveSessionRegistry.js";
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
-import { AgentSystemRuntime } from "./AgentSystemRuntime.js";
-import type { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
-import type { AgentInteractionInputRuntime } from "../Interaction/AgentInteractionInputRuntime.js";
+import { AgentSystemRuntime, type AgentSystemRuntimeFromConfigOptions } from "./AgentSystemRuntime.js";
 import { createAgentRuntimePreparationFingerprint } from "./AgentRuntimePreparationFingerprint.js";
-import type { AgentPiDiagnosticSink } from "../Pi/AgentPiDiagnostics.js";
-import type { SeneraSandboxWorkerClient } from "../Execution/SeneraSandboxWorkerTypes.js";
-import type { AgentSandboxRuntimeProvider } from "../Sandbox/AgentSandboxRuntimeTypes.js";
-import type { AgentExtensionValueResolver } from "../Extensions/AgentExtensionValueExpression.js";
-import type { AgentWorkspaceRuntimeServices } from "./AgentWorkspaceRuntime.js";
-import type { AgentSessionApprovalLeaseStore } from "../Safety/AgentSessionApprovalLeaseStore.js";
-import type { AgentOrchestrationHostRuntime } from "../Orchestration/AgentOrchestrationHostTools.js";
-import type { AgentContinuityMemoryService } from "../Continuity/AgentContinuityMemoryService.js";
-import type { AgentExecutionLedgerService } from "../Goals/AgentExecutionLedgerService.js";
-import type { AgentTodoService } from "../Todos/AgentTodoService.js";
-import type { AgentContinuityLifecyclePort } from "../Continuity/AgentContinuityLifecycle.js";
-import type { AgentContinuityRecallService } from "../Continuity/AgentContinuityToolRuntime.js";
-import type { AgentContinuityIdentityContext } from "../Continuity/AgentContinuityIdentityStore.js";
-import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
-import type { AgentInferenceBudgetPort } from "../ModelEndpoints/AgentInferenceBudget.js";
-import type { AgentPluginHost } from "../Plugins/AgentPluginHost.js";
-import type { AgentToolResourceLeaseCoordinator } from "../ToolRuntime/AgentToolResourceScheduler.js";
-import type { AgentMcpHostCapabilitySnapshot } from "../McpPackages/AgentMcpHostRequirements.js";
-import type { AgentMcpActivationCatalogEntry } from "../McpPackages/AgentMcpPackageTypes.js";
-import type { AgentActivationCatalogEntryData } from "../Activation/AgentActivationTypes.js";
-import type { AgentContinuityMemOSRuntime } from "../Continuity/AgentContinuityMemOSRuntime.js";
-import type { AgentBackgroundLearningRequestLedger } from "../Memory/AgentBackgroundLearningRequestLedger.js";
+import type { WorkspaceAgent } from "../Core/AgentDirectoryContract.js";
 
 export interface AgentSystemRuntimeCacheSnapshot {
   version: number;
@@ -41,51 +15,13 @@ export interface AgentSystemRuntimeCacheRuntime {
   close(): void | Promise<void>;
 }
 
-export interface AgentSystemRuntimeCacheRuntimeFactoryInput {
+export interface AgentSystemRuntimeCacheRuntimeFactoryInput extends Omit<
+  AgentSystemRuntimeFromConfigOptions,
+  "config" | "workspaceRoot" | "configPath"
+> {
   workspaceRoot: string;
   configPath: string;
   snapshot: AgentSystemRuntimeCacheSnapshot;
-  modelProviderId?: string;
-  logger?: AgentLogger;
-  piDiagnostics?: AgentPiDiagnosticSink;
-  approvalRuntime?: AgentApprovalRuntime;
-  sessionApprovals?: AgentSessionApprovalLeaseStore;
-  interactionInput?: AgentInteractionInputRuntime;
-  piSessionRegistry?: AgentPiActiveSessionRegistry;
-  resourcesPath?: string;
-  browserProfilesRoot?: string;
-  executionResources?: AgentExecutionResourceBroker;
-  sandboxRuntimeReady?: () => boolean;
-  sandboxAvailable?: boolean;
-  sandboxProvider?: AgentSandboxRuntimeProvider;
-  dockerEngineWorker?: SeneraSandboxWorkerClient;
-  /** Derived sandbox guest workspace root. Linux paths follow workspaceRoot; other hosts use the contract default. */
-  sandboxGuestWorkspaceRoot?: string;
-  mcpInputs?: AgentExtensionValueResolver;
-  workspaceRuntime?: AgentWorkspaceRuntimeServices;
-  orchestration?: AgentOrchestrationHostRuntime;
-  continuityMemory?: AgentContinuityMemoryService;
-  continuityIdentity?: AgentContinuityIdentityContext;
-  continuityLifecycle?: AgentContinuityLifecyclePort;
-  continuityRecall?: AgentContinuityRecallService;
-  continuityMemOS?: AgentContinuityMemOSRuntime;
-  executionLedger?: AgentExecutionLedgerService;
-  todos?: AgentTodoService;
-  inferenceBudget?: AgentInferenceBudgetPort;
-  identityDisplayValues?: () => AgentIdentityDisplayValues;
-  /** Host services bound to the `senera` self-service command tool. */
-  selfService?: import("../SelfService/AgentSelfServiceTypes.js").AgentSelfServicePort;
-  /** Loaded plugin host; its tools/skills are applied per runtime composition. */
-  pluginHost?: AgentPluginHost;
-  resourceCoordinator?: AgentToolResourceLeaseCoordinator;
-  learningRequests?: AgentBackgroundLearningRequestLedger;
-  /** Logger for derived-context work; kept out of the foreground conversation stream. */
-  learningLogger?: AgentLogger;
-  /** Shared capability snapshot used by MCP discovery and management projections. */
-  mcpHostCapabilities?: AgentMcpHostCapabilitySnapshot;
-  /** Shared management projection so composer and execution validate one catalog. */
-  mcpActivationEntries?: () => readonly AgentMcpActivationCatalogEntry[];
-  systemActivationEntries?: () => readonly AgentActivationCatalogEntryData[];
 }
 
 export interface AgentSystemRuntimeLease<TRuntime extends AgentSystemRuntimeCacheRuntime> {
@@ -102,6 +38,19 @@ export type AgentSystemRuntimeCacheOptions<TRuntime extends AgentSystemRuntimeCa
   snapshot: () => AgentSystemRuntimeCacheSnapshot;
   maxIdleEntries?: number;
   runtimeFactory?: (input: AgentSystemRuntimeCacheRuntimeFactoryInput) => TRuntime;
+  agentServices?: (
+    agent?: WorkspaceAgent,
+  ) => Pick<
+    AgentSystemRuntimeCacheRuntimeFactoryInput,
+    | "continuityMemory"
+    | "continuityIdentity"
+    | "continuityLifecycle"
+    | "continuityRecall"
+    | "continuityMemOS"
+    | "executionLedger"
+    | "todos"
+    | "learningRequests"
+  >;
 };
 
 type AgentSystemRuntimeCreationDependencies = Omit<
@@ -110,18 +59,21 @@ type AgentSystemRuntimeCreationDependencies = Omit<
 >;
 
 interface RuntimeCacheEntry<TRuntime extends AgentSystemRuntimeCacheRuntime> {
+  readonly agentId?: string;
   readonly fingerprint: string;
   readonly preparationFingerprint: string;
   readonly runtime: TRuntime;
   state: "initializing" | "ready" | "failed";
   closing: boolean;
+  closePromise?: Promise<void>;
   leases: number;
   lastAccess: number;
 }
 
 export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRuntime = AgentSystemRuntime> {
   private readonly entries = new Map<string, RuntimeCacheEntry<TRuntime>>();
-  private readonly pendingClosures = new Set<Promise<void>>();
+  private readonly pendingClosures = new Map<Promise<void>, string | undefined>();
+  private readonly retiredAgentIds = new Set<string>();
   private readonly maxIdleEntries: number;
   private accessSequence = 0;
   private observed = true;
@@ -130,24 +82,28 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
     this.maxIdleEntries = normalizeMaxIdleEntries(options.maxIdleEntries);
   }
 
-  acquire(modelProviderId?: string): AgentSystemRuntimeLease<TRuntime> {
+  acquire(modelProviderId?: string, activeAgent?: WorkspaceAgent): AgentSystemRuntimeLease<TRuntime> {
+    if (activeAgent && this.retiredAgentIds.has(activeAgent.id))
+      throw new Error("This Agent runtime has been retired.");
     const snapshot = this.options.snapshot();
-    const fingerprint = runtimeFingerprint(
-      snapshot,
-      modelProviderId,
-      this.options.workspaceRoot,
-      this.options.configPath,
-    );
+    const fingerprint = JSON.stringify([
+      runtimeFingerprint(snapshot, modelProviderId, this.options.workspaceRoot, this.options.configPath),
+      activeAgent,
+    ]);
     let entry = this.entries.get(fingerprint);
     if (!entry) {
       entry = {
+        agentId: activeAgent?.id,
         fingerprint,
         preparationFingerprint: createAgentRuntimePreparationFingerprint({
           config: snapshot.config,
           modelProviderId,
-          sourceRevisions: snapshot.sourceRevisions,
+          sourceRevisions: {
+            ...snapshot.sourceRevisions,
+            ...(activeAgent ? { agent: JSON.stringify(activeAgent) } : {}),
+          },
         }),
-        runtime: this.createRuntime(snapshot, modelProviderId),
+        runtime: this.createRuntime(snapshot, modelProviderId, activeAgent),
         state: "ready",
         closing: false,
         leases: 1,
@@ -168,10 +124,20 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
       this.closeEntry(entry);
     }
     this.entries.clear();
-    const outcomes = await Promise.allSettled([...this.pendingClosures]);
+    const outcomes = await Promise.allSettled([...this.pendingClosures.keys()]);
     const failures = outcomes.flatMap((outcome) => (outcome.status === "rejected" ? [outcome.reason] : []));
     if (failures.length === 1) throw failures[0];
     if (failures.length > 1) throw new AggregateError(failures, "Runtime cache shutdown failed.");
+  }
+
+  async retireAgent(agentId: string): Promise<void> {
+    const selected = [...this.entries.values()].filter((entry) => entry.agentId === agentId);
+    if (selected.some((entry) => entry.leases > 0)) throw new Error("Agent executions have not finished stopping.");
+    this.retiredAgentIds.add(agentId);
+    for (const entry of selected) this.entries.delete(entry.fingerprint);
+    for (const entry of selected) this.closeEntry(entry);
+    // Include evicted runtimes that are still releasing services belonging to this Agent.
+    await Promise.all([...this.pendingClosures].filter(([, id]) => id === agentId).map(([closure]) => closure));
   }
 
   /** Keeps active leases intact while releasing idle model/Pi instances for hidden workspaces. */
@@ -180,8 +146,25 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
     this.trimIdleEntries();
   }
 
-  private createRuntime(snapshot: AgentSystemRuntimeCacheSnapshot, modelProviderId: string | undefined): TRuntime {
-    const dependencies = this.runtimeCreationDependencies();
+  private createRuntime(
+    snapshot: AgentSystemRuntimeCacheSnapshot,
+    modelProviderId: string | undefined,
+    activeAgent?: WorkspaceAgent,
+  ): TRuntime {
+    const identities = this.options.identityDisplayValues;
+    if (activeAgent && !identities) throw new Error("An Agent runtime requires a host identity provider.");
+    const dependencies = {
+      ...this.runtimeCreationDependencies(),
+      ...this.options.agentServices?.(activeAgent),
+      ...(activeAgent
+        ? {
+            activeAgent,
+            ...(identities
+              ? { identityDisplayValues: () => ({ user: identities().user, assistant: activeAgent.name }) }
+              : {}),
+          }
+        : {}),
+    };
     if (this.options.runtimeFactory) {
       return this.options.runtimeFactory({
         ...dependencies,
@@ -202,6 +185,7 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
       snapshot: _snapshot,
       maxIdleEntries: _maxIdleEntries,
       runtimeFactory: _runtimeFactory,
+      agentServices: _agentServices,
       ...dependencies
     } = this.options;
     return dependencies;
@@ -294,22 +278,24 @@ export class AgentSystemRuntimeCache<TRuntime extends AgentSystemRuntimeCacheRun
   private closeEntry(entry: RuntimeCacheEntry<TRuntime>): void {
     if (entry.closing) return;
     entry.closing = true;
-    void this.beginRuntimeClose(entry.runtime).catch((error) => {
+    void this.beginRuntimeClose(entry).catch((error) => {
       this.options.logger?.warn("runtime_cache.close.failed", { error });
     });
   }
 
-  private beginRuntimeClose(runtime: TRuntime): Promise<void> {
+  private beginRuntimeClose(entry: RuntimeCacheEntry<TRuntime>): Promise<void> {
+    if (entry.closePromise) return entry.closePromise;
     let closure: Promise<void>;
     try {
-      closure = Promise.resolve(runtime.close());
+      closure = Promise.resolve(entry.runtime.close());
     } catch (error) {
       closure = Promise.reject(error);
     }
-    this.pendingClosures.add(closure);
+    entry.closePromise = closure;
+    this.pendingClosures.set(closure, entry.agentId);
     void closure.then(
       () => this.pendingClosures.delete(closure),
-      () => this.pendingClosures.delete(closure),
+      () => undefined,
     );
     return closure;
   }

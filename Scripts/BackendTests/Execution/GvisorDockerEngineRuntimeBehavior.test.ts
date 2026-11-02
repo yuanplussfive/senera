@@ -78,19 +78,19 @@ describe("Docker Engine sandbox runtime", () => {
 
   test("stages rootfs copies in read-only volumes while keeping the execution rootfs immutable", async () => {
     const fixture = createRuntimeFixture("docker-engine");
-    const packageRoot = path.resolve("McpServers/imagen");
+    const packageRoot = path.resolve("McpServers/weather");
 
     await fixture.runtime.prepare();
     const process = await fixture.runtime.start({
       requestId: "request-rootfs-copy",
       command: "/usr/local/bin/node",
       arguments: ["--version"],
-      cwd: "/opt/senera/mcp-packages/imagen",
+      cwd: "/opt/senera/mcp-packages/weather",
       environment: {},
       interactive: false,
       workspaceMount: "readonly",
       network: "disabled",
-      rootfsCopies: [{ sourcePath: packageRoot, guestPath: "/opt/senera/mcp-packages/imagen" }],
+      rootfsCopies: [{ sourcePath: packageRoot, guestPath: "/opt/senera/mcp-packages/weather" }],
       writableMounts: [],
       limits: { cpus: 1, memoryMiB: 256, processCount: 64, timeoutMs: 10_000 },
     });
@@ -105,7 +105,7 @@ describe("Docker Engine sandbox runtime", () => {
           {
             Type: "volume",
             Source: "rootfs-volume",
-            Target: "/opt/senera/mcp-packages/imagen",
+            Target: "/opt/senera/mcp-packages/weather",
             ReadOnly: true,
           },
         ]),

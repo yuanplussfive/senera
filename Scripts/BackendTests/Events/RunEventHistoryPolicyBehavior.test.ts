@@ -7,8 +7,53 @@ import {
 } from "../../../Source/AgentSystem/Events/AgentEventCatalog.js";
 import { projectAgentRunEventForHistory } from "../../../Source/AgentSystem/Events/AgentRunEventHistoryPolicy.js";
 import { projectAgentMessage } from "../../../Source/AgentSystem/I18n/AgentMessageProjection.js";
+import { DefaultAgentToolArgumentProjection } from "../../../Source/AgentSystem/Core/AgentToolArgumentProjection.js";
 
 describe("run event history policy", () => {
+  test("persists message feedback so a reload restores the user's own rating", () => {
+    const projected = projectAgentRunEventForHistory({
+      channel: AgentEventChannels.AgentEvent,
+      kind: AgentEventKinds.FeedbackRecorded,
+      layer: AgentEventLayers.Snapshot,
+      phase: AgentEventPhases.Session,
+      sequence: 2,
+      timestamp: "2026-07-17T00:00:00.000Z",
+      sessionId: "session-1",
+      requestId: "request-1",
+      data: {
+        sessionId: "session-1",
+        requestId: "request-1",
+        rating: "negative",
+        category: "task_result",
+        updatedAt: "2026-07-17T00:00:00.000Z",
+      },
+    });
+
+    expect(projected?.data).toEqual({
+      sessionId: "session-1",
+      requestId: "request-1",
+      rating: "negative",
+      category: "task_result",
+      updatedAt: "2026-07-17T00:00:00.000Z",
+    });
+  });
+
+  test("still drops transport-level session events", () => {
+    const projected = projectAgentRunEventForHistory({
+      channel: AgentEventChannels.AgentEvent,
+      kind: AgentEventKinds.SessionRuntimeStatus,
+      layer: AgentEventLayers.Snapshot,
+      phase: AgentEventPhases.Session,
+      sequence: 3,
+      timestamp: "2026-07-17T00:00:00.000Z",
+      sessionId: "session-1",
+      requestId: "request-1",
+      data: {},
+    });
+
+    expect(projected).toBeUndefined();
+  });
+
   test("does not persist transient run activity", () => {
     const projected = projectAgentRunEventForHistory({
       channel: AgentEventChannels.AgentEvent,
@@ -95,6 +140,45 @@ describe("run event history policy", () => {
     expect(JSON.stringify(projected).length).toBeLessThan(1_000);
   });
 
+  test("persists a bounded structured tool result detail", () => {
+    const projected = projectAgentRunEventForHistory({
+      channel: AgentEventChannels.AgentEvent,
+      kind: AgentEventKinds.ToolCallResultDetail,
+      layer: AgentEventLayers.Snapshot,
+      phase: AgentEventPhases.Tool,
+      sequence: 4,
+      timestamp: "2026-07-17T00:00:01.000Z",
+      sessionId: "session-1",
+      requestId: "request-1",
+      step: 1,
+      data: {
+        detailId: "detail-1",
+        index: 2,
+        toolName: "WorkspaceRead",
+        callId: "call-1",
+        value: {
+          path: "README.md",
+          contents: "x".repeat(2_000_000),
+          rows: Array.from({ length: 500 }, () => ({ text: "y".repeat(2_048) })),
+        },
+        ignoredPayload: "must not enter durable history",
+      },
+    });
+
+    expect(projected?.data).toMatchObject({
+      detailId: "detail-1",
+      index: 2,
+      toolName: "WorkspaceRead",
+      callId: "call-1",
+      value: { path: "README.md" },
+    });
+    const detail = projected?.data as Record<string, unknown>;
+    expect(detail.ignoredPayload).toBeUndefined();
+    expect(Buffer.byteLength(JSON.stringify(detail.value))).toBeLessThanOrEqual(
+      DefaultAgentToolArgumentProjection.maxBytes,
+    );
+  });
+
   test("preserves localized run failures for history replay", () => {
     const projected = projectAgentRunEventForHistory({
       channel: AgentEventChannels.AgentEvent,
@@ -177,7 +261,6 @@ describe("run event history policy", () => {
       requestId: "request-1",
       data: {
         enabled: true,
-        periodDigests: [],
         eventCandidates: [{ uri: "memos:one", summary: "用户喜欢牛肉。" }],
         selection: {},
       },

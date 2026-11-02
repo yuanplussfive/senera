@@ -14,6 +14,9 @@ describe("application and workspace persistence", () => {
         defaultRightPanelCollapsed: false,
         motionLevel: "reduced",
         workflowDockWidth: 555,
+        terminalPanelOpen: true,
+        terminalPanelMaximized: true,
+        terminalPanelHeightRatio: 0.6,
         userProfile: DEFAULT_USER_PROFILE,
         activeSessionId: "old-session",
         selectedModelProviderId: "old-model",
@@ -27,7 +30,9 @@ describe("application and workspace persistence", () => {
       defaultSidebarCollapsed: true,
       defaultRightPanelCollapsed: false,
       motionLevel: "reduced",
-      workflowDockWidth: 555,
+      terminalPanelOpen: true,
+      terminalPanelMaximized: true,
+      terminalPanelHeightRatio: 0.6,
       userProfile: DEFAULT_USER_PROFILE,
     });
   });
@@ -38,14 +43,17 @@ describe("application and workspace persistence", () => {
       defaultRightPanelCollapsed: true,
       motionLevel: "full",
       userProfile: DEFAULT_USER_PROFILE,
-      workflowDockWidth: 420,
+      workflowDockWidthRatio: 0.42,
       activeSessionId: "workspace-session",
       sessions: { "workspace-session": {} },
     };
     const merged = sessionPersistOptions.merge(
       {
         defaultRightPanelCollapsed: false,
-        workflowDockWidth: 520,
+        workflowDockWidthRatio: 0.52,
+        terminalPanelOpen: true,
+        terminalPanelMaximized: false,
+        terminalPanelHeightRatio: 10,
         activeSessionId: "other-workspace",
       },
       current,
@@ -53,7 +61,10 @@ describe("application and workspace persistence", () => {
     expect(merged).toMatchObject({
       rightPanelCollapsed: false,
       defaultRightPanelCollapsed: false,
-      workflowDockWidth: 520,
+      workflowDockWidthRatio: 0.52,
+      terminalPanelOpen: true,
+      terminalPanelMaximized: false,
+      terminalPanelHeightRatio: 0.8,
       activeSessionId: "workspace-session",
       sessions: current.sessions,
     });
@@ -79,13 +90,34 @@ describe("application and workspace persistence", () => {
     expect(restored.userProfile).toEqual(pendingProfile);
   });
 
+  it("keeps the persisted preference snapshot stable while conversation state streams", () => {
+    const preferences = {
+      defaultSidebarCollapsed: false,
+      defaultRightPanelCollapsed: true,
+      motionLevel: "full",
+      executionApprovalMode: "agent",
+      workflowDockWidthRatio: 0.42,
+      userProfile: DEFAULT_USER_PROFILE,
+    };
+    const initial = sessionPersistOptions.partialize(preferences);
+    const streamed = sessionPersistOptions.partialize({
+      ...preferences,
+      sessions: { current: { messages: ["streamed content"], runs: [{ revision: 1 }] } },
+    });
+    const changed = sessionPersistOptions.partialize({ ...preferences, motionLevel: "reduced" });
+
+    expect(streamed).toBe(initial);
+    expect(changed).not.toBe(initial);
+    expect(changed).toMatchObject({ motionLevel: "reduced" });
+  });
+
   it("cross-window application preferences exclude session order and model selections", () => {
     expect(
       readPersistedSessionPreferences(
         JSON.stringify({
           state: {
             defaultSidebarCollapsed: true,
-            workflowDockWidth: 900,
+            workflowDockWidthRatio: 9,
             motionLevel: "reduced",
             selectedModelProviderId: "main",
             sessionOrder: ["a"],
@@ -93,7 +125,7 @@ describe("application and workspace persistence", () => {
           },
         }),
       ),
-    ).toEqual({ defaultSidebarCollapsed: true, workflowDockWidth: 640, motionLevel: "reduced" });
+    ).toEqual({ defaultSidebarCollapsed: true, workflowDockWidthRatio: 0.7, motionLevel: "reduced" });
   });
 
   it("restores workspace usage and model preferences without storing messages", () => {

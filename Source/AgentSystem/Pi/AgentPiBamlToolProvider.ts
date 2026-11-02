@@ -14,28 +14,28 @@ import {
   type Usage,
 } from "@earendil-works/pi-ai";
 import { errorMessage } from "../Core/AgentErrors.js";
-import type { AgentModelUsageValue } from "../ModelEndpoints/AgentModelUsage.js";
+import type { AgentModelUsageLedger, AgentModelUsageValue } from "../ModelEndpoints/AgentModelUsage.js";
+import {
+  type AgentModelCost,
+  type AgentPricedPiUsage,
+  projectAgentPiModelPrices,
+} from "../ModelEndpoints/AgentModelPricing.js";
 import { AgentModelTokenEstimator } from "../Text/AgentTextBudget.js";
 import type { AgentPiMutableSessionFrame } from "./AgentPiCodingAgentSessionFrame.js";
 import { AgentPiDiagnosticSources, emitAgentPiDiagnostic } from "./AgentPiDiagnostics.js";
 import type { AgentPiPlanningCompilerFactory } from "./AgentPiPlanningCompiler.js";
 import { registerAgentPiToolCallBatch } from "./AgentPiToolCallBatchProjector.js";
 import type { AgentPiModelApi, AgentPiProviderProjection } from "./AgentPiTypes.js";
-import type { AgentResidentSpeechProjector } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
-import { inspectAgentResidentSpeechFocus } from "../ResidentSpeech/AgentResidentSpeechPromptProjector.js";
-import { createAgentResidentSpeechUsageSink } from "../ResidentSpeech/AgentResidentSpeechUsage.js";
-import { resolveAgentResidentSpeechProjection } from "../PiShared/AgentPiResidentSpeechProjection.js";
 import { emitAgentPiAssistantMessage } from "./AgentPiAssistantMessageStream.js";
-import { requireAgentPiPromptCacheSessionId } from "./AgentPiPromptCache.js";
 import { exposeAgentPiContextProvider, type AgentPiContextProvider } from "./AgentPiProviderCompatibility.js";
 import { projectAgentPiBamlContext } from "./AgentPiBamlContextAdapter.js";
 import { AgentModelInputBudgetError } from "../Text/AgentTurnTokenBudget.js";
+import { withAgentModelDiagnosticScope } from "../Diagnostics/AgentModelDiagnosticScope.js";
 
 export interface AgentPiBamlToolProviderOptions {
   readonly projection: AgentPiProviderProjection;
   readonly frame: AgentPiMutableSessionFrame;
   readonly compilerFactory: AgentPiPlanningCompilerFactory;
-  readonly residentSpeech?: AgentResidentSpeechProjector;
 }
 
 /** Pi provider that compiles tool decisions through Senera's BAML planner. */
@@ -92,21 +92,42 @@ export class AgentPiBamlToolProvider {
     const frame = this.options.frame.snapshot();
     const turnState = frame.turnState;
     const initial = createAssistantMessage(model, emptyPiUsage(), "pending");
-    stream.push({ type: "start", partial: initial });
     const compactionRequest = options?.cacheRetention === "none";
+    // Reserve before publishing start or awaiting input preparation. Both the
+    // success and failure streams belong to this same model request.
+    const modelMessageIndex = compactionRequest ? undefined : turnState?.beginModelRequest();
+    let started = false;
+    const start = () => {
+      if (started) return;
+      stream.push({ type: "start", partial: initial });
+      started = true;
+    };
+    let localUsage: AgentModelUsageLedger | undefined;
     try {
       if (!turnState) {
         throw new Error("Senera BAML tool provider requires an active model request.");
       }
-      const preparedContext = frame.prepareModelInput ? await frame.prepareModelInput(context) : context;
-      // Pi consumes compaction summaries directly; they never enter the
-      // Senera run collector, so they must not reserve a model-message index.
-      const modelMessageIndex = compactionRequest ? undefined : turnState.beginModelRequest();
-      const localUsage = turnState.context.usageLedger.fork();
+      const preparedContext =
+        !compactionRequest && frame.prepareModelInput ? await frame.prepareModelInput(context) : context;
+      if (!compactionRequest) frame.synchronizeToolContracts?.(preparedContext);
+      if (modelMessageIndex !== undefined) {
+        turnState.modelContexts.set(
+          modelMessageIndex,
+          this.options.frame.contextInspection.capture({
+            context: preparedContext,
+            model: model.id,
+            scope: "baml-input",
+            state: turnState,
+          }),
+        );
+      }
+      start();
+      localUsage = turnState.context.usageLedger.fork();
+      const usageLedger = localUsage;
       throwIfProviderAborted(options?.signal);
       const compiler = this.options.compilerFactory.create({
         usageSink: (call) => {
-          localUsage.record(call);
+          usageLedger.record(call);
           turnState.context.tokenBudget.recordProviderContextTokens(
             call.usage.totalTokens ||
               (call.usage.inputTokens ?? 0) +
@@ -129,23 +150,32 @@ export class AgentPiBamlToolProvider {
       });
 
       if (compactionRequest) {
-        if (!compiler.compact) {
+        const compact = compiler.compact?.bind(compiler);
+        if (!compact) {
           throw new Error("Senera BAML compaction transport is not configured.");
         }
-        const outputText = await compiler.compact({
-          model,
-          context: preparedContext,
-          signal: options?.signal,
-          runtime: {
-            sessionId: frame.sessionId,
-            logicalCacheScope: turnState.context.logicalCacheScope,
+        const outputText = await withAgentModelDiagnosticScope(
+          {
+            sink: frame.diagnostics,
+            context: { sessionId: frame.sessionId, requestId: frame.requestId, step: frame.step, modelMessageIndex },
           },
-        });
+          () =>
+            compact({
+              model,
+              context: preparedContext,
+              signal: options?.signal,
+              runtime: {
+                sessionId: frame.sessionId,
+                logicalCacheScope: turnState.context.logicalCacheScope,
+              },
+            }),
+        );
         throwIfProviderAborted(options?.signal);
         const outputTextJson = JSON.stringify({ content: outputText, toolCalls: [] });
         const usage = projectPiUsage(
           localUsage.contextUsage(),
           this.outputEstimator.estimate(outputTextJson).tokenCount,
+          localUsage.aggregate()?.cost,
         );
         const message = createAssistantMessage(model, usage, "stop", { content: outputText, toolCalls: [] });
         if (localUsage.contextUsage()) turnState.context.tokenBudget.recordProviderUsage(usage, message);
@@ -155,17 +185,29 @@ export class AgentPiBamlToolProvider {
       }
 
       const planningRequest = projectAgentPiBamlContext(preparedContext);
-      const compilation = await compiler.compile({
-        model,
-        context: planningRequest,
-        options,
-        toolAccessGrant: turnState.context.toolAccessGrant,
-        signal: options?.signal,
-        runtime: turnState.context,
-      });
+      const compilation = await withAgentModelDiagnosticScope(
+        {
+          sink: frame.diagnostics,
+          context: { sessionId: frame.sessionId, requestId: frame.requestId, step: frame.step, modelMessageIndex },
+        },
+        () =>
+          compiler.compile({
+            model,
+            context: planningRequest,
+            options,
+            toolAccessGrant: turnState.context.toolAccessGrant,
+            signal: options?.signal,
+            runtime: turnState.context,
+          }),
+      );
+      frame.onModelMemoryDelivered?.();
       throwIfProviderAborted(options?.signal);
       const outputText = JSON.stringify({ content: compilation.content, toolCalls: compilation.toolCalls });
-      const usage = projectPiUsage(localUsage.contextUsage(), this.outputEstimator.estimate(outputText).tokenCount);
+      const usage = projectPiUsage(
+        localUsage.contextUsage(),
+        this.outputEstimator.estimate(outputText).tokenCount,
+        localUsage.aggregate()?.cost,
+      );
       const message = createAssistantMessage(
         model,
         usage,
@@ -179,20 +221,13 @@ export class AgentPiBamlToolProvider {
           call.id && call.purpose?.trim() ? [[call.id, call.purpose.trim()] as const] : [],
         ),
       );
-      const projectedMessage = await this.projectResidentSpeech(
-        planningRequest,
-        message,
-        options?.signal,
-        frame,
-        turnState,
-        purposesByCallId,
-      );
-      await registerAgentPiToolCallBatch(this.options.frame, projectedMessage, {
+      await registerAgentPiToolCallBatch(this.options.frame, message, {
         purposesByCallId,
         modelMessageIndex,
       });
-      emitAgentPiAssistantMessage(stream, projectedMessage, { started: true });
+      emitAgentPiAssistantMessage(stream, message, { started: true });
     } catch (error) {
+      start();
       if (!compactionRequest && error instanceof AgentModelInputBudgetError) {
         await emitAgentPiDiagnostic(frame.diagnostics, {
           context: { sessionId: frame.sessionId, requestId: frame.requestId, step: frame.step },
@@ -205,60 +240,18 @@ export class AgentPiBamlToolProvider {
         });
       }
       const reason = options?.signal?.aborted ? "aborted" : "error";
+      const failureUsage = localUsage?.aggregate();
       const failed = {
         ...initial,
+        usage: failureUsage
+          ? projectPiUsage(failureUsage, failureUsage.outputTokens ?? 0, failureUsage.cost)
+          : ({ ...initial.usage, seneraCost: { currency: "USD" } } as AgentPricedPiUsage),
         stopReason: reason,
         errorMessage: errorMessage(options?.signal?.reason ?? error),
       } satisfies AssistantMessage;
       stream.push({ type: "error", reason, error: failed });
       stream.end(failed);
     }
-  }
-
-  private async projectResidentSpeech(
-    context: Context,
-    message: AssistantMessage,
-    signal: AbortSignal | undefined,
-    frame: ReturnType<AgentPiMutableSessionFrame["snapshot"]>,
-    turnState: NonNullable<ReturnType<AgentPiMutableSessionFrame["snapshot"]>["turnState"]>,
-    purposesByCallId: ReadonlyMap<string, string>,
-  ): Promise<AssistantMessage> {
-    const focus = inspectAgentResidentSpeechFocus(message, purposesByCallId);
-    if (!focus) return message;
-    const projection = resolveAgentResidentSpeechProjection({
-      focus,
-      prefaceRewriteEnabled: frame.prefaceRewriteEnabled,
-      personaActive: frame.personaActive,
-      finalResponseRewriteEnabled: frame.finalResponseRewriteEnabled,
-      hasRegisteredToolCalls: turnState.hasRegisteredToolCalls(),
-    });
-    if (!projection) return message;
-    if (!this.options.residentSpeech) {
-      throw new Error("Active persona speech projection requires the resident-speech sidecar.");
-    }
-    const projected = await this.options.residentSpeech.project({
-      context,
-      message,
-      focus,
-      spokenUtterances: turnState.residentSpeechHistory(),
-      projectionTier: projection.tier,
-      enabled: true,
-      signal,
-      sessionId: requireAgentPiPromptCacheSessionId(frame.sessionId),
-      logicalCacheScope: turnState.context.logicalCacheScope,
-      usageSink: createAgentResidentSpeechUsageSink(turnState.context),
-      timingSink: (timing) =>
-        emitAgentPiDiagnostic(frame.diagnostics, {
-          context: { sessionId: frame.sessionId, requestId: frame.requestId, step: frame.step },
-          source: AgentPiDiagnosticSources.Provider,
-          name: "model_timing",
-          details: timing,
-        }),
-    });
-    const projectedFocus = inspectAgentResidentSpeechFocus(projected, purposesByCallId);
-    if (!projectedFocus) throw new Error("Resident speech projection returned no visible utterance.");
-    turnState.recordResidentSpeech({ mode: focus.mode, content: projectedFocus.draft });
-    return projected;
   }
 }
 
@@ -314,7 +307,11 @@ function toPiJsonValue(value: unknown): JsonValue {
   throw new Error("Senera planning compiler returned a non-JSON tool argument.");
 }
 
-function projectPiUsage(contextUsage: AgentModelUsageValue | undefined, outputTokens: number): Usage {
+function projectPiUsage(
+  contextUsage: AgentModelUsageValue | undefined,
+  outputTokens: number,
+  cost?: AgentModelCost,
+): AgentPricedPiUsage {
   const input = contextUsage?.inputTokens ?? 0;
   const cacheRead = contextUsage?.cacheReadTokens ?? 0;
   const cacheWrite = contextUsage?.cacheWriteTokens ?? 0;
@@ -325,7 +322,17 @@ function projectPiUsage(contextUsage: AgentModelUsageValue | undefined, outputTo
     cacheWrite,
     reasoning: contextUsage?.reasoningTokens,
     totalTokens: input + outputTokens + cacheRead + cacheWrite,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    seneraCost: cost,
+    seneraUsage: contextUsage
+      ? { ...contextUsage, cost }
+      : {
+          source: "local_estimate",
+          outputTokens,
+          totalTokens: outputTokens,
+          estimatedFields: ["outputTokens", "totalTokens"],
+          cost,
+        },
+    cost: { ...projectAgentPiModelPrices(cost), total: cost?.total ?? 0 },
   };
 }
 

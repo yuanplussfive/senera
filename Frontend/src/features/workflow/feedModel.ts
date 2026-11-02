@@ -46,10 +46,9 @@ export interface FeedGroup {
   collapsible?: boolean;
   toolIcons?: readonly ToolStageIconName[];
   toolAccessibleLabel?: string;
-  /** Present for delegated child runs: the run container plus its internal steps. */
+  /** Compact child execution state; the agent dock owns its detailed steps. */
   childRun?: TimelineChildRunState;
   agentName?: string;
-  childToolSteps?: TimelineStep[];
 }
 
 export interface FeedModel {
@@ -239,10 +238,7 @@ function isGroupedToolPlan(step: TimelineStep, groupedBatchIds: ReadonlySet<stri
 }
 
 function collectScopedGroups(steps: TimelineStep[]): FeedGroup[] {
-  const childRuns = new Map<
-    string,
-    { agentName: string; childRun: TimelineChildRunState; childSteps: TimelineStep[]; firstIndex: number }
-  >();
+  const childRuns = new Map<string, { agentName: string; childRun: TimelineChildRunState; firstIndex: number }>();
   const orphanItems: FeedItem[] = [];
   let orphanFirstIndex = Number.POSITIVE_INFINITY;
   let orphanWorkflowName: string | undefined;
@@ -262,7 +258,6 @@ function collectScopedGroups(steps: TimelineStep[]): FeedGroup[] {
     childRuns.set(childRunId, {
       agentName: step.scope?.agentName ?? "",
       childRun: step.childRun,
-      childSteps: [],
       firstIndex: index,
     });
   });
@@ -274,10 +269,10 @@ function collectScopedGroups(steps: TimelineStep[]): FeedGroup[] {
     const childRunId = step.scope?.childRunId;
     const existing = childRunId ? childRuns.get(childRunId) : undefined;
     if (existing) {
-      existing.childSteps.push(step);
       existing.firstIndex = Math.min(existing.firstIndex, index);
       return;
     }
+    if (childRunId || step.scope?.role === "childAgent") return;
 
     // Scoped steps that don't resolve to a known child run (e.g. merge steps)
     // keep the legacy flat presentation so they aren't silently dropped.
@@ -297,7 +292,6 @@ function collectScopedGroups(steps: TimelineStep[]): FeedGroup[] {
       collapsible: true,
       childRun: entry.childRun,
       agentName: entry.agentName,
-      childToolSteps: entry.childSteps,
     }));
 
   if (orphanItems.length > 0) {
@@ -326,7 +320,6 @@ function childRunCardMeta(childRun: TimelineChildRunState): string | undefined {
 export interface StageChildRunEntry {
   childRun: TimelineChildRunState;
   agentName?: string;
-  childToolSteps: TimelineStep[];
 }
 
 export interface StageChildRunSplit {
@@ -354,24 +347,17 @@ export function splitStageChildRuns(steps: readonly TimelineStep[]): StageChildR
         childRuns.set(step.childRun.id, {
           childRun: step.childRun,
           agentName: step.scope?.agentName,
-          childToolSteps: [],
           firstIndex: index,
         });
       }
     }
   });
 
-  // Pass 2: route scoped tool steps into their run; the rest belong to the parent.
+  // Child tools remain in the run store for the agent dock, including before
+  // its first lifecycle event arrives. They never become parent tool rows.
   steps.forEach((step) => {
     if (step.kind === "delegation") return;
-    const childRunId = step.scope?.childRunId;
-    if (childRunId) {
-      const entry = childRuns.get(childRunId);
-      if (entry) {
-        if (step.kind === "tool" && step.toolName?.trim()) entry.childToolSteps.push(step);
-        return;
-      }
-    }
+    if (step.scope?.childRunId || step.scope?.role === "childAgent") return;
     if (step.kind === "tool" && step.toolName?.trim()) rootToolSteps.push(step);
   });
 
@@ -381,7 +367,6 @@ export function splitStageChildRuns(steps: readonly TimelineStep[]): StageChildR
       .map(([, entry]) => ({
         childRun: entry.childRun,
         agentName: entry.agentName,
-        childToolSteps: entry.childToolSteps,
       })),
     rootToolSteps,
   };
@@ -455,6 +440,7 @@ function mapHeadlineItem(
       origin: activeStep.toolOrigin,
       arguments: activeStep.toolArgs,
       result: activeStep.toolPresentation,
+      rawResult: activeStep.toolResult,
       durationMs: activeStep.durationMs,
       status: activeStep.status === "failed" ? "failed" : activeStep.status === "done" ? "completed" : "active",
     });
@@ -569,6 +555,7 @@ function mapToolItem(step: TimelineStep): FeedItem {
         origin: step.toolOrigin,
         arguments: step.toolArgs,
         result: step.toolPresentation,
+        rawResult: step.toolResult,
         durationMs: step.durationMs,
         status: step.status === "failed" ? "failed" : step.status === "done" ? "completed" : "active",
       })
@@ -752,6 +739,7 @@ function derivePendingLabel(run: RunRecord, activeStep?: TimelineStep, latestDec
       origin: activeStep.toolOrigin,
       arguments: activeStep.toolArgs,
       result: activeStep.toolPresentation,
+      rawResult: activeStep.toolResult,
       durationMs: activeStep.durationMs,
       status: activeStep.status === "failed" ? "failed" : activeStep.status === "done" ? "completed" : "active",
     });

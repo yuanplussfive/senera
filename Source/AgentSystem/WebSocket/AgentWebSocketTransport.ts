@@ -9,6 +9,7 @@ import {
 } from "../Auth/AgentServerAccessGuard.js";
 import { applyCredentialedCors, writeCorsPreflight } from "../Auth/AgentCredentialedCors.js";
 import { AgentAuthenticationHttpApi } from "../Auth/AgentAuthenticationHttpApi.js";
+import { AgentDeviceConnectionService } from "../Auth/AgentDeviceConnectionService.js";
 import { AgentHealthHttpApi } from "./AgentHealthHttpApi.js";
 import { AgentStaticFrontendHttpApi } from "./AgentStaticFrontendHttpApi.js";
 import { AgentModelsDevCatalog } from "../ModelEndpoints/AgentModelsDevCatalog.js";
@@ -41,9 +42,15 @@ import {
   readAgentWorkspaceStateMigrationInventory,
   removeAgentWorkspaceStateMigrationBackup,
 } from "../WorkspaceResources/AgentWorkspaceStateMigrationMaintenance.js";
+import { AgentOneBot11ClientSocketPath, readAgentOneBot11ClientRoute } from "../Channels/AgentChannelClientRoutes.js";
+import { AgentControlWebSocketPath } from "./AgentWebSocketRoutes.js";
+import { createAgentChannelWebSocketServer } from "./AgentChannelWebSocketServer.js";
+import type { AgentDevelopmentFrontend } from "./AgentDevelopmentFrontend.js";
+import { resolveAgentServerAccessPolicy, type AgentServerAccessProfile } from "../Auth/AgentServerAccessPolicy.js";
 
 export interface AgentWorkspaceTransportEndpoint {
   connect(socket: WebSocket, access: AgentAuthenticatedAccess): void;
+  connectChannelClient?(socket: WebSocket, access: AgentAuthenticatedAccess, request: http.IncomingMessage): void;
   handleHttp(request: http.IncomingMessage, response: http.ServerResponse): Promise<void>;
   broadcast(event: AgentDomainEvent): Promise<void>;
 }
@@ -56,7 +63,8 @@ export interface AgentWebSocketTransportOptions {
   openWorkspace?: (id: string) => Promise<void>;
   forgetWorkspace?: (id: string) => Promise<AgentWorkspaceCatalogSnapshot>;
   staticFrontendRoot?: string;
-  automaticLoopbackHttp?: boolean;
+  developmentFrontend?: AgentDevelopmentFrontend;
+  accessProfile?: AgentServerAccessProfile;
   accessGuard?: AgentServerAccessGuard;
   logger?: AgentLogger;
 }
@@ -71,16 +79,18 @@ export class AgentWebSocketTransport {
   private readonly logger: AgentLogger;
   private readonly config;
   private readonly authenticationApi;
+  private readonly deviceConnections: AgentDeviceConnectionService;
   private readonly healthApi = new AgentHealthHttpApi();
   private readonly staticApi?: AgentStaticFrontendHttpApi;
   private httpServer?: http.Server;
   private sockets?: WebSocketServer;
+  private channelSockets?: WebSocketServer;
   private accepting = false;
   private stopPromise?: Promise<void>;
 
   constructor(private readonly options: AgentWebSocketTransportOptions) {
     this.logger = options.logger ?? new AgentLogger();
-    this.config = resolveServerConfig(options.config());
+    this.config = resolveAgentServerAccessPolicy(resolveServerConfig(options.config()), options.accessProfile).server;
     this.listener = Object.freeze({ host: this.config.Host, port: this.config.Port });
     this.websocketUrl = format({ protocol: "ws", hostname: this.config.Host, port: this.config.Port, slashes: true });
     this.accessGuard =
@@ -88,9 +98,20 @@ export class AgentWebSocketTransport {
       new AgentServerAccessGuard({
         server: this.config,
         workspaceRoot: options.applicationRoot,
-        automaticLoopbackHttp: options.automaticLoopbackHttp,
+        accessProfile: options.accessProfile,
       });
-    this.authenticationApi = new AgentAuthenticationHttpApi(this.accessGuard);
+    this.deviceConnections = new AgentDeviceConnectionService(this.accessGuard, undefined, {
+      listener: this.listener,
+      createServer: () => {
+        const server = http.createServer((request, response) => this.httpServer!.emit("request", request, response));
+        server.headersTimeout = 10_000;
+        server.requestTimeout = 60_000;
+        server.maxHeadersCount = 64;
+        server.on("upgrade", (request, socket, head) => this.httpServer!.emit("upgrade", request, socket, head));
+        return server;
+      },
+    });
+    this.authenticationApi = new AgentAuthenticationHttpApi(this.accessGuard, this.deviceConnections);
     this.staticApi = options.staticFrontendRoot
       ? new AgentStaticFrontendHttpApi({ rootDir: options.staticFrontendRoot })
       : undefined;
@@ -174,10 +195,20 @@ export class AgentWebSocketTransport {
       perMessageDeflate: false,
     });
     this.sockets.on("error", (error) => this.logger.error("WebSocket 传输失败", { error: errorMessage(error) }));
+    this.channelSockets = createAgentChannelWebSocketServer(this.accessGuard, this.config.RequestMaxBytes);
+    this.channelSockets.on("error", (error) => this.logger.error("渠道传输失败", { error: errorMessage(error) }));
     this.httpServer.on("upgrade", (request, socket, head) => {
       void this.upgrade(request, socket, head).catch((error) => {
-        this.logger.warn("工作区连接失败", { error: errorMessage(error) });
-        this.rejectUpgrade(socket, { status: 503, code: "capacity_exceeded" });
+        const pathname = new URL(request.url ?? "/", "http://senera.local").pathname;
+        this.logger.warn(
+          this.options.developmentFrontend?.canHandle(pathname) ? "开发热更新连接失败" : "工作区连接失败",
+          {
+            path: pathname,
+            error: errorMessage(error),
+          },
+        );
+        if (!socket.destroyed && socket.writable)
+          socket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
       });
     });
     await new Promise<void>((resolve, reject) => {
@@ -196,25 +227,34 @@ export class AgentWebSocketTransport {
     });
     this.httpServer.on("error", (error) => this.logger.error("HTTP 传输失败", { error: errorMessage(error) }));
     this.accepting = true;
+    await this.deviceConnections.restoreLan();
     this.modelsDevCatalog.start();
   }
 
   stop(): Promise<void> {
     this.accepting = false;
     return (this.stopPromise ??= (async () => {
+      this.options.developmentFrontend?.close();
+      await this.deviceConnections.stop();
       await this.modelsDevCatalog.stop();
       const server = this.httpServer;
       const sockets = this.sockets;
+      const channelSockets = this.channelSockets;
       for (const socket of sockets?.clients ?? []) socket.close(1001, "Application shutting down");
+      for (const socket of channelSockets?.clients ?? []) socket.close(1001, "Application shutting down");
       server?.closeIdleConnections();
       const forceClose = setTimeout(() => {
         for (const socket of sockets?.clients ?? []) socket.terminate();
+        for (const socket of channelSockets?.clients ?? []) socket.terminate();
         server?.closeAllConnections();
       }, 250);
       forceClose.unref();
       const outcomes = await Promise.allSettled([
         new Promise<void>((resolve, reject) =>
           sockets ? sockets.close((error) => (error ? reject(error) : resolve())) : resolve(),
+        ),
+        new Promise<void>((resolve, reject) =>
+          channelSockets ? channelSockets.close((error) => (error ? reject(error) : resolve())) : resolve(),
         ),
         new Promise<void>((resolve, reject) =>
           server?.listening ? server.close((error) => (error ? reject(error) : resolve())) : resolve(),
@@ -241,7 +281,21 @@ export class AgentWebSocketTransport {
       return;
     }
     const url = new URL(request.url ?? "/", "http://senera.local");
-    if (url.pathname !== "/") {
+    if (this.options.developmentFrontend?.canHandle(url.pathname)) {
+      const authorization = this.accessGuard.authorizeWebSocket(request);
+      if (!authorization.ok) {
+        this.rejectUpgrade(socket, authorization.failure);
+        return;
+      }
+      await this.options.developmentFrontend.upgrade(request, socket, head);
+      return;
+    }
+    const channelRoute = readAgentOneBot11ClientRoute(url.pathname);
+    if (
+      url.pathname !== "/" &&
+      url.pathname !== AgentControlWebSocketPath &&
+      channelRoute?.resource !== AgentOneBot11ClientSocketPath
+    ) {
       this.rejectUpgrade(socket, { status: 403, code: "forbidden_origin" });
       return;
     }
@@ -253,7 +307,9 @@ export class AgentWebSocketTransport {
     let endpoint: AgentWorkspaceTransportEndpoint;
     try {
       endpoint = await this.endpoint(
-        url.searchParams.get(AgentWorkspaceScopeParameter) ?? this.options.defaultWorkspaceId,
+        channelRoute?.workspaceId ??
+          url.searchParams.get(AgentWorkspaceScopeParameter) ??
+          this.options.defaultWorkspaceId,
       );
     } catch (error) {
       if (!(error instanceof AgentWorkspaceNotFoundError)) throw error;
@@ -265,7 +321,12 @@ export class AgentWebSocketTransport {
       return;
     }
     if (socket.destroyed || !this.accepting) return;
-    this.sockets!.handleUpgrade(request, socket, head, (webSocket) => endpoint.connect(webSocket, result.access));
+    const server = channelRoute ? this.channelSockets! : this.sockets!;
+    server.handleUpgrade(request, socket, head, (webSocket) => {
+      if (!channelRoute) endpoint.connect(webSocket, result.access);
+      else if (endpoint.connectChannelClient) endpoint.connectChannelClient(webSocket, result.access, request);
+      else webSocket.close(1008, "Channel client is unavailable");
+    });
   }
 
   private rejectUpgrade(socket: Duplex, failure: AgentAccessFailure): void {
@@ -290,6 +351,22 @@ export class AgentWebSocketTransport {
     }
     if (this.healthApi.canHandle(request)) {
       this.healthApi.handle(request, response);
+      return;
+    }
+    const developmentUrl = new URL(request.url ?? "/", "http://senera.local");
+    if (this.options.developmentFrontend?.canHandle(developmentUrl.pathname)) {
+      const authorization = this.accessGuard.authorizeStaticResource(request);
+      if (!authorization.ok) {
+        response.writeHead(authorization.failure.status, { "Cache-Control": "no-store" });
+        response.end();
+        return;
+      }
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        response.writeHead(405, { Allow: "GET, HEAD" });
+        response.end();
+        return;
+      }
+      await this.options.developmentFrontend.handle(request, response);
       return;
     }
     if (this.staticApi?.canHandle(request)) {
@@ -489,7 +566,11 @@ export class AgentWebSocketTransport {
       return;
     }
     // Authorize before opening any project or starting its resources.
-    const workspaceId = url.searchParams.get(AgentWorkspaceScopeParameter) ?? this.options.defaultWorkspaceId;
+    const channelRoute = readAgentOneBot11ClientRoute(url.pathname);
+    const workspaceId =
+      channelRoute?.workspaceId ??
+      url.searchParams.get(AgentWorkspaceScopeParameter) ??
+      this.options.defaultWorkspaceId;
     if (!this.endpoints.has(workspaceId)) {
       const authorization = this.accessGuard.authorizeHttp(request, { requireCsrf: false });
       if (!authorization.ok) {

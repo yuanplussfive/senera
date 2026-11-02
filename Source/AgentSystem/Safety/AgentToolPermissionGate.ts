@@ -28,6 +28,8 @@ import {
   createAgentResourceAccessGrant,
   type AgentResourceAccessGrantEntry,
   type AgentResourceAccessGrant,
+  type AgentResourceAccessScope,
+  resourceAccessScopeAllows,
 } from "../Execution/SeneraResourceAccess.js";
 
 export class AgentToolPermissionDeniedError extends AgentBaseError {
@@ -49,6 +51,7 @@ export interface AgentToolPermissionGateOptions {
 
 export interface AgentToolPermissionGateRequest extends AgentToolApprovalPolicyInput {
   approvalMode: AgentExecutionApprovalMode;
+  resourceAccessScope?: AgentResourceAccessScope;
   mandatoryApproval?: {
     readonly reason: string;
     readonly scope: string;
@@ -181,7 +184,17 @@ export class AgentToolPermissionGate {
     decision: AgentPermissionDecision,
   ): AgentPermissionDecision {
     if (
-      request.resourceAccess?.external.length &&
+      request.resourceAccess?.external.some(
+        (resource) =>
+          !resource.canonicalPath ||
+          !request.resourceAccessScope ||
+          !resourceAccessScopeAllows(
+            request.resourceAccessScope,
+            resource.canonicalPath,
+            resource.intent,
+            resource.recursive,
+          ),
+      ) &&
       request.approvalMode === AgentExecutionApprovalModes.AlwaysAsk &&
       decision.action === AgentPermissionActions.Allow
     ) {

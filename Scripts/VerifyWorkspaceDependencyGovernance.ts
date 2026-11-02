@@ -82,27 +82,25 @@ const RootRuntimeEntrypoints = Object.freeze({
   source: "./Source/AgentSystem/Runtime/AgentSystemRuntime.ts",
   compiled: "./Dist/Source/AgentSystem/Runtime/AgentSystemRuntime.js",
 });
-const rootOwnedToolchainDependencies = new Map(
-  Object.entries({
-    "@playwright/test": "^1.62.0",
-    "@tailwindcss/vite": "^4.3.3",
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.2",
-    "@testing-library/user-event": "^14.6.1",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
-    "@vitejs/plugin-react": "^4.7.0",
-    "@vitest/coverage-v8": "^4.1.11",
-    jsdom: "^29.1.1",
-    prettier: "^3.9.5",
-    tailwindcss: "^4.3.3",
-    "ts-json-schema-generator": "^2.9.0",
-    typescript: "^6.0.3",
-    tsx: "^4.22.4",
-    vite: "^7.3.6",
-    vitest: "^4.1.11",
-  }),
-);
+// package.json owns versions; this policy only owns the installation boundary.
+const rootOwnedToolchainDependencies = new Set([
+  "@playwright/test",
+  "@tailwindcss/vite",
+  "@testing-library/jest-dom",
+  "@testing-library/react",
+  "@testing-library/user-event",
+  "@types/react",
+  "@types/react-dom",
+  "@vitejs/plugin-react",
+  "@vitest/coverage-v8",
+  "jsdom",
+  "prettier",
+  "tailwindcss",
+  "typescript",
+  "tsx",
+  "vite",
+  "vitest",
+]);
 const productReleaseWorkflow = readTextFile(path.join(workspaceRoot, ".github", "workflows", "release.yml"));
 const violations = [
   ...inspectWorkspaceCoverage(),
@@ -216,9 +214,8 @@ function inspectRootScripts(): string[] {
     "generate.frontend-events": "tsx Build/GenerateFrontendEventCatalog.ts",
     "generate.resource-contract": "tsx Build/GenerateResourceContract.ts",
     "generate.database-contracts": "tsx Build/GenerateDatabaseContracts.ts",
-    "generate.system-extension-contracts": "tsx Build/GenerateSystemExtensionContracts.ts",
     "verify.database-contracts": "tsx Build/GenerateDatabaseContracts.ts --check",
-    "verify.system-extension-contracts": "tsx Build/GenerateSystemExtensionContracts.ts --check",
+    "verify.system-extension-contracts": "tsx Build/VerifySystemExtensionContracts.ts",
     "verify.config-command-contracts": "tsx Build/GenerateConfigCommandContracts.ts --check",
     "verify.config-form": "tsx Scripts/VerifyAgentConfigFormProjection.ts",
     "verify.frontend-events": "tsx Build/GenerateFrontendEventCatalog.ts --check",
@@ -228,8 +225,6 @@ function inspectRootScripts(): string[] {
       "tsx Scripts/VerifyAgentErrorI18n.ts && tsx Scripts/VerifyFrontendErrorI18n.ts && tsx Scripts/VerifyAgentRuntimeI18n.ts && tsx Scripts/VerifyFrontendRuntimeI18n.ts",
     "sandbox.prepare": "tsx Build/PrepareSandboxRuntime.ts",
     "check.types": "tsc --noEmit",
-    build:
-      "npm run verify.config-command-contracts && npm run verify.config-form && npm run verify.database-contracts && npm run verify.system-extension-contracts && npm run verify.frontend-events && npm run verify.resource-contract && npm run verify.protocol-reference && npm run verify.i18n && npm run clean && tsc && tsx Build/CopyRuntimeAssets.ts",
     dev: 'concurrently -k -n server,frontend -c blue,green "npm run dev.server" "npm run dev.frontend"',
     "docker.up": "docker compose pull && docker compose up -d",
     "docker.down": "docker compose down",
@@ -268,6 +263,23 @@ function inspectRootScripts(): string[] {
 
   return [
     ...inspectScripts(rootPackage, "package.json", expectedScripts),
+    ...inspectScriptSequence(rootPackage, "package.json", "build", [
+      "verify.config-command-contracts",
+      "verify.self-command-contract",
+      "verify.config-form",
+      "verify.database-contracts",
+      "verify.system-extension-contracts",
+      "verify.agent-directory-client",
+      "verify.frontend-events",
+      "verify.resource-contract",
+      "verify.protocol-reference",
+      "verify.i18n",
+      "clean",
+    ]),
+    ...inspectTextIncludes(rootPackage.scripts?.build ?? "", "package.json build", [
+      "&& tsc &&",
+      "tsx Build/CopyRuntimeAssets.ts",
+    ]),
     ...inspectScriptSequence(rootPackage, "package.json", "ci", [
       "quality.security",
       "quality.baml",
@@ -298,12 +310,15 @@ function inspectRootDependencyHygiene(): string[] {
 }
 
 function inspectRootToolchainDependencies(): string[] {
-  return inspectDependencies(
-    rootPackage,
-    "package.json",
-    Object.fromEntries(rootOwnedToolchainDependencies),
-    "devDependencies",
-  );
+  const dependencies = rootPackage.devDependencies ?? {};
+  return [
+    ...[...rootOwnedToolchainDependencies]
+      .filter((name) => !dependencies[name]?.trim())
+      .map((name) => `package.json devDependencies must declare root-owned toolchain dependency ${name}.`),
+    ...(dependencies.vitest === dependencies["@vitest/coverage-v8"]
+      ? []
+      : ["package.json must keep vitest and @vitest/coverage-v8 on the same version range."]),
+  ];
 }
 
 function inspectWorkspaceToolchainDependencyBoundaries(): string[] {
@@ -544,14 +559,16 @@ function inspectReleaseWorkflowGates(): string[] {
   return [
     ...inspectTextIncludes(productReleaseWorkflow, ".github/workflows/release.yml", [
       "workflow_run:",
+      "branches:\n      - main",
       "workflow_dispatch:",
       "release_tag:",
       "recovery_sha:",
       "name: Validate Release Recovery Source",
       "name: Reverify Release Source",
-      "name: Reverify Release Chromium E2E",
-      "name: Reverify Release Windows Platform",
-      "name: Reverify Release Coverage",
+      "uses: ./.github/workflows/verify.yml",
+      "source_ref: ${{ inputs.recovery_sha }}",
+      "needs: recovery-verify",
+      "needs.recovery-verify.result == 'success'",
       "name: Recover Verified Release Tag",
       "name: Inspect recovered release tag",
       "name: Require recovered release source",
@@ -603,17 +620,6 @@ function inspectWorkspaceLockFiles(): string[] {
         "Keep dependency resolution in the root package-lock.json; do not commit workspace-local package-lock.json files.",
       ].join(" "),
     );
-}
-
-function inspectDependencies(
-  packageJson: PackageJson,
-  packagePath: string,
-  expectedDependencies: Record<string, string>,
-  dependencyField: "dependencies" | "devDependencies" = "dependencies",
-): string[] {
-  return Object.entries(expectedDependencies)
-    .filter(([name, version]) => packageJson[dependencyField]?.[name] !== version)
-    .map(([name, version]) => `${packagePath} ${dependencyField} ${name} must be: ${version}`);
 }
 
 function isElectronBuilderFileSet(value: string | ElectronBuilderFileSet): value is ElectronBuilderFileSet {

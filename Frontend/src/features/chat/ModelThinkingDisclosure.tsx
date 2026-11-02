@@ -3,6 +3,7 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { RunRecord } from "../../store/sessionStore";
 import type { ModelThinkingBlock } from "../../store/session/types";
 import { LazyMarkdownRenderer } from "../../shared/code/LazyMarkdownRenderer";
+import { StreamingMarkdownRenderer } from "../../shared/code/StreamingMarkdownRenderer";
 import { MotionDisclosure } from "../../shared/motion";
 import { AppIcon } from "../../shared/ui";
 import { ThinkingSummaryBar } from "./ThinkingSummaryBar";
@@ -18,9 +19,22 @@ export interface ModelThinkingProjection {
 export interface ModelThinkingProjectionBlock {
   id: string;
   content: string;
+  status: ModelThinkingBlock["status"];
   step: number;
   messageIndex: number;
 }
+
+interface ThinkingProjectionCacheEntry {
+  sourceContent: string;
+  id: string;
+  status: ModelThinkingBlock["status"];
+  step: number;
+  messageIndex: number;
+  projection: ModelThinkingProjectionBlock;
+}
+
+const thinkingProjectionBlockCache = new WeakMap<ModelThinkingBlock, ThinkingProjectionCacheEntry>();
+const LIVE_TAIL_FOLLOW_EPSILON_PX = 24;
 
 /**
  * The live "Thinking" row uses the same activity-row geometry as execution
@@ -32,30 +46,40 @@ export function InitialThinkingIndicator({ active = true }: { active?: boolean }
 }
 
 export function projectModelThinking(blocks: readonly ModelThinkingBlock[] = []): ModelThinkingProjection {
-  const content = [...blocks]
-    .map((block, order) => ({ block, order }))
-    .sort(
-      (left, right) =>
-        left.block.step - right.block.step ||
-        left.block.messageIndex - right.block.messageIndex ||
-        left.block.contentIndex - right.block.contentIndex ||
-        left.order - right.order,
-    )
-    .map(({ block }) => ({
-      id: block.id,
-      content: block.content.trim(),
-      status: block.status,
-      step: block.step,
-      messageIndex: block.messageIndex,
-    }))
-    .filter(({ content: value }) => value.length > 0);
-  const latest = content.at(-1);
-  const normalizedBlocks = content.map(({ id, content: value, step, messageIndex }) => ({
-    id,
-    content: value,
-    step,
-    messageIndex,
-  }));
+  const normalizedBlocks: ModelThinkingProjectionBlock[] = [];
+  let latest: ModelThinkingProjectionBlock | undefined;
+
+  for (const block of blocks) {
+    const cached = thinkingProjectionBlockCache.get(block);
+    const projected =
+      cached &&
+      cached.sourceContent === block.content &&
+      cached.id === block.id &&
+      cached.status === block.status &&
+      cached.step === block.step &&
+      cached.messageIndex === block.messageIndex
+        ? cached.projection
+        : {
+            id: block.id,
+            content: block.content.trim(),
+            status: block.status,
+            step: block.step,
+            messageIndex: block.messageIndex,
+          };
+    if (projected !== cached?.projection) {
+      thinkingProjectionBlockCache.set(block, {
+        sourceContent: block.content,
+        id: block.id,
+        status: block.status,
+        step: block.step,
+        messageIndex: block.messageIndex,
+        projection: projected,
+      });
+    }
+    if (projected.content.length === 0) continue;
+    normalizedBlocks.push(projected);
+    latest = projected;
+  }
 
   return {
     // The compact line represents the latest model reasoning, rather than an
@@ -67,24 +91,18 @@ export function projectModelThinking(blocks: readonly ModelThinkingBlock[] = [])
 }
 
 function readFirstThinkingLine(value: string): string {
-  const firstLine =
-    value
-      .split(/\r?\n+/u)
-      .map((line) => line.trim())
-      .find(Boolean) ?? "";
+  const firstLine = value.match(/[^\r\n]*\S[^\r\n]*/u)?.[0]?.trim() ?? "";
   return firstLine.replace(/\s+/gu, " ").trim();
 }
 
 export function RunThinkingPresentation({
   run,
   blocks,
-  current = false,
   presentation = "terminal-only",
   showSummaryWhenEmpty = true,
 }: {
   run?: RunRecord;
   blocks?: readonly ModelThinkingBlock[];
-  current?: boolean;
   presentation?: "terminal-only" | "live-final-answer";
   showSummaryWhenEmpty?: boolean;
 }): JSX.Element | null {
@@ -94,44 +112,87 @@ export function RunThinkingPresentation({
       <ThinkingSummaryBar run={run} presentation={presentation} />
     ) : null;
   }
-  return <ModelThinkingDisclosure projection={{ ...projection, streaming: current }} />;
+  return <ModelThinkingDisclosure projection={projection} />;
 }
 
 function ModelThinkingDisclosure({ projection }: { projection: ModelThinkingProjection }): JSX.Element {
   const [expanded, setExpanded] = useState(() => projection.streaming);
   const transcriptId = useId();
   const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const transcriptContentRef = useRef<HTMLDivElement | null>(null);
   const shouldFollowLiveTail = useRef(true);
-  const wasStreaming = useRef(projection.streaming);
+  const tailSyncFrame = useRef<number | null>(null);
   const latest = projection.blocks.at(-1);
+  const latestUnit = readThinkingUnitIdentity(latest);
+  const lifecycleRef = useRef({ unit: latestUnit, streaming: projection.streaming });
+  const liveTailState = useRef({ expanded, streaming: projection.streaming });
+  liveTailState.current = { expanded, streaming: projection.streaming };
 
-  useEffect(() => {
-    if (!wasStreaming.current && projection.streaming) {
+  useLayoutEffect(() => {
+    const previous = lifecycleRef.current;
+    const startedNewThinkingUnit = latestUnit !== undefined && latestUnit !== previous.unit && projection.streaming;
+    const completedCurrentThinkingUnit = previous.unit === latestUnit && previous.streaming && !projection.streaming;
+
+    if (startedNewThinkingUnit) {
       shouldFollowLiveTail.current = true;
       setExpanded(true);
     }
-    if (wasStreaming.current && !projection.streaming) {
+    if (completedCurrentThinkingUnit) {
+      shouldFollowLiveTail.current = false;
       setExpanded(false);
     }
-    wasStreaming.current = projection.streaming;
-  }, [projection.streaming]);
+    lifecycleRef.current = { unit: latestUnit, streaming: projection.streaming };
+  }, [latestUnit, projection.streaming]);
 
-  useLayoutEffect(() => {
-    if (!expanded || !projection.streaming || !shouldFollowLiveTail.current) return;
-    const frame = requestAnimationFrame(() => {
+  const scheduleTailSync = useCallback(() => {
+    if (tailSyncFrame.current !== null) return;
+    tailSyncFrame.current = requestAnimationFrame(() => {
+      tailSyncFrame.current = null;
       const transcript = transcriptRef.current;
-      if (transcript && shouldFollowLiveTail.current) {
-        transcript.scrollTop = transcript.scrollHeight;
+      const live = liveTailState.current;
+      if (transcript && live.expanded && live.streaming && shouldFollowLiveTail.current) {
+        scrollTranscriptToLiveTail(transcript);
       }
     });
-    return () => cancelAnimationFrame(frame);
-  }, [expanded, latest?.content, latest?.id, projection.streaming]);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!expanded || !projection.streaming) return;
+    scheduleTailSync();
+  }, [expanded, latest?.content, latest?.id, projection.streaming, scheduleTailSync]);
+
+  useEffect(() => {
+    if (!expanded || !projection.streaming) return;
+    const transcript = transcriptRef.current;
+    const content = transcriptContentRef.current;
+    if (!transcript || !content || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(scheduleTailSync);
+    observer.observe(transcript);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [expanded, projection.streaming, scheduleTailSync]);
+
+  useEffect(
+    () => () => {
+      if (tailSyncFrame.current !== null) cancelAnimationFrame(tailSyncFrame.current);
+    },
+    [],
+  );
 
   const handleTranscriptScroll = useCallback(() => {
     const transcript = transcriptRef.current;
     if (!transcript) return;
-    shouldFollowLiveTail.current = transcript.scrollHeight - transcript.clientHeight - transcript.scrollTop <= 24;
+    shouldFollowLiveTail.current = isTranscriptAtLiveTail(transcript);
   }, []);
+  const handleToggle = useCallback(() => {
+    setExpanded((open) => {
+      const next = !open;
+      if (!next) shouldFollowLiveTail.current = false;
+      else if (projection.streaming) shouldFollowLiveTail.current = true;
+      return next;
+    });
+  }, [projection.streaming]);
   const status = frontendMessage(projection.streaming ? "chat.thinking.running" : "chat.thinking.completed");
 
   return (
@@ -147,7 +208,7 @@ function ModelThinkingDisclosure({ projection }: { projection: ModelThinkingProj
         aria-controls={transcriptId}
         aria-expanded={expanded}
         aria-label={frontendMessage(expanded ? "chat.thinking.collapseTranscript" : "chat.thinking.expandTranscript")}
-        onClick={() => setExpanded((open) => !open)}
+        onClick={handleToggle}
       >
         <span
           className={`model-thinking-disclosure__icon${projection.streaming ? " model-thinking-disclosure__icon--active" : ""}`}
@@ -156,7 +217,7 @@ function ModelThinkingDisclosure({ projection }: { projection: ModelThinkingProj
           data-live-activity-icon={projection.streaming || undefined}
           aria-hidden="true"
         >
-          <AppIcon icon="activity" size={14} />
+          <AppIcon icon="thinking" size={14} />
         </span>
         <span className="model-thinking-disclosure__summary" aria-live={projection.streaming ? "polite" : undefined}>
           <span className="model-thinking-disclosure__label">{status}</span>
@@ -182,20 +243,29 @@ function ModelThinkingDisclosure({ projection }: { projection: ModelThinkingProj
           <AppIcon icon="chevron-right" size={14} />
         </span>
       </button>
-      <MotionDisclosure open={expanded} id={transcriptId} className="model-thinking-disclosure__content">
+      <MotionDisclosure
+        open={expanded}
+        id={transcriptId}
+        strategy="stable"
+        className="model-thinking-disclosure__content"
+      >
         <div
           ref={transcriptRef}
           className="model-thinking-disclosure__transcript"
           data-model-thinking-transcript
+          data-senera-scroll-owner="thinking"
           onScroll={handleTranscriptScroll}
         >
-          {projection.blocks.map((block, index) => (
-            <ThinkingTranscriptBlock
-              key={block.id}
-              block={block}
-              startsModelRequest={index > 0 && isNewModelRequest(projection.blocks[index - 1], block)}
-            />
-          ))}
+          <div ref={transcriptContentRef} className="model-thinking-disclosure__transcript-content">
+            {projection.blocks.map((block, index) => (
+              <ThinkingTranscriptBlock
+                key={block.id}
+                block={block}
+                streaming={projection.streaming && block.id === latest?.id && block.status === "streaming"}
+                startsModelRequest={index > 0 && isNewModelRequest(projection.blocks[index - 1], block)}
+              />
+            ))}
+          </div>
         </div>
       </MotionDisclosure>
     </section>
@@ -204,18 +274,26 @@ function ModelThinkingDisclosure({ projection }: { projection: ModelThinkingProj
 
 const ThinkingTranscriptBlock = memo(function ThinkingTranscriptBlock({
   block,
+  streaming,
   startsModelRequest,
 }: {
   block: ModelThinkingProjectionBlock;
+  streaming: boolean;
   startsModelRequest: boolean;
 }): JSX.Element {
   return (
     <>
       {startsModelRequest ? <div className="model-thinking-disclosure__break" aria-hidden="true" /> : null}
       <div className="model-thinking-disclosure__entry" data-model-thinking-entry>
-        <LazyMarkdownRenderer compact lightweightCode>
-          {block.content}
-        </LazyMarkdownRenderer>
+        {streaming ? (
+          <StreamingMarkdownRenderer compact showCaret={false}>
+            {block.content}
+          </StreamingMarkdownRenderer>
+        ) : (
+          <LazyMarkdownRenderer compact lightweightCode>
+            {block.content}
+          </LazyMarkdownRenderer>
+        )}
       </div>
     </>
   );
@@ -223,4 +301,18 @@ const ThinkingTranscriptBlock = memo(function ThinkingTranscriptBlock({
 
 function isNewModelRequest(previous: ModelThinkingProjectionBlock, next: ModelThinkingProjectionBlock): boolean {
   return previous.step !== next.step || previous.messageIndex !== next.messageIndex;
+}
+
+function readThinkingUnitIdentity(block: ModelThinkingProjectionBlock | undefined): string | undefined {
+  if (!block) return undefined;
+  return `${block.step}:${block.messageIndex}:${block.id}`;
+}
+
+function scrollTranscriptToLiveTail(transcript: HTMLElement): void {
+  const target = Math.max(0, transcript.scrollHeight - transcript.clientHeight);
+  if (transcript.scrollTop !== target) transcript.scrollTop = target;
+}
+
+function isTranscriptAtLiveTail(transcript: HTMLElement): boolean {
+  return transcript.scrollHeight - transcript.clientHeight - transcript.scrollTop <= LIVE_TAIL_FOLLOW_EPSILON_PX;
 }

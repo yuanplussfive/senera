@@ -14,6 +14,8 @@ import {
   readDraftOrEffectiveValue,
   readModelGroups,
   readModelCapabilities,
+  readModelInvocationCapabilities,
+  readModelToolPlanningMode,
   readModelProviders,
   readProviderModelRows,
   readProviderEndpoints,
@@ -21,12 +23,17 @@ import {
   sortProviderRows,
   sortProviderModelRows,
 } from "../../chat/modelConfigData";
+import {
+  agentModelMeetsRequirements,
+  AgentModelPlanningRequirements,
+} from "../../../api/generatedModelCapabilityContract";
 import type {
   ModelCapabilitiesDraft,
   ModelProviderDraft,
   ProviderEndpointDraft,
   ProviderModelGroup,
   ProviderModelInfo,
+  ResolvedModelCapabilitiesDraft,
 } from "../../chat/modelConfigTypes";
 
 export type DefaultModelSlotId = "assistant";
@@ -126,7 +133,7 @@ export interface ReadProviderModelListStateInput {
 export interface DefaultAssistantModelCandidate {
   model: ModelProviderDraft;
   provider: ProviderEndpointDraft;
-  capabilities: Required<ModelCapabilitiesDraft>;
+  capabilities: ResolvedModelCapabilitiesDraft;
 }
 
 export const defaultModelSlotDefinitions = [
@@ -307,7 +314,7 @@ export function readDefaultModelSlotStates({
  * Returns the only candidates exposed by the dedicated default-model surface.
  * Model enablement is intentionally not inferred here: the backend persists
  * provider enablement only, so a configured model is eligible when its provider
- * is enabled and its resolved capabilities include chat.
+ * is enabled and its effective configuration satisfies the shared planning requirements.
  */
 export function readDefaultAssistantModelCandidates({
   models,
@@ -325,7 +332,12 @@ export function readDefaultAssistantModelCandidates({
       return [];
     }
     const capabilities = readModelCapabilities(model, modelTemplate);
-    return capabilities.Chat === false ? [] : [{ model, provider, capabilities }];
+    return agentModelMeetsRequirements(
+      readModelInvocationCapabilities(model, modelTemplate),
+      AgentModelPlanningRequirements[readModelToolPlanningMode(model, modelTemplate)],
+    )
+      ? [{ model, provider, capabilities }]
+      : [];
   });
 }
 

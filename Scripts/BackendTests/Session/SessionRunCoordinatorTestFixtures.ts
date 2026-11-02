@@ -84,15 +84,26 @@ export function completedRun(_requestId: string): AgentCompletedRunResult {
   };
 }
 
-export function createPendingLoop(): { loop: AgentLoopRunner; started: Promise<void> } {
+export function createPendingLoop(): {
+  loop: AgentLoopRunner;
+  started: Promise<void>;
+  boundary: import("../../../Source/AgentSystem/Pi/AgentPiInputBoundary.js").AgentPiInputBoundaryHandler;
+} {
+  let boundary:
+    import("../../../Source/AgentSystem/Pi/AgentPiInputBoundary.js").AgentPiInputBoundaryHandler | undefined;
   let markStarted!: () => void;
   const started = new Promise<void>((resolve) => {
     markStarted = resolve;
   });
   return {
     started,
+    boundary: async (input) => {
+      if (!boundary) throw new Error("The loop has not started.");
+      await boundary(input);
+    },
     loop: {
       run: async (request) => {
+        boundary = request.inputBoundary;
         markStarted();
         return new Promise<AgentCompletedRunResult>((_resolve, reject) => {
           const rejectCancellation = () =>

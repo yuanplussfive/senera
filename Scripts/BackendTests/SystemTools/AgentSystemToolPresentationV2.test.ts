@@ -468,7 +468,6 @@ function minimalContract(name: string): Record<string, unknown> {
     execution: { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
     runtime: {
       Lifecycle: "Immediate",
-      ProtocolVersion: 2,
       ResultAssessment: "ProcessExit",
       Scheduling: "Parallel",
     },

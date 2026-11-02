@@ -27,6 +27,37 @@ function writeSkill(root: string, name: string, content = "# Skill\n") {
 }
 
 describe("senera self-service Skill inventory", () => {
+  test("reads live registered package sources without exposing undeclared siblings", () => {
+    const root = temporaryRoot();
+    writeSkill(root, "channel-conversation", "# Channel rules\n");
+    writeSkill(root, "undeclared", "# Not registered\n");
+    let enabled = true;
+    const port = createAgentSelfSkillsPort(() =>
+      enabled
+        ? [
+            {
+              id: "extension",
+              displayName: "Extension",
+              kind: "system",
+              root,
+              skillDirectories: ["channel-conversation"],
+            },
+          ]
+        : [],
+    );
+    expect(port.list().map((skill) => skill.name)).toEqual(["channel-conversation"]);
+    expect(port.readResource("channel-conversation", "SKILL.md")).toMatchObject({
+      status: "found",
+      resource: {
+        encoding: "utf8",
+        content: expect.stringContaining("# Channel rules"),
+      },
+    });
+    expect(port.inspect("undeclared").status).toBe("missing");
+    enabled = false;
+    expect(port.readResource("channel-conversation", "SKILL.md").status).toBe("missing");
+  });
+
   test("lists, inspects, and checks registered sources", () => {
     const systemRoot = temporaryRoot();
     const workspaceRoot = temporaryRoot();

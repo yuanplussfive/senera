@@ -1,4 +1,5 @@
 import type { AgentEventSink } from "../Events/AgentEvent.js";
+import { createToolBatchId } from "../Core/AgentIds.js";
 import type { AgentModelUsageLedger } from "../ModelEndpoints/AgentModelUsage.js";
 import type { AgentRootCommand } from "../AgentRootCommand.js";
 import type { AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.js";
@@ -16,9 +17,11 @@ import type { AgentRunActivityReporter } from "../Events/AgentRunActivityReporte
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentResourceAccessGrant } from "../Execution/SeneraResourceAccess.js";
 import type { AgentBrowserTargetAuthorization } from "../Browser/AgentBrowserUrlPolicy.js";
-import type { AgentResidentSpeechUtterance } from "../ResidentSpeech/AgentResidentSpeechTypes.js";
 import type { AgentToolResourceLeaseOwner } from "../ToolRuntime/AgentToolResourceScheduler.js";
 import type { AgentToolCapabilityCacheEntry } from "../ToolSearch/AgentToolCapabilitySessionCache.js";
+import type { AgentModelContextSnapshot } from "../Events/AgentModelContextSnapshot.js";
+import type { AgentResourcePublisher } from "../Resources/AgentResourcePublisher.js";
+import type { AgentToolContractReceipt } from "../ToolSearch/AgentToolContractDelivery.js";
 import {
   AgentPiToolCallPreflightCoordinator,
   type AgentPiToolCallPreflight,
@@ -27,6 +30,7 @@ import {
 } from "./AgentPiToolCallPreflight.js";
 
 export interface AgentPiTurnStateOptions {
+  readonly contextPublisher?: AgentResourcePublisher;
   readonly sessionId?: string;
   readonly systemPrompt: string;
   readonly userMessage: string;
@@ -42,9 +46,6 @@ export interface AgentPiTurnStateOptions {
   readonly toolExposure: AgentToolExposureState;
   readonly activeSkills: readonly AgentPiPlanningSkill[];
   readonly reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[];
-  /** Cross-request evidence lookup for the execution bridge; accepts dynamic
-   * tools whose contract was confirmed earlier in this session. */
-  readonly reusableCapabilityLookup?: (toolName: string) => AgentToolCapabilityCacheEntry | undefined;
   readonly usageLedger: AgentModelUsageLedger;
   readonly toolPlan: AgentPiToolPlanCoordinator;
   readonly tokenBudget: AgentTurnTokenBudget;
@@ -58,18 +59,35 @@ export interface AgentPiTurnStateOptions {
 
 /** Session-local mutable state shared by one Pi run and its native provider. */
 export class AgentPiTurnState {
+  /** The event collector awaits persistence; provider transport continues independently. */
+  readonly modelContexts = new Map<number, Promise<AgentModelContextSnapshot>>();
   private readonly toolPreflights = new AgentPiToolCallPreflightCoordinator();
+  private readonly nestedParents = new Map<string, string>();
+  private readonly compositions = new Map<
+    string,
+    { readonly tools: ReadonlySet<string>; readonly signal: AbortSignal }
+  >();
+  private readonly toolContractReceipts = new Map<string, readonly AgentToolContractReceipt[]>();
   private readonly executedToolResultsByCallId = new Map<string, ExecutedToolCallResult>();
   private readonly executorLifecycleStatusByCallId = new Map<string, "completed" | "failed">();
   private readonly resourceAccessGrantsByCallId = new Map<string, AgentResourceAccessGrant>();
   private readonly browserTargetAuthorizationsByCallId = new Map<string, AgentBrowserTargetAuthorization>();
-  private readonly residentSpeech = new Array<AgentResidentSpeechUtterance>();
   private registeredToolCalls = false;
   private wrapUpReason?: "child_deadline";
   private nextModelMessageIndex = 0;
   private readonly pendingModelMessageIndexes: number[] = [];
 
   constructor(readonly context: AgentPiTurnStateOptions) {}
+
+  registerToolContractReceipts(callId: string, receipts: readonly AgentToolContractReceipt[]): void {
+    this.toolContractReceipts.set(callId, receipts);
+  }
+
+  takeToolContractReceipts(callId: string): readonly AgentToolContractReceipt[] {
+    const receipts = this.toolContractReceipts.get(callId) ?? [];
+    this.toolContractReceipts.delete(callId);
+    return receipts;
+  }
 
   authorizeToolTurn(): { readonly block: boolean; readonly reason?: string } {
     if (this.wrapUpReason) {
@@ -112,6 +130,43 @@ export class AgentPiTurnState {
       this.toolPreflights.unregister(batchId);
       throw error;
     }
+  }
+
+  openToolComposition(parentId: string, tools: readonly string[], signal: AbortSignal): () => void {
+    if (!this.toolPreflights.call(parentId) || this.nestedParents.has(parentId) || this.compositions.has(parentId)) {
+      throw new Error("Tool composition requires a registered root call.");
+    }
+    this.compositions.set(parentId, { tools: new Set(tools), signal });
+    return () => {
+      this.compositions.delete(parentId);
+    };
+  }
+
+  registerNestedToolCall(parentId: string, call: AgentPiToolCallPreflightInput): string {
+    const parent = this.toolPreflights.call(parentId);
+    if (!parent || !this.compositions.get(parentId)?.tools.has(call.toolName)) {
+      throw new Error("Nested calls require an active composition and its authorized tool catalog.");
+    }
+    const batchId = createToolBatchId();
+    this.toolPreflights.register(batchId, [
+      {
+        ...call,
+        parentToolCallId: parentId,
+        modelMessageIndex: parent.modelMessageIndex,
+        modelContentIndex: parent.modelContentIndex,
+      },
+    ]);
+    this.nestedParents.set(call.toolCallId, parentId);
+    return batchId;
+  }
+
+  parentToolCallId(callId: string): string | undefined {
+    return this.nestedParents.get(callId);
+  }
+
+  toolCompositionSignal(callId: string): AbortSignal | undefined {
+    const parentId = this.nestedParents.get(callId);
+    return parentId ? this.compositions.get(parentId)?.signal : undefined;
   }
 
   beginWorkspaceChangeBatch(batchId: string, calls: readonly AgentPiToolCallPreflightInput[]): Promise<void> {
@@ -158,16 +213,6 @@ export class AgentPiTurnState {
     return this.registeredToolCalls;
   }
 
-  recordResidentSpeech(utterance: AgentResidentSpeechUtterance): void {
-    const content = utterance.content.trim();
-    if (!content) throw new Error("Resident speech history cannot record an empty utterance.");
-    this.residentSpeech.push({ ...utterance, content });
-  }
-
-  residentSpeechHistory(): readonly AgentResidentSpeechUtterance[] {
-    return this.residentSpeech.map((utterance) => ({ ...utterance }));
-  }
-
   preflightToolCall(
     event: AgentPiToolCallPreflightInput,
     maxConcurrentCalls: number,
@@ -177,6 +222,18 @@ export class AgentPiTurnState {
   }
 
   claimToolObservationBudget(callId: string, maximumTokens: number): AgentToolTokenReservation {
+    if (this.nestedParents.has(callId)) {
+      const budget = this.context.tokenBudget;
+      return {
+        model: budget.model,
+        callId,
+        batchAllocationTokens: 0,
+        observationBudgetTokens: 0,
+        availableTokens: (maximum) => budget.availableTokens(maximum),
+        commit: () => undefined,
+        release: () => undefined,
+      };
+    }
     return this.context.tokenBudget.claimToolObservation(callId, maximumTokens);
   }
 

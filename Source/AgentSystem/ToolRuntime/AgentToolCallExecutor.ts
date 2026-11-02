@@ -6,7 +6,11 @@ import {
 } from "../Artifacts/AgentToolSourceView.js";
 import { throwIfAborted } from "../Core/AgentCancellation.js";
 import { createToolCallId } from "../Core/AgentIds.js";
-import { DefaultAgentToolArgumentProjection, projectAgentToolArguments } from "../Core/AgentToolArgumentProjection.js";
+import {
+  DefaultAgentToolArgumentProjection,
+  projectAgentToolArguments,
+  projectAgentToolResultForDisplay,
+} from "../Core/AgentToolArgumentProjection.js";
 import { collectAgentToolPresentationArgumentPointers } from "../SystemTools/AgentSystemToolPresentation.js";
 import { readAgentUnknownRecord as readRecord } from "../Core/AgentUnknownValue.js";
 import { emitAgentEvent } from "../Events/AgentEvent.js";
@@ -26,6 +30,7 @@ import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import type { AgentExecutionResourceBroker } from "../ExecutionResources/AgentExecutionResourceBroker.js";
 import { SeneraLocalExecutionEnv } from "../Execution/SeneraLocalExecutionEnv.js";
 import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
+import { createAgentToolExecutionDigest } from "../ToolContracts/AgentToolContractIdentity.js";
 import { projectAgentToolResultPresentation } from "./AgentToolResultPresentation.js";
 import { projectAgentToolInteraction } from "./AgentToolInteractionProjector.js";
 import {
@@ -169,6 +174,11 @@ export class AgentToolCallExecutor {
     const tool = this.resolveTool(request, context.toolAccessGrant, context.interaction);
     const result = await this.runToolCall(tool, request, context);
     const suspension = readSuspendChildRunControl(result.result);
+    const control = readRecord(readRecord(result.result)?.control);
+    if (tool.handler.kind === "HostCapability" && control?.kind === "SuspendRun" && control.reason === "channel-wait") {
+      readRequiredText(control, "id", "Channel suspension is missing its durable wait identity.");
+      return { kind: "SuspendRun", value: [result] };
+    }
 
     return suspension
       ? {
@@ -194,8 +204,8 @@ export class AgentToolCallExecutor {
       throw new AgentLocalizedError("tool.notRegisteredOrAllowed", { toolName: request.name });
     }
     if (
-      request.expectedContractDigest !== undefined &&
-      (tool.contract?.digest ?? null) !== request.expectedContractDigest
+      request.expectedExecutionDigest !== undefined &&
+      createAgentToolExecutionDigest(tool) !== request.expectedExecutionDigest
     ) {
       throw new AgentLocalizedError("tool.catalogRevisionChanged", { toolName: request.name });
     }
@@ -297,6 +307,7 @@ export class AgentToolCallExecutor {
           resourceAccessGrant: context.resourceAccessGrant,
           browserTargetAuthorization: context.browserTargetAuthorization,
           workspaceObservation: context.workspaceObservation,
+          composition: context.composition,
         }),
         tool.runtime.ResultAssessment,
       );
@@ -343,6 +354,7 @@ export class AgentToolCallExecutor {
         process,
         artifactPayload: execution.artifactPayload,
         outputCapture: execution.outputCapture,
+        ...(execution.toolContractReceipts ? { toolContractReceipts: execution.toolContractReceipts } : {}),
         ...(tool.runtime.ResultStorage ? { resultStorage: tool.runtime.ResultStorage } : {}),
         ...(sourceArtifacts ? { sourceArtifacts } : {}),
         result,
@@ -416,8 +428,11 @@ export class AgentToolCallExecutor {
     );
     if (lifecycleEmitted) context.onLifecycleSettled?.(error ? "failed" : "completed");
     if (!context.deferResultDetail) {
+      const resultDetail = projectAgentToolResultForDisplay(
+        redactArtifactSecrets(result.result, result.artifactPolicy),
+      ).value;
       await this.emitLifecycle(context, ({ requestId, step }) =>
-        this.events.toolCallResultDetail(requestId, step, index, result.name, result.callId, result.result, {
+        this.events.toolCallResultDetail(requestId, step, index, result.name, result.callId, resultDetail, {
           origin,
           batchId: context.batchId,
           presentation,

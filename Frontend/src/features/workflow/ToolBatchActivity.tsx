@@ -1,3 +1,4 @@
+import { Tooltip } from "../../shared/ui/Tooltip";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "../../lib/util";
 import { type TimelineStep } from "../../store/sessionStore";
@@ -184,9 +185,11 @@ function ToolBatchActivityItemRow({
             <ToolBatchFileChangeRow key={`${row.path ?? row.label}:${row.status ?? "change"}`} row={row} />
           ))
         ) : item.workspaceSummary ? (
-          <span className="block min-h-[18px] min-w-0 truncate leading-[18px] text-content-primary" title={item.label}>
-            <WorkspaceActivitySummaryText summary={item.workspaceSummary} />
-          </span>
+          <Tooltip content={item.label}>
+            <span className="block min-h-[18px] min-w-0 truncate leading-[18px] text-content-primary">
+              <WorkspaceActivitySummaryText summary={item.workspaceSummary} />
+            </span>
+          </Tooltip>
         ) : (
           <ToolActivityLabel
             inspection={item.inspection}
@@ -207,31 +210,32 @@ function isLiveStepStatus(status: TimelineStep["status"]): boolean {
 function ToolBatchFileChangeRow({ row }: { row: ToolActivityRow }): JSX.Element {
   const displayPath = row.path ? fileName(row.path) : undefined;
   return (
-    <span
-      className="flex min-h-[18px] min-w-0 items-center gap-1.5 leading-[18px] text-content-secondary"
-      data-tool-file-change-row
-      data-workspace-file-status={row.status}
-      aria-label={row.label}
-      title={row.path ?? row.label}
-    >
-      {row.action && displayPath ? (
-        <>
-          <AppIcon
-            icon="file-text"
-            size={13}
-            className="shrink-0 text-content-muted"
-            data-tool-file-change-icon
-            aria-hidden="true"
-          />
-          <span className="block min-w-0 truncate text-content-primary" data-tool-file-change-text>
-            <span>{row.action}</span> <span className="text-[11px]">{displayPath}</span>
-          </span>
-          <ToolBatchFileChangeDelta addedLines={row.addedLines} removedLines={row.removedLines} />
-        </>
-      ) : (
-        <span className="min-w-0 truncate text-content-primary">{row.label}</span>
-      )}
-    </span>
+    <Tooltip content={row.path ?? row.label}>
+      <span
+        className="flex min-h-[18px] min-w-0 items-center gap-1.5 leading-[18px] text-content-secondary"
+        data-tool-file-change-row
+        data-workspace-file-status={row.status}
+        aria-label={row.label}
+      >
+        {row.action && displayPath ? (
+          <>
+            <AppIcon
+              icon="file-text"
+              size={13}
+              className="shrink-0 text-content-muted"
+              data-tool-file-change-icon
+              aria-hidden="true"
+            />
+            <span className="block min-w-0 truncate text-content-primary" data-tool-file-change-text>
+              <span>{row.action}</span> <span className="text-[11px]">{displayPath}</span>
+            </span>
+            <ToolBatchFileChangeDelta addedLines={row.addedLines} removedLines={row.removedLines} />
+          </>
+        ) : (
+          <span className="min-w-0 truncate text-content-primary">{row.label}</span>
+        )}
+      </span>
+    </Tooltip>
   );
 }
 
@@ -335,6 +339,7 @@ function projectToolBatchActivityFromSteps(
       origin: step.toolOrigin,
       arguments: step.toolArgs,
       result: step.toolPresentation,
+      rawResult: step.toolResult,
       durationMs: step.durationMs,
       status: readToolActivityStatus(step.status),
     });

@@ -7,6 +7,9 @@ import type {
 } from "../Extensions/AgentExtensionValueExpression.js";
 import type { AgentMcpPackage, AgentMcpPackageServer, AgentMcpRuntimeEndpoint } from "./AgentMcpPackageTypes.js";
 import { assertNoMissingAgentMcpInputs, resolveAgentMcpValueExpression } from "./AgentMcpValueExpression.js";
+import type { AgentMcpExpressionRuntimeValues } from "./AgentMcpValueExpression.js";
+import { resolveModelProviderCatalog } from "../Defaults/AgentModelProviderDefaults.js";
+import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
 
 const ProcessEnvironmentInputResolver: AgentExtensionValueResolver = {
   resolve(_serverId: string, binding: AgentExtensionValueBinding): AgentExtensionValueResolution | undefined {
@@ -21,6 +24,7 @@ export function createAgentMcpPackageEndpoint(
   server: AgentMcpPackageServer,
   inputs: AgentExtensionValueResolver = ProcessEnvironmentInputResolver,
   workspaceRoot?: string,
+  resolveModelConnection?: AgentMcpExpressionRuntimeValues["resolveModelConnection"],
 ): AgentMcpRuntimeEndpoint {
   const configuration = server.configuration;
   const missing = new Set<string>();
@@ -33,6 +37,7 @@ export function createAgentMcpPackageEndpoint(
       {
         packageRoot: package_.rootPath,
         workspaceRoot,
+        resolveModelConnection,
       },
       missing,
     );
@@ -63,6 +68,25 @@ export function createAgentMcpPackageEndpoint(
   };
   assertNoMissingAgentMcpInputs(server.name, missing);
   return endpoint;
+}
+
+/** Only the explicitly selected model's connection enters the plugin process. */
+export function createAgentMcpModelConnectionResolver(
+  config: AgentSystemConfig,
+): NonNullable<AgentMcpExpressionRuntimeValues["resolveModelConnection"]> {
+  return (modelId, capability) => {
+    const model = resolveModelProviderCatalog(config).resolve(modelId);
+    if (model.Capabilities?.[capability] !== true)
+      throw new Error(`Configured model ${modelId} does not declare ${capability}.`);
+    return JSON.stringify({
+      id: model.Id,
+      model: model.Model,
+      baseUrl: model.BaseUrl,
+      apiKey: model.ApiKey,
+      headers: model.Headers,
+      endpoint: model.Endpoint,
+    });
+  };
 }
 
 function resolveRecord(

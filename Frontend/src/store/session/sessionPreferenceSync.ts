@@ -14,7 +14,7 @@ type SessionPreferenceSnapshot = Pick<
   | "motionLevel"
   | "executionApprovalMode"
   | "userProfile"
-  | "workflowDockWidth"
+  | "workflowDockWidthRatio"
 >;
 
 type SessionPreferenceUpdate = Partial<SessionPreferenceSnapshot & Pick<StoreState, "sidebarCollapsed">>;
@@ -51,8 +51,11 @@ export function installSessionPreferenceSynchronization(port: SessionPreferenceS
     ) {
       changes.executionApprovalMode = preferences.executionApprovalMode;
     }
-    if (preferences.workflowDockWidth !== undefined && preferences.workflowDockWidth !== current.workflowDockWidth) {
-      changes.workflowDockWidth = preferences.workflowDockWidth;
+    if (
+      preferences.workflowDockWidthRatio !== undefined &&
+      preferences.workflowDockWidthRatio !== current.workflowDockWidthRatio
+    ) {
+      changes.workflowDockWidthRatio = preferences.workflowDockWidthRatio;
     }
     if (preferences.userProfile !== undefined) {
       const profile = normalizeUserProfile(preferences.userProfile);

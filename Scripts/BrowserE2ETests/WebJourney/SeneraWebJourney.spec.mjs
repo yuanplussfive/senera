@@ -7,8 +7,6 @@ import { createBrowserE2eHarness, expect, test } from "../browserE2eTest.mjs";
 let disabledHarness;
 let requiredHarness;
 
-test.describe.configure({ mode: "serial" });
-
 test.describe("authenticationMode=disabled", () => {
   test.beforeAll(async () => {
     disabledHarness = await createBrowserE2eHarness({ authenticationMode: "disabled" });
@@ -27,32 +25,10 @@ test.describe("authenticationMode=disabled", () => {
 
     expect(await (await authenticationResponse).json()).toMatchObject({
       ok: true,
-      session: { state: "disabled" },
+      session: { state: "authenticated", method: "local" },
     });
     await expect(page.getByRole("heading", { name: "管理员登录" })).toHaveCount(0);
     await expect(workspaceComposer(page)).toBeVisible();
-  });
-
-  test("loads a /settings/... deep link in the Web settings overlay @smoke", async ({ page }) => {
-    await page.goto(`${disabledHarness.httpOrigin}/settings/appearance`);
-
-    await expect(page.locator("[data-settings-workbench]")).toBeVisible();
-    await expect(page.getByRole("dialog").getByRole("heading", { level: 3, name: "界面风格" })).toBeVisible();
-    await expect(page).toHaveURL(`${disabledHarness.httpOrigin}/settings/appearance`);
-  });
-
-  test("opens and closes the Web settings overlay from the workspace", async ({ page }) => {
-    await page.goto(disabledHarness.httpOrigin);
-    await expect(workspaceComposer(page)).toBeVisible();
-
-    await openProfileMenu(page);
-    await page.getByRole("menuitem", { name: "设置", exact: true }).click();
-
-    await expect(page.locator("[data-settings-workbench]")).toBeVisible();
-    await expect(page).toHaveURL(/\?settings=model-service$/);
-    await page.getByRole("button", { name: "关闭设置" }).click();
-    await expect(page.locator("[data-settings-workbench]")).toHaveCount(0);
-    await expect(page).toHaveURL(`${disabledHarness.httpOrigin}/`);
   });
 
   test("switches providers after the real input blur chain without inventing unsaved changes", async ({ page }) => {
@@ -93,42 +69,7 @@ test.describe("authenticationMode=disabled", () => {
     await expect(apiUrl).toHaveValue("not-a-url");
   });
 
-  test("keeps the workspace stable while the Web settings chunk is loading", async ({ page }) => {
-    let releaseSettingsChunk = () => undefined;
-    let markSettingsChunkRequested = () => undefined;
-    const settingsChunkGate = new Promise((resolve) => {
-      releaseSettingsChunk = resolve;
-    });
-    const settingsChunkRequested = new Promise((resolve) => {
-      markSettingsChunkRequested = resolve;
-    });
-    await page.route(/\/assets\/SettingsOverlay-[^/]+\.js(?:\?.*)?$/, async (route) => {
-      markSettingsChunkRequested();
-      await settingsChunkGate;
-      await route.continue();
-    });
-
-    try {
-      await page.goto(disabledHarness.httpOrigin);
-      await expect(workspaceComposer(page)).toBeVisible();
-      await openProfileMenu(page);
-      await settingsChunkRequested;
-      await page.getByRole("menuitem", { name: "设置", exact: true }).click();
-
-      await expect(workspaceComposer(page)).toBeVisible();
-      await expect(page.locator("[data-settings-loading]")).toHaveCount(0);
-      await expect(page.locator("[data-settings-workbench]")).toHaveCount(0);
-      await expect(page).toHaveURL(`${disabledHarness.httpOrigin}/`);
-
-      releaseSettingsChunk();
-      await expect(page.locator("[data-settings-workbench]")).toBeVisible();
-      await expect(page).toHaveURL(/\?settings=model-service$/);
-    } finally {
-      releaseSettingsChunk();
-    }
-  });
-
-  test("keeps keyboard focus across portaled profile surfaces", async ({ page }) => {
+  test("keeps keyboard focus across portaled profile surfaces @smoke", async ({ page }) => {
     await page.goto(disabledHarness.httpOrigin);
     await expect(workspaceComposer(page)).toBeVisible();
 
@@ -173,68 +114,41 @@ test.describe("authenticationMode=disabled", () => {
     await expect(trigger).toBeFocused();
   });
 
-  test("runs session context actions through the real keyboard event chain", async ({ page }) => {
-    await page.goto(disabledHarness.httpOrigin);
-    await expect(workspaceComposer(page)).toBeVisible();
-
-    await newSessionButton(page).click();
-    const sessionRow = page.locator("[data-session-row]").first();
-    const sessionId = await sessionRow.getAttribute("data-session-row");
-    expect(sessionId).toBeTruthy();
-    const stableSessionRow = page.locator(`[data-session-row="${sessionId}"]`);
-    const selection = sessionRow.getByRole("button", { name: /^打开会话：/ });
-    await expect(selection).toBeVisible();
-    await expect(sessionRow.getByRole("button", { name: "more" })).toHaveCount(0);
-
-    await selection.focus();
-    await selection.press("Shift+F10");
-
-    const menu = page.getByRole("menu");
-    const rename = menu.getByRole("menuitem", { name: "重命名" });
-    await expectPortaledOutsideSessionSidebar(menu);
-    await expect(rename).toBeFocused();
-
-    await page.keyboard.press("Escape");
-    await expect(menu).toBeHidden();
-    await expect(selection).toBeFocused();
-
-    await selection.press("Shift+F10");
-    await rename.press("Enter");
-
-    const renameDialog = page.getByRole("dialog", { name: "重命名会话" });
-    await expectPortaledOutsideSessionSidebar(renameDialog);
-    await expect(renameDialog.getByRole("textbox")).toBeFocused();
-    await renameDialog.getByRole("textbox").fill("  Browser renamed session  ");
-    await renameDialog.getByRole("button", { name: "保存" }).click();
-
-    const renamedSelection = page.getByRole("button", { name: "打开会话：Browser renamed session" });
-    await expect(renamedSelection).toBeVisible();
-    await expect(renamedSelection).toBeFocused();
-
-    await renamedSelection.press("Shift+F10");
-    await page.getByRole("menuitem", { name: "删除历史" }).press("Enter");
-
-    const confirmation = page.getByRole("dialog", { name: "删除当前会话" });
-    await expectPortaledOutsideSessionSidebar(confirmation);
-    await confirmation.getByRole("button", { name: "永久删除" }).click();
-    await expect(stableSessionRow).toHaveCount(0);
-  });
-
   test("navigates the real workflow dock tabs with browser focus and arrow keys", async ({ page }) => {
     await page.goto(disabledHarness.httpOrigin);
     await expect(workspaceComposer(page)).toBeVisible();
     const dock = await openWorkflowDock(page);
     const executionTab = dock.getByRole("tab", { name: "执行" });
-    const terminalTab = dock.getByRole("tab", { name: "终端" });
+    const workspaceTab = dock.getByRole("tab", { name: "工作区", exact: true });
+    const agentsTab = dock.getByRole("tab", { name: "子代理" });
+    const insightsTab = dock.getByRole("tab", { name: "洞察" });
 
     await executionTab.focus();
     await expect(executionTab).toBeFocused();
     await executionTab.press("ArrowRight");
-    await expect(terminalTab).toBeFocused();
-    await expect(terminalTab).toHaveAttribute("aria-selected", "true");
-    await expect(dock.locator('[data-terminal-dock="dock"]')).toBeVisible();
+    await expect(workspaceTab).toBeFocused();
+    await expect(workspaceTab).toHaveAttribute("aria-selected", "true");
+    await expect(dock.getByRole("tabpanel", { name: "工作区", exact: true })).toBeVisible();
 
-    await terminalTab.press("ArrowLeft");
+    await workspaceTab.press("ArrowRight");
+    await expect(agentsTab).toBeFocused();
+    await expect(agentsTab).toHaveAttribute("aria-selected", "true");
+    await expect(dock.locator("[data-agent-board-panel]")).toBeVisible();
+
+    await agentsTab.press("ArrowRight");
+    await expect(insightsTab).toBeFocused();
+    await expect(insightsTab).toHaveAttribute("aria-selected", "true");
+    await expect(dock.getByRole("tabpanel", { name: "洞察", exact: true })).toBeVisible();
+
+    await insightsTab.press("ArrowLeft");
+    await expect(agentsTab).toBeFocused();
+    await expect(agentsTab).toHaveAttribute("aria-selected", "true");
+    await expect(dock.locator("[data-agent-board-panel]")).toBeVisible();
+
+    await agentsTab.press("ArrowLeft");
+    await expect(workspaceTab).toBeFocused();
+    await expect(workspaceTab).toHaveAttribute("aria-selected", "true");
+    await workspaceTab.press("ArrowLeft");
     await expect(executionTab).toBeFocused();
     await expect(executionTab).toHaveAttribute("aria-selected", "true");
   });
@@ -291,8 +205,11 @@ test.describe("authenticationMode=disabled", () => {
       ]);
 
     const resizedWidth = Number(await separator.getAttribute("aria-valuenow"));
-    const persistedWidth = await readPersistedWorkflowDockWidth(page);
-    expect(persistedWidth).toBe(resizedWidth);
+    const persistedRatio = await readPersistedWorkflowDockWidthRatio(page);
+    const sessionPanelWidth = Number(
+      await page.getByRole("separator", { name: "调整会话栏宽度" }).getAttribute("aria-valuenow"),
+    );
+    expect(persistedRatio).toBeCloseTo(resizedWidth / (page.viewportSize().width - sessionPanelWidth));
 
     await page.reload();
     await expect(workspaceComposer(page)).toBeVisible();
@@ -317,23 +234,6 @@ test.describe("authenticationMode=disabled", () => {
       scrollWidth: document.documentElement.scrollWidth,
     }));
     expect(viewport.scrollWidth).toBeLessThanOrEqual(viewport.clientWidth + 1);
-  });
-
-  test("shows the application error UI when a dynamic chunk returns 404", async ({ page }) => {
-    await page.route(/\/assets\/App-[^/]+\.js(?:\?.*)?$/, async (route) => {
-      await route.fulfill({
-        status: 404,
-        contentType: "application/javascript",
-        body: "// Expected Browser E2E dynamic chunk failure.",
-      });
-    });
-
-    await page.goto(disabledHarness.httpOrigin);
-
-    const alert = page.getByRole("alert");
-    await expect(alert.getByRole("heading", { name: "界面暂时无法继续显示" })).toBeVisible();
-    await expect(alert.getByRole("button", { name: "刷新页面" })).toBeVisible();
-    await expect(alert.getByRole("button", { name: "重新渲染" })).toHaveCount(0);
   });
 });
 
@@ -405,7 +305,7 @@ test.describe("authenticationMode=required", () => {
     await expect(workspaceComposer(page)).toHaveCount(0);
   });
 
-  test("runs a real model-backed turn and restores its session after reload @smoke", async ({ page }) => {
+  test("runs a model-backed turn and persists synchronized retractable feedback @smoke", async ({ page }) => {
     await page.goto(requiredHarness.httpOrigin);
     await login(page);
 
@@ -424,10 +324,34 @@ test.describe("authenticationMode=required", () => {
     expect(geometry.eventRailRight).not.toBeNull();
     expect(geometry.eventRailRight).toBeLessThanOrEqual(geometry.workflowCapsuleLeft ?? Number.POSITIVE_INFINITY);
 
+    const feedback = page.locator("[data-message-feedback]").last();
+    await page.locator("[data-assistant-turn]").last().hover();
+    await feedback.locator('[data-message-feedback-action="positive"]').click();
+    const feedbackDialog = page.getByRole("dialog");
+    await feedbackDialog.locator('[data-feedback-category="task_result"]').click();
+    await feedbackDialog.getByRole("button", { name: "提交评价" }).click();
+    await expect(feedback).toHaveAttribute("data-message-feedback", "positive");
+
     await page.reload();
     await expect(workspaceComposer(page)).toBeVisible();
     await expect(readUserMessage(page, RealRuntimeIntegrationValues.DirectRequestInput)).toBeVisible();
     await expect(readAssistantMessage(page, RealRuntimeIntegrationValues.DirectFinalAnswer)).toBeVisible();
+    await expect(feedback).toHaveAttribute("data-message-feedback", "positive");
+
+    const peer = await page.context().newPage();
+    try {
+      await peer.goto(requiredHarness.httpOrigin);
+      const peerFeedback = peer.locator("[data-message-feedback]").last();
+      await expect(peerFeedback).toHaveAttribute("data-message-feedback", "positive");
+      await page.locator("[data-assistant-turn]").last().hover();
+      await feedback.locator('[data-message-feedback-action="positive"]').click();
+      await expect(feedback).toHaveAttribute("data-message-feedback", "none");
+      await expect(peerFeedback).toHaveAttribute("data-message-feedback", "none");
+      await page.reload();
+      await expect(page.locator("[data-message-feedback]").last()).toHaveAttribute("data-message-feedback", "none");
+    } finally {
+      await peer.close();
+    }
   });
 });
 
@@ -451,20 +375,16 @@ async function openWorkflowDock(page) {
   return dock;
 }
 
-async function readPersistedWorkflowDockWidth(page) {
+async function readPersistedWorkflowDockWidthRatio(page) {
   return page.evaluate(() => {
     const persisted = localStorage.getItem("senera-frontend@v1");
     if (!persisted) return null;
-    return JSON.parse(persisted).state?.workflowDockWidth ?? null;
+    return JSON.parse(persisted).state?.workflowDockWidthRatio ?? null;
   });
 }
 
 function profileMenuButton(page) {
   return visibleSessionSidebar(page).getByRole("button").filter({ hasText: "用户" });
-}
-
-function newSessionButton(page) {
-  return visibleSessionSidebar(page).locator("[data-session-header]").getByRole("button", { name: "新建对话" });
 }
 
 function visibleSessionSidebar(page) {

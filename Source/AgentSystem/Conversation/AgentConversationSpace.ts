@@ -22,6 +22,7 @@ const AgentConversationSpaceChatTypeSchema = z.enum(
 
 /** Host-owned address used to route a conversation without exposing raw IDs to the model. */
 export interface AgentConversationAddress {
+  readonly authority?: string;
   readonly surface: AgentConversationSpaceSurface;
   readonly platform?: AgentConversationSpacePlatform;
   readonly chatType?: AgentConversationSpaceChatType;
@@ -50,6 +51,7 @@ const AgentConversationAddressSelectorSchema = z
     chatId: z.string().trim().min(1).max(512),
     userId: z.string().trim().min(1).max(512),
     threadId: z.string().trim().min(1).max(512),
+    authority: z.string().trim().min(1).max(512),
   })
   .partial()
   .strict();

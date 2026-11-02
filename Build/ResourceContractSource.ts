@@ -1,10 +1,11 @@
 import { format, resolveConfig } from "prettier";
+import { AgentShortIdContract } from "../Source/AgentSystem/Identity/AgentShortId.js";
 import {
   AgentResourceHttpRoutes,
   AgentResourceUriContract,
 } from "../Source/AgentSystem/Resources/AgentResourceContract.js";
 
-export const FrontendResourceContractPath = "Frontend/src/api/resourceContract.ts";
+export const FrontendResourceContractPath = "Packages/ResourceLinks/src/resourceContract.ts";
 
 export async function formatFrontendResourceContract(source: string): Promise<string> {
   const filePath = FrontendResourceContractPath;
@@ -20,6 +21,8 @@ export function renderFrontendResourceContractSource(): string {
     "// Generated from the backend resource transport contract.",
     "// Run `npm run generate.resource-contract` after editing the backend contract.",
     "",
+    renderConstObject("SeneraShortIdContract", AgentShortIdContract),
+    "",
     renderConstObject("SeneraResourceUriContract", AgentResourceUriContract),
     "",
     renderConstObject("SeneraResourceHttpRoutes", AgentResourceHttpRoutes),
@@ -27,7 +30,7 @@ export function renderFrontendResourceContractSource(): string {
   ].join("\n");
 }
 
-function renderConstObject(name: string, values: Readonly<Record<string, string>>): string {
+function renderConstObject(name: string, values: Readonly<Record<string, string | number>>): string {
   return [
     `export const ${name} = {`,
     ...Object.entries(values).map(([key, value]) => `  ${key}: ${JSON.stringify(value)},`),

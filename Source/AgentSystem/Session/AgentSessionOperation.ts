@@ -2,6 +2,7 @@ export const AgentSessionOperations = {
   Message: "session.message",
   Close: "session.close",
   History: "session.history",
+  RunHistory: "session.run_history",
   Fork: "session.fork",
   Compact: "session.compact",
   RuntimeStatus: "session.runtime_status",

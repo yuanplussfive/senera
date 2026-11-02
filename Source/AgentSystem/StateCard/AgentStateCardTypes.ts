@@ -36,6 +36,8 @@ export interface AgentStateCardScene {
 }
 
 export interface AgentStateCardHistoryTurn {
+  /** Durable conversation request identity, when the source has one. */
+  requestId?: string;
   request: string;
   assistant?: string;
   layer: AgentStateCardHistoryLayer;
@@ -86,6 +88,7 @@ export const AgentStateCardSchema = z
     turnIndex: z.number().int().nonnegative(),
     scene: z.object({ time: z.string(), timeZone: z.string() }).strict(),
     topicRelation: z.enum(AgentStateCardTopicRelations),
+    resumeRequestId: z.string().min(1).optional(),
     prevRequests: z.array(z.string()),
     lastTools: z.array(AgentStateCardToolReferenceSchema),
     failedTools: z.array(AgentStateCardToolReferenceSchema),

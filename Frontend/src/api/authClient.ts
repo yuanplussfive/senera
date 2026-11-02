@@ -1,22 +1,14 @@
 import { AuthenticationSessionStates } from "./generatedEventCatalog";
+import { readMobileBridge } from "../app/mobileBridge";
 import { resolveBackendMessage, type BackendMessageData } from "../i18n/backendMessage";
+import {
+  AgentAuthenticationHttpRoutes,
+  AgentAuthenticationMethods,
+  type AgentAuthenticationSession,
+} from "../../../Source/AgentSystem/Auth/AgentAuthenticationProtocol";
 
-export interface ServerAuthenticationAccount {
-  readonly id: string;
-  readonly loginName: string;
-  readonly displayName: string;
-  readonly role: "owner";
-}
-
-export type ServerAuthentication =
-  | { readonly state: typeof AuthenticationSessionStates.Disabled }
-  | { readonly state: typeof AuthenticationSessionStates.Anonymous }
-  | {
-      readonly state: typeof AuthenticationSessionStates.Authenticated;
-      readonly account: ServerAuthenticationAccount;
-      readonly csrfToken: string;
-      readonly expiresAt: string;
-    };
+export type ServerAuthentication = AgentAuthenticationSession;
+export type ServerAuthenticationAccount = ServerAuthenticatedSession["account"];
 
 export type ServerAuthorizedAuthentication = Exclude<
   ServerAuthentication,
@@ -46,9 +38,15 @@ export function buildServerApiUrl(httpBaseUrl: string, pathname: string): string
   return url.toString();
 }
 
-export async function readServerAuthentication(httpBaseUrl: string): Promise<ServerAuthentication> {
-  const response = await fetch(buildServerApiUrl(httpBaseUrl, "/api/auth/session"), {
+/** Initializes local owner access and reads remote sessions through the same endpoint. */
+export async function initializeServerAuthentication(
+  httpBaseUrl: string,
+  signal?: AbortSignal,
+): Promise<ServerAuthentication> {
+  const response = await fetch(buildServerApiUrl(httpBaseUrl, AgentAuthenticationHttpRoutes.Session), {
+    method: "POST",
     credentials: "include",
+    ...(signal ? { signal } : {}),
     headers: { Accept: "application/json" },
   });
   return readAuthenticationResponse(response);
@@ -58,7 +56,9 @@ export async function loginServerAuthentication(
   httpBaseUrl: string,
   credentials: { loginName: string; password: string },
 ): Promise<ServerAuthenticatedSession> {
-  const response = await fetch(buildServerApiUrl(httpBaseUrl, "/api/auth/login"), {
+  const mobile = readMobileBridge();
+  if (mobile?.login) return mobile.login(httpBaseUrl, credentials);
+  const response = await fetch(buildServerApiUrl(httpBaseUrl, AgentAuthenticationHttpRoutes.Login), {
     method: "POST",
     credentials: "include",
     headers: {
@@ -75,7 +75,7 @@ export async function loginServerAuthentication(
 }
 
 export async function logoutServerAuthentication(httpBaseUrl: string, csrfToken: string | undefined): Promise<void> {
-  const response = await fetch(buildServerApiUrl(httpBaseUrl, "/api/auth/logout"), {
+  const response = await fetch(buildServerApiUrl(httpBaseUrl, AgentAuthenticationHttpRoutes.Logout), {
     method: "POST",
     credentials: "include",
     headers: {
@@ -86,6 +86,7 @@ export async function logoutServerAuthentication(httpBaseUrl: string, csrfToken:
   if (!response.ok) {
     throw new ServerAuthenticationError(response.status, "");
   }
+  await readMobileBridge()?.logout?.();
 }
 
 async function readAuthenticationResponse(response: Response): Promise<ServerAuthentication> {
@@ -113,6 +114,7 @@ function isServerAuthentication(value: unknown): value is ServerAuthentication {
   }
   return (
     session.state === AuthenticationSessionStates.Authenticated &&
+    Object.values(AgentAuthenticationMethods).some((method) => session.method === method) &&
     isServerAuthenticationAccount(session.account) &&
     typeof session.csrfToken === "string" &&
     typeof session.expiresAt === "string"

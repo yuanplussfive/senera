@@ -1,6 +1,8 @@
 import { AgentModelTokenEstimator } from "../Text/AgentTextBudget.js";
 import { estimateAgentModelInputTokens } from "../Text/AgentMultimodalTokenBudget.js";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { aggregateAgentModelCosts, calculateAgentModelCost, type AgentModelCost } from "./AgentModelPricing.js";
+import type { AgentModelsDevPricing } from "./AgentModelsDevCatalog.js";
 
 export const AgentModelUsageSources = {
   ProviderReported: "provider_reported",
@@ -23,6 +25,7 @@ export const AgentModelUsageFields = [
 export type AgentModelUsageField = (typeof AgentModelUsageFields)[number];
 
 export interface AgentModelUsageValue {
+  cost?: AgentModelCost;
   source: AgentModelUsageSource;
   inputTokens?: number;
   outputTokens?: number;
@@ -92,7 +95,10 @@ export function createProviderReportedUsage(input: AgentProviderReportedUsage): 
 export class AgentModelUsageResolver {
   private readonly estimator: AgentModelTokenEstimator;
 
-  constructor(model: string) {
+  constructor(
+    model: string,
+    private readonly pricing?: AgentModelsDevPricing,
+  ) {
     this.estimator = new AgentModelTokenEstimator({ model });
   }
 
@@ -135,6 +141,15 @@ export class AgentModelUsageResolver {
       cacheWriteTokens,
       reasoningTokens: reported?.reasoningTokens,
       estimatedFields: estimatedFields.length > 0 ? estimatedFields : undefined,
+      cost: calculateAgentModelCost(
+        {
+          input: inputTokens,
+          output: outputTokens,
+          cacheRead: cacheReadTokens ?? 0,
+          cacheWrite: cacheWriteTokens ?? 0,
+        },
+        this.pricing,
+      ),
     };
   }
 }
@@ -178,6 +193,7 @@ export class AgentModelUsageLedger {
       totalTokens,
       estimatedFields: estimatedFields.length > 0 ? estimatedFields : undefined,
       calls: this.snapshot(),
+      cost: aggregateAgentModelCosts(values.map((usage) => usage.cost)),
     };
   }
 

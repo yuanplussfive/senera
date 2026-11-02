@@ -2,29 +2,15 @@ import type { Model } from "@earendil-works/pi-ai";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import { resolveAgentPiCompactionReserveTokens } from "../Pi/AgentPiCompactionSettings.js";
 import { resolveAgentNativeToolRoute, type AgentNativeToolApi } from "./AgentModelEndpointContract.js";
-import { resolveAgentModelThinking } from "./AgentModelThinking.js";
-
-const FreeCostModel = {
-  input: 0,
-  output: 0,
-  cacheRead: 0,
-  cacheWrite: 0,
-} as const;
+import { resolveAgentConfiguredModelThinking } from "./AgentModelThinking.js";
+import { projectAgentPiModelPrices } from "./AgentModelPricing.js";
 
 /** Projects a configured provider into Pi's vendor-neutral API model shape. */
 export function projectAgentNativeToolModel(provider: ResolvedAgentModelProviderConfig): Model<AgentNativeToolApi> {
   const capabilities = provider.Capabilities ?? {};
   const route = resolveAgentNativeToolRoute(provider.Endpoint, provider.BaseUrl);
   const api = route.api;
-  const thinking = resolveAgentModelThinking({
-    api,
-    provider: provider.ProviderId,
-    model: provider.Model,
-    capabilities,
-    declaredCapabilities: provider.DeclaredCapabilities,
-    thinkingProfiles: provider.ThinkingProfiles,
-    defaultThinkingLevel: provider.DefaultThinkingLevel,
-  });
+  const thinking = resolveAgentConfiguredModelThinking(provider);
   return {
     id: provider.Model,
     name: provider.Id,
@@ -34,7 +20,7 @@ export function projectAgentNativeToolModel(provider: ResolvedAgentModelProvider
     reasoning: thinking.reasoning,
     ...(thinking.thinkingLevelMap ? { thinkingLevelMap: thinking.thinkingLevelMap } : {}),
     input: capabilities.Vision === true ? ["text", "image"] : ["text"],
-    cost: { ...FreeCostModel },
+    cost: projectAgentPiModelPrices(provider.Pricing),
     contextWindow: provider.ContextWindowTokens,
     maxTokens: resolveAgentModelMaxTokens(provider),
     headers: { ...provider.Headers },

@@ -100,6 +100,37 @@ test("draft validation reports nested table, range, and option violations", () =
   ).toEqual(["Retries 不能大于 3", "Mode 必须是允许的选项", "Provider ID 不能为空", "Providers 第 2 项 必须是对象"]);
 });
 
+test("optional object children become required only when their parent is present", () => {
+  const sections = [
+    {
+      name: "models",
+      fields: [
+        {
+          path: ["Models"],
+          label: "模型",
+          type: "array",
+          itemType: "table",
+          itemFields: [
+            {
+              path: ["Models", "Generation", "Api"],
+              label: "生成协议",
+              type: "string",
+              required: true,
+              optionalParents: [["Models", "Generation"]],
+              options: ["images"],
+            },
+          ],
+        },
+      ],
+    },
+  ];
+  expect(validateJsonConfigDraft(sections, { Models: [{}, { Generation: { Api: "images" } }] })).toEqual([]);
+  expect(validateJsonConfigDraft(sections, { Models: [{ Generation: {} }] })).toEqual(["生成协议 缺少必填配置"]);
+  expect(validateJsonConfigDraft(sections, { Models: [{ Generation: { Api: "invalid" } }] })).toEqual([
+    "生成协议 必须是允许的选项",
+  ]);
+});
+
 test("settings form updates boolean, option, number, array, and record controls", async () => {
   const onChange = vi.fn();
   const user = userEvent.setup();

@@ -1,3 +1,3 @@
 import type { ResolvedTheme } from "../themeModel";
 
-export type ThemeTokenSet = Record<ResolvedTheme, Record<string, string>>;
+export type ThemeTokenSet<TToken extends string> = Record<ResolvedTheme, Record<TToken, string>>;

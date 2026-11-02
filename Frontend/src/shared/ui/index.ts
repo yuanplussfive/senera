@@ -29,6 +29,10 @@ export { FileDropZone } from "./FileDropZone";
 export type { FileDropZoneAccept, FileDropZoneState } from "./FileDropZone";
 export { FormField, FormHint, FormLabel, Input } from "./Form";
 export { SecretInput } from "./SecretInput";
+export { DurationInput } from "./DurationInput";
+export type { DurationInputProps } from "./DurationInput";
+export { SearchSelect } from "./SearchSelect";
+export type { SearchSelectProps } from "./SearchSelect";
 export type { SecretInputProps } from "./SecretInput";
 export {
   DropdownMenu,
@@ -81,8 +85,6 @@ export { ActivityStatusIcon } from "./ActivityStatusIcon";
 export type { ActivityStatus, ActivityStatusMotion } from "./ActivityStatusIcon";
 export { StatusGlyph } from "./StatusGlyph";
 export type { StatusGlyphLiveMotion } from "./StatusGlyph";
-export { SeneraActivityMark } from "./SeneraActivityMark";
-export type { SeneraActivityMarkProps } from "./SeneraActivityMark";
 export { ExecutionStatusTones, executionStatusTone, isLiveActivityStatus } from "./executionStatusTone";
 export type { ExecutionStatusTone } from "./executionStatusTone";
 export { Spinner } from "./Spinner";
@@ -128,5 +130,6 @@ export {
 export type { SheetContentProps } from "./Sheet";
 export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "./Popover";
 export { Tooltip, TooltipProvider } from "./Tooltip";
+export { BrandIcon } from "./BrandIcon";
 export { useClipboardCopy, writeClipboardText } from "./useClipboardCopy";
 export type { ClipboardCopyOptions, ClipboardCopyResult, ClipboardWriter } from "./useClipboardCopy";

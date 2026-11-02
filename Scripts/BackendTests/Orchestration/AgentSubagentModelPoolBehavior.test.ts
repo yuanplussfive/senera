@@ -50,7 +50,7 @@ describe("subagent model pool", () => {
     const config = modelConfiguration({ inheritParent: false, modelProviderIds: ["embedding"] });
 
     expect(() => resolveAgentSubagentModelPool(config, "main")).toThrowError(
-      expect.objectContaining({ messageKey: "orchestration.modelChatCapabilityRequired" }),
+      expect.objectContaining({ messageKey: "model.requirementsNotMet" }),
     );
   });
 

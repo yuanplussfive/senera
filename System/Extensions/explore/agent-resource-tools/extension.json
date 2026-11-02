@@ -4,18 +4,49 @@
   "id": "agent-resource-tools",
   "domain": "explore",
   "settingsSurface": "system-tools",
-  "version": "1.0.0",
-  "displayName": { "zh-CN": "资源访问", "en-US": "Resource Access" },
+  "usageExamples": [
+    {
+      "title": { "zh-CN": "使用已有资源", "en-US": "Locate a resource" },
+      "prompt": {
+        "zh-CN": "找到刚才生成的文件，交给后面的工具继续处理。",
+        "en-US": "Find the file we generated and use it in the next tool."
+      },
+      "outcome": {
+        "zh-CN": "解析资源定位，提供后续工具需要的本地文件位置。",
+        "en-US": "Resolve the resource to the local file needed by subsequent tools."
+      }
+    }
+  ],
+  "documentation": {
+    "zh-CN": "### 让资源继续参与后续操作\n\n聊天里的图片、下载和工具产物可以用资源地址标识。资源访问工具将这些标识解析到宿主管理的文件，供其他工具继续使用。\n\n无需手工猜缓存目录或重建绝对路径。保留工具返回的资源地址即可；后续工具需要本地文件时再解析。资源访问仍受工作区和文件边界约束。\n\n它负责定位，不会代替读图、文档提取或文件编辑。",
+    "en-US": "### Reuse a resource in another tool\n\nImages, downloads and tool artifacts can be identified by resource addresses. Resolve them to host-managed files when another tool needs a local path.\n\nKeep the returned address instead of guessing cache directories or rebuilding absolute paths. Workspace and file boundaries still apply. Resolution locates a resource; it does not analyze or edit it."
+  },
+  "displayName": {
+    "zh-CN": "资源访问",
+    "en-US": "Resource Access"
+  },
   "description": {
-    "zh-CN": "将 Senera 资源标识解析为当前工作区内可直接读取的本地路径。",
-    "en-US": "Resolves a Senera resource identity to a directly readable local path in the active workspace."
+    "zh-CN": "定位资源对应的本地文件，供后续工具读取。",
+    "en-US": "Locate the local file for a resource so other tools can read it."
   },
   "priority": 8,
   "presentation": {
     "category": "resource",
-    "icon": "route",
-    "group": { "id": "resource", "title": { "zh-CN": "资源访问", "en-US": "Resource access" } },
-    "activity": { "action": { "zh-CN": "解析路径", "en-US": "Resolve path" }, "argumentPath": "/resourceUri" }
+    "icon": "link",
+    "group": {
+      "id": "resource",
+      "title": {
+        "zh-CN": "资源访问",
+        "en-US": "Resource access"
+      }
+    },
+    "activity": {
+      "action": {
+        "zh-CN": "解析路径",
+        "en-US": "Resolve path"
+      },
+      "argumentPath": "/resourceUri"
+    }
   },
   "contributions": [
     {

@@ -1,4 +1,4 @@
-import type { ConfigFormDocument } from "../Config/AgentConfigFormDocument.js";
+import type { ConfigFormDocument, ConfigFormFieldDefinition } from "../Config/AgentConfigFormDocument.js";
 import type { AgentExtensionLocalizedText } from "../Extensions/AgentExtensionLocalization.js";
 
 interface AgentWebConfigurationUiInputs {
@@ -262,18 +262,7 @@ export function createAgentWebToolsConfigurationUi(input: AgentWebConfigurationU
               required: true,
               essential: false,
             },
-            {
-              path: ["search", "allowSyntheticProxyAddresses"],
-              label: { "zh-CN": "允许代理映射地址", "en-US": "Allow proxy-mapped addresses" },
-              description: {
-                "zh-CN": "允许本机代理将公开域名映射到 198.18.0.0/15；不会放开本机或局域网地址。",
-                "en-US":
-                  "Allows public domains mapped to 198.18.0.0/15 by a local proxy without allowing localhost or private networks.",
-              },
-              type: "boolean",
-              required: true,
-              essential: false,
-            },
+            proxyMappedAddressField("search"),
           ],
         },
         {
@@ -602,18 +591,7 @@ export function createAgentWebToolsConfigurationUi(input: AgentWebConfigurationU
               required: true,
               essential: true,
             },
-            {
-              path: ["fetch", "allowSyntheticProxyAddresses"],
-              label: { "zh-CN": "允许代理映射地址", "en-US": "Allow proxy-mapped addresses" },
-              description: {
-                "zh-CN": "允许本机代理将公开域名映射到 198.18.0.0/15；不会放开本机或局域网地址。",
-                "en-US":
-                  "Allows public domains mapped to 198.18.0.0/15 by a local proxy without allowing localhost or private networks.",
-              },
-              type: "boolean",
-              required: true,
-              essential: false,
-            },
+            proxyMappedAddressField("fetch"),
             {
               path: ["fetch", "userAgent"],
               label: { "zh-CN": "User-Agent", "en-US": "User-Agent" },
@@ -628,4 +606,19 @@ export function createAgentWebToolsConfigurationUi(input: AgentWebConfigurationU
       ],
     },
   } satisfies ConfigFormDocument<AgentExtensionLocalizedText>;
+}
+
+function proxyMappedAddressField(scope: "search" | "fetch"): ConfigFormFieldDefinition<AgentExtensionLocalizedText> {
+  return {
+    path: [scope, "allowSyntheticProxyAddresses"],
+    label: { "zh-CN": "允许代理映射地址", "en-US": "Allow proxy-mapped addresses" },
+    description: {
+      "zh-CN": "允许本机代理将公开域名映射到 198.18.0.0/15；不会放开本机或局域网地址。",
+      "en-US":
+        "Allows public domains mapped to 198.18.0.0/15 by a local proxy without allowing localhost or private networks.",
+    },
+    type: "boolean",
+    required: true,
+    essential: false,
+  };
 }

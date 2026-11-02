@@ -1,6 +1,8 @@
 import path from "node:path";
+import { relativePathWithin } from "../Core/AgentPath.js";
 import {
   AgentExtensionInputDefinitionSchema,
+  AgentExtensionInputPresentationSchema,
   AgentExtensionInputTypes,
   type AgentExtensionInputDefinition,
 } from "../Extensions/AgentExtensionInput.js";
@@ -99,6 +101,14 @@ function projectUserConfig(value: unknown): AgentMcpInputDefinition[] {
       const field = requireMcpRecord(raw, `MCPB user_config.${id}`, ["user_config", id]);
       const type = projectMcpBundleInputType(field.type, ["user_config", id, "type"]);
       const secret = field.sensitive === true;
+      const fieldMetadata =
+        field._meta === undefined
+          ? undefined
+          : requireMcpRecord(field._meta, "MCPB input metadata", ["user_config", id, "_meta"]);
+      const inputPresentation = fieldMetadata?.["ai.senera/input"];
+      const presentation = AgentExtensionInputPresentationSchema.parse(
+        inputPresentation === undefined ? {} : inputPresentation,
+      );
       const definition = AgentExtensionInputDefinitionSchema.parse({
         id,
         title: optionalMcpString(field.title, `MCPB user_config.${id}.title`) ?? id,
@@ -112,6 +122,7 @@ function projectUserConfig(value: unknown): AgentMcpInputDefinition[] {
         placeholder: typeof field.placeholder === "string" ? field.placeholder : undefined,
         min: typeof field.min === "number" ? field.min : undefined,
         max: typeof field.max === "number" ? field.max : undefined,
+        ...presentation,
       });
       return {
         ...definition,
@@ -201,8 +212,7 @@ function deriveMcpBundleCommand(
 
 function assertRelativeBundlePath(value: string, packageRoot: string): void {
   const resolved = path.resolve(packageRoot, value);
-  const relative = path.relative(packageRoot, resolved);
-  if (!relative || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+  if (path.isAbsolute(value) || !relativePathWithin(packageRoot, resolved)) {
     throw new AgentMcpDescriptorError(`MCPB entry point must remain inside its package: ${value}.`);
   }
 }

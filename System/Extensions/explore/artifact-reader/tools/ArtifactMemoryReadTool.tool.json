@@ -4,34 +4,60 @@
   "presentation": {
     "category": "artifact-read",
     "icon": "file-text",
-    "activity": { "action": { "zh-CN": "读取", "en-US": "Read" }, "detailPaths": ["/artifactUris/*", "/view"] },
+    "activity": {
+      "action": { "zh-CN": "读取", "en-US": "Read" },
+      "detailPaths": ["/requests/*/uri", "/requests/*/part"]
+    },
     "preview": { "body": { "pointer": "/artifacts/item", "from": "result" } }
   },
-  "description": "按 Artifact URI 读取结果。compact 优先返回先前生成的 LLM 摘要，否则返回确定性摘要并标记压缩方式；full 返回经过完整性校验的原始结果。",
+  "description": "Inspect a saved tool result through its senera://resource/<six-character-id> URI. By default, without paths return a bounded structure outline. Its fields/items expose source entries; descriptor paths are the actual source JSON Pointers. Select fields with a paths array; use view=structure to inspect a nested object without summarizing it, or omit view to read its content. An empty pointer selects the whole part; view=content without paths also selects the whole part. Missing fields are distinct from null. Oversized selected content is summarized, mechanically reduced, then truncated if necessary; representation and completeness are explicit. Reads never repeat the original tool action.",
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
-      "artifactUris": {
+      "requests": {
         "minItems": 1,
         "type": "array",
-        "items": { "type": "string", "minLength": 1 },
-        "description": "Canonical artifact URIs, for example senera://artifact/art_1234567890abcdef12345678."
-      },
-      "view": {
-        "type": "string",
-        "enum": ["compact", "full"],
-        "description": "compact returns a saved LLM summary when available, otherwise a deterministic summary; full returns the raw result."
+        "items": {
+          "type": "object",
+          "properties": {
+            "uri": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Saved result URI, normally senera://resource/<six-character-id>. Historical Artifact references remain readable."
+            },
+            "part": {
+              "type": "string",
+              "enum": ["result", "source", "summary", "process", "outcome", "stdout", "stderr", "changes", "assets"],
+              "default": "result",
+              "description": "Read result content, original source, process streams or execution outcome. Outcome exposes /assessment/error for the exact failure message and diagnostics."
+            },
+            "paths": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "pattern": "^(?:/(?:[^~]|~[01])*)*$" },
+              "description": "Exact JSON Pointers within the selected part, for example /links/0/url. Empty string selects the whole part. Omit for a structure outline."
+            },
+            "view": {
+              "type": "string",
+              "enum": ["structure", "content"],
+              "description": "Structure inspects the selected subtrees without LLM summarization and is the default without paths. Content returns selected values, defaults when paths are provided, and selects the whole part when paths are omitted."
+            }
+          },
+          "required": ["uri"],
+          "additionalProperties": false
+        },
+        "description": "Resource references and optional exact field selections."
       }
     },
-    "required": ["artifactUris", "view"],
+    "required": ["requests"],
     "additionalProperties": false
   },
   "permissions": ["filesystem:read:artifacts"],
   "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
   "runtime": {
     "Lifecycle": "Immediate",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "ResultStorage": "SourceView",
     "Scheduling": "Parallel",
@@ -46,18 +72,18 @@
     }
   ],
   "search": {
-    "Summary": "读取 Artifact 的压缩摘要或完整原始结果。",
+    "Summary": "查看工具结果结构，并按资源 URI 和字段路径读取所需内容。",
     "Tags": ["证据读取", "产物读取", "完整结果", "历史资料"],
     "Capabilities": [
       {
         "Id": "artifact.read",
         "Title": "Artifact resource read",
-        "Description": "Load the compact summary or complete original result for one or more canonical Artifact URIs.",
+        "Description": "Inspect saved result structures and read selected fields through resource URIs and JSON Pointers.",
         "Facets": {
           "Actions": ["read", "hydrate", "inspect"],
           "Targets": ["artifact-resource", "artifact-projection", "artifact-evidence"],
-          "Inputs": ["artifact-uri-list", "view"],
-          "Outputs": ["compact-summary", "raw-result"],
+          "Inputs": ["resource-uri", "part", "json-pointers"],
+          "Outputs": ["structure", "selected-result"],
           "Evidence": ["artifact-resource"],
           "Effects": ["read-only"]
         },
@@ -65,11 +91,11 @@
         "Risk": { "SideEffect": "read-only", "Permission": "artifact-read" }
       }
     ],
-    "UseCases": ["查看历史工具结果摘要或需要完整原始结果时读取 Artifact。"],
-    "Examples": ["读取这个 Artifact 的压缩摘要", "完整读取这个工具结果"],
+    "UseCases": ["检查历史结果结构，并按字段读取所需原文。"],
+    "Examples": ["查看这个资源的字段结构", "读取 /links/0/url 和 /content 字段"],
     "Avoid": [
       "artifactUri 缺失时先使用当前上下文或检索工具定位 Artifact URI。",
-      "只需要结论时使用 compact；只有需要核实或展开来源数据时使用 full。"
+      "先使用当前工具反馈；需要细节时按准确字段路径读取，不重复展开整份结果。"
     ]
   },
   "evidenceCapabilities": [],
@@ -130,6 +156,7 @@
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
+      "type": { "const": "senera.artifact-read/v1" },
       "artifacts": {
         "type": "object",
         "properties": {
@@ -138,17 +165,23 @@
             "items": {
               "type": "object",
               "properties": {
+                "requestedUri": { "type": "string" },
                 "artifactUri": { "type": "string" },
                 "artifactId": { "type": "string" },
                 "status": { "type": "string", "enum": ["found", "not_found", "invalid", "failed"] },
-                "view": { "type": "string", "enum": ["compact", "full"] },
+                "view": { "type": "string", "enum": ["compact", "full", "structure", "selected"] },
+                "part": {
+                  "type": "string",
+                  "enum": ["result", "source", "summary", "process", "outcome", "stdout", "stderr", "changes", "assets"]
+                },
+                "availableParts": { "type": "array", "items": { "type": "string" } },
                 "message": { "type": "string" },
                 "artifactRefs": { "type": "array", "items": { "type": "string" } },
                 "compressionMethod": { "type": "string", "enum": ["mechanical", "llm"] },
                 "sourceSha256": { "type": "string" },
                 "content": {}
               },
-              "required": ["artifactUri", "artifactId", "status", "view", "message"],
+              "required": ["requestedUri", "artifactUri", "artifactId", "status", "view", "message"],
               "additionalProperties": false
             }
           }
@@ -157,7 +190,7 @@
         "additionalProperties": false
       }
     },
-    "required": ["artifacts"],
+    "required": ["type", "artifacts"],
     "additionalProperties": false
   }
 }

@@ -1,146 +1,92 @@
-# Orchestration
+# Agent orchestration
 
-`Orchestration` owns Senera child agents, persisted child-agent workflows, and scheduled tasks. Child work always runs through the normal Session, Loop, Pi, Safety, ToolRuntime, Artifact, database, and event boundaries.
+Senera uses one Pi execution engine. Child agents, process completions and scheduled instructions converge on the existing durable session queue. SQLite owns lifecycle records and delivery identities; in-memory queues only limit runnable admissions.
 
-## Runtime Boundary
+## Public tools
 
-```text
-AgentSpawn / AgentWait / AgentInput / AgentStop / AgentResume
-  -> native role catalog
-  -> native preflight and capability intersection
-  -> AgentDelegationService / AgentWorkflowService
-  -> AgentRunDispatchGateway
-  -> AgentSessionRunDispatcher
-  -> AgentSessionManager / AgentLoop / Pi
-```
+- `todo_write`: atomically replace the current plan; planning is optional.
+- `subagent`: launch background work and return the child session as `agent_id` and its activation as `job_id`.
+- `list_subagent_models`: discover authorized model routes, declared capabilities, context/output limits, reasoning levels and current delegation limits.
+- `send_message`: communicate with a direct parent or child, steer active work, or reactivate a persisted child session.
+- `list_agents`: observe direct children or recursively enumerate descendants, retaining parent identities and relative depth, without consuming results.
+- `interrupt_agent`: interrupt one descendant without recursively stopping its descendants.
+- `job_list`, `job_output`, `job_kill`: inspect, optionally wait for, and control session-owned commands, PTYs and child-agent activations.
+- `schedule_create`, `schedule_list`, `schedule_view`, `schedule_edit`: persist schedules and admit due instructions into ordinary sessions.
 
-`AgentRunDispatchPort` is the only execution port from orchestration into Session. This module does not construct a second Pi instance, model client, Tool executor, approval runtime, sandbox, or filesystem communication channel.
+The registered JSON contracts are authoritative. The former action-union and wait-mode tools are no longer registered. Historical child records and internal host operations remain readable through their existing storage types.
 
-The bundled role taxonomy and some graph-presentation ideas were adapted from `pi-subagents` 0.40.0 under its MIT license. Attribution is retained in `System/Extensions/coordinate/agent-delegation/NOTICE.md`. Senera does not load that package at runtime and does not use its process runner, TUI, temporary state, session files, or Tool extensions.
+## Sessions and authority
 
-## Native Role Catalog
+A child session is the stable agent identity; a request identifies one activation. Messaging requires direct parent-child adjacency; interruption requires ancestry and stops only the target. Role definitions, pinned launch policy, Tool grants and resource claims remain host-owned. A cold activation restores the persisted launch plan rather than reselecting wider permissions. Active work uses Pi steering; idle work resumes the same session.
 
-`AgentSubagentRoleCatalog` reads two explicit sources:
+Resource claims identify shared or exclusive scheduling ownership; they do not grant filesystem access. The permission gate inspects assignment resources through the same capability registry used by ordinary Tools. Full access permits host paths outside the workspace. In approval mode, an approved external file or directory becomes part of the child's persisted resource scope, including descendant inheritance and cold continuation. A read-only role narrows writable resources to read access and does not inherit executable resources. Approval for one file never becomes recursive directory access. Uncovered resources and tool side effects still follow the active approval policy; links and protected workspace domains retain their boundary checks.
 
-1. The unique package-declared `agentRoles` contribution under `System/Extensions/<domain>/<extension>/`.
-2. Workspace overrides under `.senera/agents`.
+Workspace read, list, find, grep and patch operations use the invocation's authorized execution environment. External searches use the authorized target as their search root. Patch transactions validate every destination before committing and retain rollback for both internal and external files. Results explicitly identify external changes; workspace checkpoints and later workspace undo cover only paths inside the workspace.
 
-Every role is a Markdown document with strict YAML frontmatter. Workspace definitions override bundled definitions only by canonical role ID. Unknown frontmatter fields, empty instructions, symlinks, duplicate aliases, aliases shadowing canonical IDs, and ambiguous aliases fail explicitly. A content revision covers the parsed contract and prompt.
+Discovery and launch validation resolve the same child model pool. A new, unconfigured pool includes enabled models that meet the selected planning mode's requirements; existing explicit pool configurations keep their scope. `modelPool.includeConfiguredModels` enables this discovery for an existing pool. Turning it off restricts selection to inherited and explicitly listed models. Disabled endpoints and models lacking required capabilities are excluded; configuration errors remain explicit.
 
-Roles declare behavior, workspace access, and whether they may delegate descendants. They do not name Tools. Tool authorization is a host-owned runtime contract rather than role prompt metadata.
+The AI may choose a route for the assignment without another user approval when that route is allowed. Omission follows role/default selection. Discovery and execution share Pi's reasoning projection: explicit unsupported reasoning levels fail before admission; inherited reasoning is retained when supported, otherwise the chosen model uses its own default. Child prompt guidance includes actual depth and tool-grant limits. Task labels persist with the launch contract. Message receipts identify accepted input, not a generated reply. Cancelling the sender after admission does not retract the message. Every reactivation gets a fresh deadline and activity budget while retaining its checkpoint and session history.
 
-`AgentSpawnHostContractProjection` projects the revisioned role catalog and its declared default into the model-visible schema. Model, Skill, Tool, workspace, approval, and deadline policy remain host-managed rather than becoming launch arguments.
+A detached child outlives the parent's tool call. The host has separate activation, provider and resource limits. Ancestor resource conflicts fail explicitly to prevent a descendant waiting on an ancestor that is waiting for it. Tree disposal remains an internal host operation; public interruption targets one child.
 
-## Native Preflight
+## Inbox and completion outbox
 
-`AgentSubagentPreflight` resolves one immutable launch contract before persistence:
+`AgentSessionManager.acceptHostInput` uses the session's existing admissions lock and durable queued-input store. Host inputs carry typed provenance and stable delivery IDs. The last admitted execution policy is persisted with session metadata; wakeups cannot invent an approval mode or Tool ceiling.
 
-- canonical role and role revision;
-- fresh or fork context;
-- selected model and ordered model pool candidates;
-- thinking level;
-- pinned Skill names and revisions;
-- concrete parent-authorized Tool identities;
-- the intersection of parent authorization, workspace access, role delegation policy, and the inherited capability ceiling;
-- prompt mode and project-context inheritance;
+The shared conversation predicate distinguishes human messages from host inputs by persisted metadata. Host wakeups retain their envelope, do not reset the parent plan, do not enter `prevRequests` or human-turn learning, and do not increment the human turn number. User text that resembles a host envelope remains ordinary escaped user input.
 
-Tools use their registered names and exact invocation schemas throughout preflight and model exposure. Search aliases and tags remain discovery metadata and never become authorization identities. System Host Tool contributions may declare `childGrant: internal` for child-only control Tools or `childGrant: delegation` for descendant lifecycle Tools. Internal Tools are injected by the host; delegation Tools require both parent authorization and a role with `canDelegate: true`. A read-only parent cannot create a read-write descendant, and nested delegation cannot widen its inherited concrete Tool or role ceiling.
+Completion outbox identity includes child run, activation request and destination port. Each row retains its completion snapshot, so resuming the same agent cannot replace an older pending result. The parent-inbox port hands off to the same durable notification coordinator used by processes. Notification ownership, Pi consumption and model completion are separate lifecycle stages. Delivery retries reuse the same identity.
 
-## Child Lifecycle
+`job_output` and `job_kill` stage observation receipts. While a read or stop is in flight, its completion notice waits. Only a successful tool result committed to the native Pi transcript acknowledges the notice; cancelled or uncommitted reads leave completion available. Pending, unscheduled duplicate inbox notices are withdrawn after that commit. Cold recovery reconciles receipts with the native transcript before replay. Ordinary inventory reads remain independent and do not acknowledge results.
 
-`AgentSpawn` durably queues one child and always returns immediately. Every child also has a logical `workItemId` and task-contract digest, separate from its ephemeral execution `runId`. Reusing the same work-item identity within a parent session converges concurrent or retried submissions on the existing child; a different identity is required for intentionally repeated work. `AgentList` recovers the durable run projection in a later turn, including progress, terminal results, and whether the parent has received each result. Multiple spawn calls in one native Tool batch initialize independently and then run under provider and Tool-resource backpressure. The parent can keep doing non-overlapping work instead of blocking on child completion.
+The jobs extension configures `completionDelivery` (`wakeup` or `quiet`), an optional `maxConsecutiveWakes`, and `inlineOutputBytes`. Quiet notices remain durable and join the next ordinary turn. The wake budget counts actual completion-triggered turns, not individual notices; human input replenishes it. Already active work can consume notices without another wake. Small results accompany notices; larger results remain available through `job_output`.
 
-`AgentWait` accepts multiple child-run IDs and resolves when any target settles by default; `mode: "all"` forms an explicit join barrier and waits until every target settles. It observes typed lifecycle transitions rather than polling storage, and a timeout ends only the wait call without terminating child work. Model-visible results contain the stable run ID, public state, role, optional join-group identity, final text, error, supervisor request, and a compact progress projection when a runtime snapshot or checkpoint exists. Full snapshots, checkpoint content, deadlines, session IDs, revisions, and internal event cursors remain diagnostics.
+Producer-declared wake decisions persist with the notification before delivery and survive retries and restarts. An explicit quiet notice cannot initiate a recovered turn or consume a completion wake budget. When quiet notices precede user input or an eligible completion, that eligible input owns the turn and the quiet notices join through the ordinary Pi input boundary.
 
-`AgentInput` uses Pi follow-up for queued input and Pi steering for immediate redirection. A decision response resumes the same persisted child session. `AgentStop` recursively admits cancellation for active descendants before the target and returns once the requests are accepted. The child remains `stopping` until Session, Pi, Tool resources, and history have actually settled; only then is `cancelled` persisted and published. `AgentResume` starts a new detached task in the persisted child session context.
+Queued recovery delegates child-session activation back to the delegation service, including notifications from jobs and descendants. It cannot silently start an unmanaged ordinary session. The same activation limits, resource claims, pinned permissions and completion ports apply; original input metadata and attachments survive recovery.
 
-Child agents finish with ordinary terminal assistant text. The host stores that text as `finalAnswer`; models do not generate a host JSON envelope. `AgentContactSupervisor` persists typed progress or decision messages. A decision request pauses the child, and a parent response resumes the same child session.
+Interruption parks unconsumed child inputs until explicit `send_message` continuation, including cancellation that races queued activation admission. Stopping a child does not stop its descendants.
 
-### Completion Wake and Channel Adapters
+## Background jobs
 
-Detached completion is delivered through `AgentDelegationCompletionPort`, not through a provider- or channel-specific callback. Each port declares a stable deployment-level `id`; `AgentDelegationCompletionDelivery` persists one delivery row per `(childRunId, portId)` before invoking the adapter. Claims have leases, attempts, retry times, and terminal `delivered`/`dropped` states, so an adapter outage or process restart does not lose a completion and two runtime instances cannot claim the same row concurrently. `ServerRuntime` resolves the still-undelivered child results only after the parent session is idle and while holding its admission lock, then submits a machine-readable internal wake input. `AgentWait` and background delivery update one durable `parent_result_delivered_at` marker, so they cannot independently deliver the same result. If `AgentWait` wins while a wake is waiting for the parent turn to settle, the wake resolves to no work; if the background delivery wins, it starts a fresh parent request rather than injecting a stale follow-up into the active Pi turn. A batch is rechecked against its durable `all` barrier before the parent is woken, so parallel completions are delivered together. The internal input is durable model context but is omitted from the user message projection.
+`AgentJobRuntime` observes background processes (`UntilExit`) and PTYs in `AgentExecutionResourceBroker`, and activations in `AgentDelegationService`. Producers retain their execution ownership; the job runtime supplies one inventory, read, wait and stop interface. Agent snapshots store the label, progress and result rather than duplicating launch policies and checkpoints. Each activation keeps its own SQLite record; stopping an old activation cannot stop the agent's newer work.
 
-An external channel adapter only needs to map its stable `(account, conversation)` identity to a Senera `sessionId`, submit user messages through the Session boundary, and render the resulting event stream. Progress queries and controls remain ordinary model actions (`AgentList`, `AgentInput`, `AgentStop`, `AgentResume`) or the existing Session control requests. On restart, terminal detached records are scanned and replayed with the same request ID, so command receipts prevent duplicate wake turns. If a crash happened after the wake receipt was marked `running`, the internal completion wake is allowed to reclaim that stale receipt and reuse its persisted user entry; ordinary user requests never reclaim running receipts. A channel that wants direct push delivery can implement `AgentDelegationCompletionPort` and register it at runtime with `AgentDelegationCompletionGateway.bind(port)`, which returns an unbind closure and rejects an empty or already-registered port `id`; the delivery layer fans out to all bound adapters while preserving the same session and idempotency rules. The adapter should persist its `(account, conversation) -> sessionId` mapping and use the record's `parentSessionId` to route the terminal update. Adapter-specific network retry, rate limits, and provider errors remain inside the adapter; the core only retries the durable delivery boundary.
+Optional `job_output` waiting ends on settlement, a configured deadline, human steering or cancellation of the read. The producer keeps running. Waits use lifecycle notifications rather than polling and release timers/listeners on every exit. `waitTimeoutMs` defaults to 30 seconds; requests are clamped to `maxWaitTimeoutMs` (10 minutes by default). An explicit `timeout_ms: null` uses that maximum for one completion wait. The tool reserves that wait separately from its ordinary processing budget; process-output collection limits do not clamp job waiting. The returned delivery policy exposes the effective limits and whether an idle parent can wake. Explicit process-output cursors do not mutate another observer's position. Terminal snapshots and notification receipts persist; unfinished processes after host restart are marked failed and never rerun automatically. Persisted output is bounded, not an unlimited transcript.
 
-The host configuration owns activity-aware deadlines. There is no Tool-count or assistant-turn limit: a child may start Tool work until it finishes, is cancelled, or the host explicitly enters deadline wrap-up.
+Cold recovery records a `host_restart` interruption and a terminal state event, clears the obsolete PID, and retains the existing job identity and output. `job_list`, `job_output` and the notification expose that structured interruption. Recovery notices are always quiet, even under the global wakeup policy; restoring process records must not wake an idle AI to recreate a service. A recovery notice reports state and does not request another execution. Ordinary process settlement and child-agent completion continue to follow the configured delivery policy.
 
-## Internal Persisted DAG Workflows
+`subagent.todo` explicitly associates an assignment with an existing in-progress parent plan step by its exact content. The launch contract persists the resolved Todo identity; task deduplication includes that identity. All linked children must complete successfully before the host completes the step, and pending launch admissions defer synchronization. Failure and partial completion leave it open. Unchanged steps retain their identities across plan writes, while removing or clearing a step severs the association. Completion cannot recreate it or alter a later same-named step. Startup reconciliation repairs a missed derived Todo update without changing the persisted child outcome. Model-facing progress and prompt context share one projection, including the child's actual Todo and final progress snapshot.
 
-The model-visible lifecycle does not expose a graph DSL or an action-discriminated control union. Independent branches are expressed as parallel `AgentSpawn` calls; dependent work is launched after `AgentWait` returns the required text.
+## Schedules
 
-The existing versioned DAG service remains an internal runtime facility for persisted system workflows. Every node declares:
+RRULE uses `rrule-temporal` and the existing Temporal implementation with a persisted timezone-aware DTSTART. Existing cron and interval records remain supported through `croner` and the owned schedule definition. Omitted timezones use the shared `DefaultAgentTimeZone` (Asia/Shanghai); explicit IANA zones override it only for that schedule. Missed repeating occurrences coalesce; run claims and deterministic inbox delivery IDs prevent duplicate admission after recovery.
 
-- a stable node ID;
-- role, task, and workspace access;
-- explicit `dependsOn` edges;
-- `task_only` or `append_dependency_results` handoff behavior;
-- optional context, model, Skills, and thinking preferences.
+Targets are the owner session, one persistent scheduled session, or one new session per occurrence. Normal due-time work queues the instruction and returns an admission receipt. That receipt does not represent successful model execution. Legacy execute-now/deliver-later records retain their deferred-result lifecycle internally.
 
-The parser rejects duplicate IDs, duplicate edges, missing dependencies, self-dependencies, and cycles before any child run is created. When an administrator configures `workflows.maxNodes`, oversized graphs are also rejected before launch. Ready nodes launch together; provider and Tool resource backpressure remain authoritative, while optional child-run and writer quotas add deployment-specific admission limits.
+Every admitted instruction has a turn-specific ceiling: the stored schedule grants intersect the source session's current ceiling. This applies to all target modes, including existing `new_once` sessions and managed child activations. A scheduled instruction waits for its own turn instead of steering a different execution policy into active work. Its policy does not overwrite the owner conversation's ordinary policy. Authorized orchestration tools remain available; there is no namespace-wide exclusion of delegation or job tools.
 
-`append_dependency_results` adds only the declared upstream nodes' persisted terminal text to the child task. There is no field-name inference and no implicit scan of unrelated child runs. `task_only` preserves an ordering edge without injecting upstream text.
+`p-queue` bounds admission concurrency. Durable claims, permissions, target identities and receipts remain in SQLite. Removing a schedule does not cancel user conversation work already accepted. Shutdown drains admissions before stores close.
 
-Failure policies are explicit:
+Definition and tool-authority edits share a SQLite transaction so they cannot overwrite concurrent claim counters or next occurrences. Each occurrence stores an immutable instruction snapshot. `schedule_view` reads bounded receipt pages with an exclusive `before` cursor; historical records without snapshots explicitly report that the original instruction is unavailable.
 
-- `fail_fast`: finish the current ready batch, mark remaining pending nodes skipped, and fail the workflow.
-- `continue_independent`: continue branches whose dependencies succeeded, skip only blocked descendants, and finish as `partial_completed` when any branch degraded.
+## Dependencies
 
-Node child runs retain `ownerRunId + nodeId`, so persisted graph state and child-run history have one stable identity without duplicating result text in workflow storage.
+The implementation reuses Pi, SQLite, Temporal, `rrule-temporal`, `croner` and the execution resource broker; `p-queue` handles bounded runnable admissions. DSH packages depend on its own host and are used as design references rather than introducing a second runtime. The former `@amaster.ai/pi-task-scheduler` and timezone-sensitive `rrule` dependencies have been removed.
 
-## Models, Skills, And Permissions
+## DSH comparison
 
-`agent-delegation.modelPool` is the only child model pool. It can inherit the active parent model and include an ordered list of enabled chat-capable model IDs. Role defaults must resolve inside this pool; no `default` sentinel or cross-pool fallback exists.
+Compared on 2026-10-31 with the published `@deepseek-ai` packages at `0.1.5-rc.3`: `dsh-tool-todo`, `dsh-tool-subagent`, `dsh-tool-subagent-control`, `dsh-tool-jobs`, `dsh-jobs-local`, `dsh-schedule` and `dsh-client-ui-subagent`. These are the inspected package versions, not a claim about every upstream revision or deployment.
 
-Skills come from the active Senera registry. Selected `{name, revision}` pairs are persisted and revalidated before dispatch. A Skill revision change cannot silently alter a queued child contract.
+| Area               | DSH reference                                                                                                                               | Senera implementation and boundary                                                                                                                                                                                                               |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Todo               | Atomic full-list replacement, three public statuses, session ownership, configurable concurrent in-progress items; clear at turn start.     | Same model-facing plan semantics. SQLite stores the plan; a fresh human turn clears the previous plan, host wakeups retain it, and explicitly linked child assignments synchronize successful completion. Finished-turn plans remain in history. |
+| Launch and context | Provider-declared fresh/fork, one-shot and continuable agents; optional foreground collection.                                              | Local Pi fresh/fork with persistent child sessions. `subagent` always returns a background activation; `job_output(wait: true)` can wait. There is no separate one-shot or foreground launch mode.                                               |
+| Model choice       | Authorized provider/model/reasoning discovery and adapter capability checks.                                                                | `list_subagent_models` and launch use the same permitted model pool and reasoning preflight. Role, tool and depth ceilings remain host-owned.                                                                                                    |
+| Messaging and stop | Direct parent-child messaging; steer active work, continue cold children, interrupt one descendant while preserving inbox and descendants.  | Same communication topology and interruption scope, backed by the durable input queue and persisted launch contracts. `list_agents` supports stable recursive descendant inventory.                                                              |
+| Completion         | Busy agents receive inbox notifications; idle agents can wake, with quiet delivery and bounded consecutive wakes.                           | Shared durable notifications and completion outbox, with the same configurable delivery choices. Consumption is acknowledged only after the native transcript commits the observation.                                                           |
+| Jobs               | Commands, PTYs and agents share list/output/kill. The local registry is in memory and disappears at host exit.                              | Same kinds through one runtime; separate activation identities, independent output cursors and persisted terminal snapshots. A host restart marks unfinished processes failed; it does not resume the process.                                   |
+| Schedules          | The inspected `dsh-schedule` provides persistent one-time/fixed-interval reminders to a live root session; cold sessions keep them overdue. | Persistent instructions support RRULE, one-time and legacy interval/cron records, owner or dedicated target sessions, coalescing and admission receipts. Permission ceilings still apply when a cold target activates.                           |
+| Execution display  | Compact descendant tree, full child conversation navigation, token/timing metadata, direct continuation input and independent Stop.         | Stable activity rows, real tool/Todo counts, feedback traces and child details. The complete descendant conversation navigator, direct child composer/Stop controls and activation chooser are not yet exposed in this UI.                       |
+| Recovery           | Session logs own Todo and child identity; local jobs themselves are not persistent.                                                         | Parent history detail reuses the live child projector for lifecycle, messages, thinking and snapshots. Older state events enrich missing fields without regressing newer state or reactivating the parent.                                       |
 
-Every child inherits the parent approval mode. Workspace access, registered Tool metadata, the parent authorization ceiling, and the inherited capability ceiling are intersected before dispatch. Current Tool exposure is deliberately not used as an authorization source. Child sessions cannot elevate approval, workspace write access, Tool access, Skills, model access, or the set of roles they may delegate.
-
-## Concurrency And Lifecycle
-
-`AgentRunConcurrencyGate` applies optional limits to total children and workspace writers. Both limits are absent by default, so read-only and writing children are not globally serialized; declared Tool resources and provider backpressure still coordinate conflicting work. Parent orchestration Tools use self-managed scheduling so a waiting parent Tool does not hold a generic Tool resource needed by its child.
-
-Activity-aware child deadlines begin only after a concurrency permit is acquired. Typed model and Tool lifecycle events can extend the configured soft deadline within a configured bound. The wrap-up phase requests a final answer from existing evidence, and the final checkpoint remains available if the child is interrupted.
-
-Shutdown closes admission first, pauses active workflows, then drains child delegation while Session dispatch remains bound. Explicitly cancelled workflows are terminal. Workflows interrupted by process restart become `paused`; their completed nodes remain complete and failed or interrupted child sessions can be deliberately resumed.
-
-## Scheduled Task Timing
-
-`@amaster.ai/pi-task-scheduler` supplies schedule parsing, `once`/`interval`/`cron` next-run calculation, and the shared task types. Senera deliberately does not start the package's `PersistentTaskScheduler`: that runner uses process-local timers and file-backed state, does not recover missed work after downtime, and cannot represent a result that is computed now but delivered later. SQLite remains the single authority for task state, atomic claims, claim recovery, hidden fork execution, and owner-session delivery.
-
-`AgentScheduleManage.create` supports two execution modes:
-
-- `at_due_time` is the default. The work starts at its due time and projects its normal lifecycle to the owner session before delivering a terminal answer.
-- `execute_now_deliver_at` is for an enabled one-time task only. Senera creates a durable run immediately, executes it in a private fork, persists either the result or failure, and waits until `deliver_at` before appending exactly that terminal outcome to the owner session. It never re-executes when delivery time arrives.
-
-For deferred delivery, changing the one-time schedule moves the pending delivery deadline. Disabling or deleting the task cancels undelivered reporting. A completed or stopped deferred task cannot be re-enabled or run again; creating a new task is explicit and avoids duplicate work.
-
-Deleting a task also aborts any execution already admitted for that task and waits for its private execution session to dispose. The durable task is removed before cancellation begins, so a concurrent scheduler tick cannot claim another run.
-
-The owner session is the lifetime boundary for every scheduled task. Session close first interrupts active scheduled forks and deletes the owner's task records; startup reconciliation removes records whose owner session was deleted by an older runtime. No scheduled execution or delivery is projected to a missing session.
-
-## Persistence
-
-The authoritative database is `.senera/data/orchestration/orchestration.sqlite`:
-
-- `child_runs` and `child_run_messages` store child identity, immutable launch and execution contracts, snapshots, checkpoints, messages, final text, usage, and revisions.
-- `agent_workflows` stores parent ownership, the normalized versioned DAG, definition digest, status, error, and revision.
-- `agent_workflow_nodes` stores node status, child-run binding, timestamps, errors, and revisions.
-- scheduled-task and scheduler-lease tables store durable timer definitions, execution history, Tool policy, and lease ownership.
-
-All state transitions use bound SQLite statements and explicit status predicates. A restart marks active child runs interrupted and active workflows paused instead of pretending they completed.
-
-## Events
-
-Child lifecycle, snapshots, deadline extensions, supervisor messages, and terminal states emit formal orchestration events. Workflows emit started, snapshot, paused, cancelling, completed, partial-completed, failed, and cancelled events. Every workflow event includes the workflow ID, definition digest, and typed node states so the frontend and diagnostics layer do not infer graph state from arbitrary Tool output.
-
-## Validation
-
-Run at minimum:
-
-```bash
-npm run check.types
-npx vitest run --config vitest.backend.config.ts Scripts/BackendTests/Orchestration
-npm run verify.database-contracts
-npm run verify.system-extension-contracts
-npm run verify.frontend-events
-```
+The core local execution capabilities are implemented, but the complete DSH product surface is not. External ACP/Codex/Claude Code execution backends, separate one-shot launch semantics and the full child conversation UI remain gaps. Host restart preserves records and pending inputs, not OS processes or in-flight provider streams.

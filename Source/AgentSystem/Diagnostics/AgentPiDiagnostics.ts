@@ -49,6 +49,7 @@ export function createAgentPiDiagnosticEvent(input: AgentPiDiagnosticInput): Age
     name: input.name,
     summary: input.summary ?? summarizeDiagnosticDetails(input.details),
     details: sanitizeDiagnosticDetails(input.details),
+    ...(input.detailId ? { detailId: input.detailId } : {}),
   };
 }
 
@@ -81,7 +82,7 @@ export function createAgentPiDiagnosticLogger(logger: AgentLogger): AgentPiDiagn
  * server runs in compact (non-verbose) mode. Provider errors and model failures
  * are essential for operators to diagnose upstream issues.
  */
-const CriticalDiagnosticNames = new Set(["provider_error", "model_timing", "prompt_cache"]);
+const CriticalDiagnosticNames = new Set(["provider_error", "model_timing", "prompt_cache", "stream_summary"]);
 
 /**
  * Creates a diagnostic sink that always logs critical events (provider errors,
@@ -92,17 +93,25 @@ const CriticalDiagnosticNames = new Set(["provider_error", "model_timing", "prom
 export function createAgentPiDiagnosticLoggerForDetail(
   logger: AgentLogger,
   detail: "compact" | "verbose",
-): AgentPiDiagnosticSink | undefined {
-  if (detail === "verbose") {
-    return createAgentPiDiagnosticLogger(logger);
-  }
+): AgentPiDiagnosticSink {
   return (event) => {
-    if (!CriticalDiagnosticNames.has(event.name)) return;
+    if (detail !== "verbose" && !CriticalDiagnosticNames.has(event.name)) return;
+    if (event.name === "stream_summary") {
+      logger.diagnostic(`pi.${event.source}.${event.name}`, {
+        ...event.context,
+        detailId: event.detailId,
+        details: event.detailId ? undefined : event.details,
+        tokens: [event.summary],
+      });
+      return;
+    }
     const label = `pi.${event.source}.${event.name}`;
-    logger.warn(label, {
+    const metadata = {
       ...event.context,
       summary: event.summary || undefined,
-    });
+    };
+    if (event.name === "provider_error") logger.warn(label, metadata);
+    else logger.info(label, metadata);
     if (event.details !== undefined) logger.tree(`${label} details`, event.details);
   };
 }
@@ -133,7 +142,7 @@ function summarizeDiagnosticDetails(value: unknown): string {
     .join(" ");
 }
 
-function sanitizeDiagnosticDetails(
+export function sanitizeDiagnosticDetails(
   value: unknown,
   budget: DiagnosticProjectionBudget = createDiagnosticProjectionBudget(),
   seen = new WeakSet<object>(),

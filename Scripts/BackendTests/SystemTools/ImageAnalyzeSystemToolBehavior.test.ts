@@ -1,18 +1,42 @@
 import fs from "node:fs";
+import { SeneraLocalExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 import { AgentImageVisionModelClient } from "../../../Source/AgentSystem/Vision/AgentImageVisionModelClient.js";
 import { createImageAnalyzeSystemTool } from "../../../Source/AgentSystem/SystemTools/ImageAnalyzeSystemTool.js";
 import { AgentToolExecutionArtifactRecorder } from "../../../Source/AgentSystem/Artifacts/AgentToolExecutionArtifactRecorder.js";
 import { resolveArtifactsConfig } from "../../../Source/AgentSystem/Defaults/AgentAppDefaults.js";
 import { AgentResourceResolver } from "../../../Source/AgentSystem/Resources/AgentResourceResolver.js";
+import { AgentUploadStore } from "../../../Source/AgentSystem/Uploads/AgentUploadStore.js";
+import { resolveUploadsConfig } from "../../../Source/AgentSystem/AgentDefaults.js";
 import { AgentToolSuccessOutcome } from "../../../Source/AgentSystem/ToolRuntime/AgentToolResultOutcome.js";
 import type { AgentHostToolContext } from "../../../Source/AgentSystem/ToolRuntime/AgentToolHostCapabilityRegistry.js";
-import { ensureObjectRootJsonSchema } from "../../../Source/AgentSystem/ToolContracts/AgentJsonSchemaObjectRoot.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
 import type { AgentResolvedUpload } from "../../../Source/AgentSystem/Uploads/AgentUploadTypes.js";
+import type { AgentImageNormalizationService } from "../../../Source/AgentSystem/Images/AgentImageNormalizationService.js";
 import { createTemporaryDirectory, removeDirectory } from "../Support/AgentTestFixtures.js";
+import { loadSystemToolContractByCapability, materializeSystemToolArguments } from "./SystemToolContractTestSupport.js";
+
+const identityImageNormalization: Pick<AgentImageNormalizationService, "normalize"> = {
+  normalize: async (input) => ({
+    bytes: Buffer.from(input.bytes),
+    mime: input.mime,
+    animated: false,
+    sourceSha256: input.sourceSha256,
+    policyKey: "test-image-policy",
+    derived: false,
+  }),
+};
+
+function createTestImageAnalyzeSystemTool(
+  configuration?: Record<string, unknown>,
+  conversationModelProviderId?: string,
+  imageNormalization: Pick<AgentImageNormalizationService, "normalize"> = identityImageNormalization,
+) {
+  return createImageAnalyzeSystemTool(configuration, conversationModelProviderId, {
+    imageNormalization,
+  });
+}
 
 describe("ImageAnalyze system tool", () => {
   const temporaryDirectories: string[] = [];
@@ -24,6 +48,7 @@ describe("ImageAnalyze system tool", () => {
   });
 
   it("applies the extension model and prompt configuration to the vision request", async () => {
+    const prompt = "用户正在排查上传失败。请逐字提取截图里的报错，并说明与文件大小有关的可见证据，使用中文。";
     const workspaceRoot = createTemporaryDirectory("senera-image-analyze");
     temporaryDirectories.push(workspaceRoot);
     const filePath = path.join(workspaceRoot, "image.png");
@@ -33,7 +58,7 @@ describe("ImageAnalyze system tool", () => {
       text: "visible evidence",
       provider: { id: "vision-model", endpoint: "ChatCompletions", model: "gpt-vision" },
     });
-    const tool = createImageAnalyzeSystemTool(
+    const tool = createTestImageAnalyzeSystemTool(
       {
         model: { modelProviderId: "vision-model" },
         prompt: { systemPrompt: "Configured visual evidence policy." },
@@ -42,7 +67,7 @@ describe("ImageAnalyze system tool", () => {
     );
 
     const output = await tool.execute(
-      { images: [{ kind: "senera_resource", uri: upload.manifest.resourceUri }], task: "describe" },
+      { images: [{ kind: "senera_resource", uri: upload.manifest.resourceUri }], prompt },
       hostContext(workspaceRoot, upload),
     );
 
@@ -50,10 +75,72 @@ describe("ImageAnalyze system tool", () => {
       expect.objectContaining({
         provider: expect.objectContaining({ Id: "vision-model" }),
         systemPrompt: "Configured visual evidence policy.",
-        images: [{ mime: "image/png", base64: Buffer.from("image-content").toString("base64") }],
+        prompt,
+        images: [
+          { name: upload.manifest.name, mime: "image/png", base64: Buffer.from("image-content").toString("base64") },
+        ],
       }),
     );
     expect(output).toMatchObject({ answer: "visible evidence", model: "gpt-vision" });
+  });
+
+  it("normalizes image input against the selected vision model contract", async () => {
+    const workspaceRoot = createTemporaryDirectory("senera-image-model-contract");
+    temporaryDirectories.push(workspaceRoot);
+    const filePath = path.join(workspaceRoot, "image.png");
+    fs.writeFileSync(filePath, "image-content");
+    const normalized = Buffer.from("normalized-image");
+    const normalize = vi.fn(async (input) => ({
+      bytes: normalized,
+      mime: "image/webp",
+      width: 20,
+      height: 10,
+      animated: false,
+      sourceSha256: input.sourceSha256,
+      policyKey: "test-image-policy",
+      derived: true,
+    }));
+    vi.spyOn(AgentImageVisionModelClient.prototype, "complete").mockResolvedValue({
+      text: "visible evidence",
+      provider: { id: "vision-model", endpoint: "ChatCompletions", model: "gpt-vision" },
+    });
+    const config = testConfig();
+    config.ModelProviders = config.ModelProviders.map((provider) =>
+      provider.Id === "vision-model"
+        ? {
+            ...provider,
+            Capabilities: {
+              ...provider.Capabilities,
+              VisionInput: {
+                SupportedMimeTypes: ["image/webp"],
+                SupportedAnimatedMimeTypes: ["image/webp"],
+                MaxBytes: 4_096,
+                MaxPixels: 200,
+              },
+            },
+          }
+        : provider,
+    );
+
+    await createTestImageAnalyzeSystemTool({ model: { modelProviderId: "vision-model" } }, "chat-model", {
+      normalize,
+    }).execute({ images: [{ kind: "local_path", path: "image.png" }], prompt: "Describe the visible evidence." }, {
+      workspaceRoot,
+      config,
+      executionEnv: new SeneraLocalExecutionEnv({ workspaceRoot }),
+    } as unknown as AgentHostToolContext);
+
+    expect(normalize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: {
+          supportedMimeTypes: ["image/webp"],
+          supportedAnimatedMimeTypes: ["image/webp"],
+          maxBytes: 4_096,
+          maxPixels: 200,
+        },
+        transferSource: true,
+      }),
+    );
   });
 
   it("projects the selected model budget into the host tool deadline", async () => {
@@ -74,12 +161,13 @@ describe("ImageAnalyze system tool", () => {
         : provider,
     );
 
-    await createImageAnalyzeSystemTool({ model: { modelProviderId: "vision-model" } }).execute(
-      { images: [{ kind: "local_path", path: "image.png" }], task: "describe" },
+    await createTestImageAnalyzeSystemTool({ model: { modelProviderId: "vision-model" } }).execute(
+      { images: [{ kind: "local_path", path: "image.png" }], prompt: "Describe the visible evidence." },
       {
         workspaceRoot,
         config,
         deadline: { signal: controller.signal, timeoutMs: 120_000, extendTo, close: vi.fn() },
+        executionEnv: new SeneraLocalExecutionEnv({ workspaceRoot }),
       } as unknown as AgentHostToolContext,
     );
 
@@ -107,11 +195,15 @@ describe("ImageAnalyze system tool", () => {
         : provider,
     );
 
-    await createImageAnalyzeSystemTool({
+    await createTestImageAnalyzeSystemTool({
       model: { modelProviderId: "vision-model" },
       remote: { allowPrivateNetworks: true },
     }).execute(
-      { images: [{ kind: "http_url", url: "http://127.0.0.1/example.png" }], task: "describe", timeoutMs: 10_000 },
+      {
+        images: [{ kind: "http_url", url: "http://127.0.0.1/example.png" }],
+        prompt: "Describe the visible evidence.",
+        timeoutMs: 10_000,
+      },
       {
         workspaceRoot: process.cwd(),
         config,
@@ -122,22 +214,129 @@ describe("ImageAnalyze system tool", () => {
     expect(extendTo).toHaveBeenCalledWith(14_000);
   });
 
-  it("rejects an image before reading it when the extension byte budget is exceeded", async () => {
+  it("rejects an image before reading it when the source safety budget is exceeded", async () => {
     const workspaceRoot = createTemporaryDirectory("senera-image-budget");
     temporaryDirectories.push(workspaceRoot);
     const upload = resolvedUpload(path.join(workspaceRoot, "missing.png"), 1_025);
     const complete = vi.spyOn(AgentImageVisionModelClient.prototype, "complete");
-    const tool = createImageAnalyzeSystemTool({ input: { maxImageBytes: 1_024 } });
+    const tool = createTestImageAnalyzeSystemTool({ input: { maxSourceImageBytes: 1_024 } });
 
     await expect(
       tool.execute(
-        { images: [{ kind: "senera_resource", uri: upload.manifest.resourceUri }], task: "describe" },
+        {
+          images: [{ kind: "senera_resource", uri: upload.manifest.resourceUri }],
+          prompt: "Describe the visible evidence.",
+        },
         hostContext(workspaceRoot, upload),
       ),
     ).rejects.toMatchObject({
-      messageKey: "vision.imageTooLarge",
-      messageParams: { size: 1_025, maxImageBytes: 1_024 },
+      messageKey: "vision.imageSourceTooLarge",
+      messageParams: { size: 1_025, maxSourceImageBytes: 1_024 },
     });
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it("normalizes a source above the delivery budget before sending it to the vision model", async () => {
+    const workspaceRoot = createTemporaryDirectory("senera-image-source-normalization");
+    temporaryDirectories.push(workspaceRoot);
+    const filePath = path.join(workspaceRoot, "source.png");
+    const source = Buffer.alloc(2_048, 7);
+    const normalized = Buffer.from("normalized-image");
+    fs.writeFileSync(filePath, source);
+    const upload = resolvedUpload(filePath, source.byteLength);
+    const normalize = vi.fn(async (input) => ({
+      bytes: normalized,
+      mime: "image/webp",
+      width: 20,
+      height: 10,
+      animated: false,
+      sourceSha256: input.sourceSha256,
+      policyKey: "test-image-policy",
+      derived: true,
+    }));
+    const complete = vi.spyOn(AgentImageVisionModelClient.prototype, "complete").mockResolvedValue({
+      text: "compressed source evidence",
+      provider: { id: "vision-model", endpoint: "ChatCompletions", model: "gpt-vision" },
+    });
+
+    await createTestImageAnalyzeSystemTool({ input: { maxSourceImageBytes: 4_096, maxImageBytes: 1_024 } }, undefined, {
+      normalize,
+    }).execute(
+      {
+        images: [{ kind: "senera_resource", uri: upload.manifest.resourceUri }],
+        prompt: "Describe the visible evidence.",
+      },
+      hostContext(workspaceRoot, upload),
+    );
+
+    expect(normalize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bytes: source,
+        target: expect.objectContaining({ maxBytes: 1_024 }),
+      }),
+    );
+    expect(complete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        images: [{ name: "image.png", mime: "image/webp", base64: normalized.toString("base64") }],
+      }),
+    );
+  });
+
+  it("does not send a normalizer result outside the selected model media contract", async () => {
+    const workspaceRoot = createTemporaryDirectory("senera-image-normalizer-contract");
+    temporaryDirectories.push(workspaceRoot);
+    const filePath = path.join(workspaceRoot, "source.png");
+    fs.writeFileSync(filePath, "image-content");
+    const upload = resolvedUpload(filePath, fs.statSync(filePath).size);
+    const complete = vi.spyOn(AgentImageVisionModelClient.prototype, "complete");
+
+    await expect(
+      createTestImageAnalyzeSystemTool(undefined, undefined, {
+        normalize: async (input) => ({
+          bytes: Buffer.from(input.bytes),
+          mime: "image/gif",
+          animated: false,
+          sourceSha256: input.sourceSha256,
+          policyKey: "test-image-policy",
+          derived: true,
+        }),
+      }).execute(
+        {
+          images: [{ kind: "senera_resource", uri: upload.manifest.resourceUri }],
+          prompt: "Describe the visible evidence.",
+        },
+        hostContext(workspaceRoot, upload),
+      ),
+    ).rejects.toThrow("Image normalizer returned media outside the selected model input contract.");
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it("does not send an animated result when the selected model declares only static WebP", async () => {
+    const workspaceRoot = createTemporaryDirectory("senera-image-animation-contract");
+    temporaryDirectories.push(workspaceRoot);
+    const filePath = path.join(workspaceRoot, "source.png");
+    fs.writeFileSync(filePath, "image-content");
+    const upload = resolvedUpload(filePath, fs.statSync(filePath).size);
+    const complete = vi.spyOn(AgentImageVisionModelClient.prototype, "complete");
+
+    await expect(
+      createTestImageAnalyzeSystemTool(undefined, undefined, {
+        normalize: async (input) => ({
+          bytes: Buffer.from(input.bytes),
+          mime: "image/webp",
+          animated: true,
+          sourceSha256: input.sourceSha256,
+          policyKey: "test-image-policy",
+          derived: false,
+        }),
+      }).execute(
+        {
+          images: [{ kind: "senera_resource", uri: upload.manifest.resourceUri }],
+          prompt: "Describe the visible evidence.",
+        },
+        hostContext(workspaceRoot, upload),
+      ),
+    ).rejects.toThrow("Image normalizer returned media outside the selected model input contract.");
     expect(complete).not.toHaveBeenCalled();
   });
 
@@ -169,7 +368,7 @@ describe("ImageAnalyze system tool", () => {
               },
             ],
           },
-          result: { screenshot: "senera://resource/browser-screenshot-fixture" },
+          result: { screenshot: "asset:browser-screenshot-fixture/" },
           outcome: AgentToolSuccessOutcome,
         },
       ],
@@ -177,33 +376,44 @@ describe("ImageAnalyze system tool", () => {
     const resourceUri = recorded?.artifact?.assets?.find(
       (asset) => asset.id === "browser-screenshot-fixture",
     )?.resourceUri;
-    expect(resourceUri).toMatch(/^senera:\/\/resource\/res_[a-f0-9]{32}$/u);
+    expect(resourceUri).toMatch(/^senera:\/\/resource\/[0-9a-hjkmnp-tv-z]{6}$/u);
+    const uploadStore = new AgentUploadStore({
+      workspaceRoot,
+      config: resolveUploadsConfig(testConfig()),
+    });
+    const resolveImageForModel = vi.spyOn(uploadStore, "resolveImageForModel");
     const resolver = new AgentResourceResolver({
       workspaceRoot,
       config: testConfig(),
-      uploadStore: { resolve: vi.fn().mockResolvedValue(undefined) },
+      uploadStore,
     });
     const complete = vi.spyOn(AgentImageVisionModelClient.prototype, "complete").mockResolvedValue({
       text: "browser screenshot evidence",
       provider: { id: "vision-model", endpoint: "ChatCompletions", model: "gpt-vision" },
     });
 
-    const output = await createImageAnalyzeSystemTool({ model: { modelProviderId: "vision-model" } }).execute(
-      { images: [{ kind: "senera_resource", uri: resourceUri! }], task: "describe" },
+    const output = await createTestImageAnalyzeSystemTool({ model: { modelProviderId: "vision-model" } }).execute(
+      { images: [{ kind: "senera_resource", uri: resourceUri! }], prompt: "Describe the visible evidence." },
       {
         workspaceRoot,
         config: testConfig(),
+        uploadStore,
         resourceResolver: resolver,
       } as unknown as AgentHostToolContext,
     );
 
     expect(complete).toHaveBeenCalledWith(
-      expect.objectContaining({ images: [{ base64: screenshotBytes.toString("base64"), mime: "image/png" }] }),
+      expect.objectContaining({
+        images: [
+          { name: "browser-screenshot-fixture.png", base64: screenshotBytes.toString("base64"), mime: "image/png" },
+        ],
+      }),
     );
     expect(output).toMatchObject({
       images: [{ source: { kind: "senera_resource", uri: resourceUri } }],
       answer: "browser screenshot evidence",
     });
+    expect(resolveImageForModel).not.toHaveBeenCalled();
   });
 
   it("reports an unavailable canonical resource without leaking upload storage paths", async () => {
@@ -211,10 +421,10 @@ describe("ImageAnalyze system tool", () => {
     temporaryDirectories.push(workspaceRoot);
 
     await expect(
-      createImageAnalyzeSystemTool().execute(
+      createTestImageAnalyzeSystemTool().execute(
         {
           images: [{ kind: "senera_resource", uri: "senera://resource/browser-screenshot-missing" }],
-          task: "describe",
+          prompt: "Describe the visible evidence.",
         },
         {
           workspaceRoot,
@@ -244,11 +454,15 @@ describe("ImageAnalyze system tool", () => {
       provider: { id: "vision-model", endpoint: "ChatCompletions", model: "gpt-vision" },
     });
 
-    const output = await createImageAnalyzeSystemTool({
+    const output = await createTestImageAnalyzeSystemTool({
       model: { modelProviderId: "vision-model" },
       remote: { allowPrivateNetworks: true },
     }).execute(
-      { images: [{ kind: "http_url", url: "http://127.0.0.1/example.png" }], task: "ocr", timeoutMs: 10_000 },
+      {
+        images: [{ kind: "http_url", url: "http://127.0.0.1/example.png" }],
+        prompt: "Transcribe the visible text exactly.",
+        timeoutMs: 10_000,
+      },
       {
         workspaceRoot: process.cwd(),
         config: testConfig(),
@@ -256,7 +470,9 @@ describe("ImageAnalyze system tool", () => {
     );
 
     expect(complete).toHaveBeenCalledWith(
-      expect.objectContaining({ images: [{ base64: imageBytes.toString("base64"), mime: "image/png" }] }),
+      expect.objectContaining({
+        images: [{ name: "example.png", base64: imageBytes.toString("base64"), mime: "image/png" }],
+      }),
     );
     expect(output).toMatchObject({
       images: [
@@ -281,23 +497,29 @@ describe("ImageAnalyze system tool", () => {
       text: "local image evidence",
       provider: { id: "vision-model", endpoint: "ChatCompletions", model: "gpt-vision" },
     });
-    const tool = createImageAnalyzeSystemTool({ model: { modelProviderId: "vision-model" } });
+    const tool = createTestImageAnalyzeSystemTool({ model: { modelProviderId: "vision-model" } });
     const context = {
       workspaceRoot,
       config: testConfig(),
       uploadStore: { resolve: vi.fn().mockResolvedValue(undefined) },
+      executionEnv: new SeneraLocalExecutionEnv({ workspaceRoot }),
     } as unknown as AgentHostToolContext;
 
     const output = await tool.execute(
-      { images: [{ kind: "local_path", path: "local-image.png" }], task: "describe" },
+      { images: [{ kind: "local_path", path: "local-image.png" }], prompt: "Describe the visible evidence." },
       context,
     );
-    await tool.execute({ images: [{ kind: "local_path", path: imagePath }], task: "describe" }, context);
+    await tool.execute(
+      { images: [{ kind: "local_path", path: imagePath }], prompt: "Describe the visible evidence." },
+      context,
+    );
 
     expect(complete).toHaveBeenCalledTimes(2);
     expect(complete).toHaveBeenCalledWith(
       expect.objectContaining({
-        images: [{ mime: "image/png", base64: Buffer.from("local-image-content").toString("base64") }],
+        images: [
+          { name: "local-image.png", mime: "image/png", base64: Buffer.from("local-image-content").toString("base64") },
+        ],
       }),
     );
     expect(output).toMatchObject({
@@ -314,37 +536,48 @@ describe("ImageAnalyze system tool", () => {
     const complete = vi.spyOn(AgentImageVisionModelClient.prototype, "complete");
 
     await expect(
-      createImageAnalyzeSystemTool().execute(
-        { images: [{ kind: "local_path", path: outsidePath }], task: "describe" },
+      createTestImageAnalyzeSystemTool().execute(
+        { images: [{ kind: "local_path", path: outsidePath }], prompt: "Describe the visible evidence." },
         {
           workspaceRoot,
           config: testConfig(),
           uploadStore: { resolve: vi.fn().mockResolvedValue(undefined) },
+          executionEnv: new SeneraLocalExecutionEnv({ workspaceRoot }),
         } as unknown as AgentHostToolContext,
       ),
-    ).rejects.toThrow("Local resource path is missing or outside the workspace.");
+    ).rejects.toMatchObject({ code: "permission_denied" });
     expect(complete).not.toHaveBeenCalled();
   });
 
   it("accepts ordered resource and HTTP(S) image inputs", () => {
-    const input = createImageAnalyzeSystemTool().input;
+    const contract = loadSystemToolContractByCapability(createImageAnalyzeSystemTool().capability);
 
-    expect(input.parse({ images: [{ kind: "senera_resource", uri: "senera://resource/upload-1" }] })).toMatchObject({
-      task: "describe",
-    });
-    expect(input.parse({ images: [{ kind: "local_path", path: "images/example.png" }] })).toMatchObject({
-      task: "describe",
+    expect(
+      materializeSystemToolArguments(contract, {
+        images: [{ kind: "senera_resource", uri: "senera://resource/upload-1" }],
+        prompt: "Describe the visible evidence.",
+      }),
+    ).toMatchObject({ ok: true, value: { prompt: "Describe the visible evidence." } });
+    expect(
+      materializeSystemToolArguments(contract, {
+        images: [{ kind: "local_path", path: "images/example.png" }],
+        prompt: "Describe the visible evidence.",
+      }),
+    ).toMatchObject({
+      ok: true,
+      value: { prompt: "Describe the visible evidence." },
     });
     expect(
-      input.parse({
+      materializeSystemToolArguments(contract, {
         images: [{ kind: "http_url", url: "https://images.example.test/example.png" }],
-        task: "question",
-        question: "What is visible?",
+        prompt: "What is visible?",
       }),
-    ).toMatchObject({ task: "question" });
-    expect(() => input.parse({ images: [{ kind: "http_url", url: "file:///tmp/image.png" }] })).toThrow();
-    expect(() =>
-      input.parse({
+    ).toMatchObject({ ok: true, value: { prompt: "What is visible?" } });
+    expect(
+      materializeSystemToolArguments(contract, { images: [{ kind: "http_url", url: "file:///tmp/image.png" }] }).ok,
+    ).toBe(false);
+    expect(
+      materializeSystemToolArguments(contract, {
         images: [
           {
             kind: "senera_resource",
@@ -352,15 +585,32 @@ describe("ImageAnalyze system tool", () => {
             url: "https://images.example.test/example.png",
           },
         ],
-      }),
-    ).toThrow();
-    expect(() =>
-      input.parse({ images: [{ kind: "http_url", url: "https://images.example.test/example.png" }], task: "question" }),
-    ).toThrow();
+      }).ok,
+    ).toBe(false);
+    expect(
+      materializeSystemToolArguments(contract, {
+        images: [{ kind: "http_url", url: "https://images.example.test/example.png" }],
+      }).ok,
+    ).toBe(false);
+    for (const prompt of ["", "   "]) {
+      expect(
+        materializeSystemToolArguments(contract, {
+          images: [{ kind: "local_path", path: "image.png" }],
+          prompt,
+        }).ok,
+      ).toBe(false);
+    }
+    expect(
+      materializeSystemToolArguments(contract, {
+        images: [{ kind: "local_path", path: "image.png" }],
+        prompt: "Read the error",
+        task: "ocr",
+      }).ok,
+    ).toBe(false);
 
-    const schema = ensureObjectRootJsonSchema(z.toJSONSchema(input, { target: "draft-7", io: "input" }));
+    const schema = contract.contract.inputSchema;
     expect(schema).toMatchObject({ type: "object" });
-    expect(schema.required).toEqual(expect.arrayContaining(["images"]));
+    expect(schema.required).toEqual(expect.arrayContaining(["images", "prompt"]));
     const properties = (schema as { properties?: Record<string, unknown> }).properties;
     expect((properties?.images as { items?: { oneOf?: unknown[] } }).items?.oneOf).toHaveLength(3);
   });
@@ -381,13 +631,13 @@ describe("ImageAnalyze system tool", () => {
       provider: { id: "vision-model", endpoint: "ChatCompletions", model: "gpt-vision" },
     });
 
-    const output = await createImageAnalyzeSystemTool({ remote: { allowPrivateNetworks: true } }).execute(
+    const output = await createTestImageAnalyzeSystemTool({ remote: { allowPrivateNetworks: true } }).execute(
       {
         images: [
           { kind: "senera_resource", uri: upload.manifest.resourceUri },
           { kind: "http_url", url: "http://127.0.0.1/remote.jpg" },
         ],
-        task: "describe",
+        prompt: "Describe the visible evidence.",
       },
       hostContext(workspaceRoot, upload),
     );
@@ -396,8 +646,8 @@ describe("ImageAnalyze system tool", () => {
     expect(complete).toHaveBeenCalledWith(
       expect.objectContaining({
         images: [
-          { mime: "image/png", base64: Buffer.from("local-image").toString("base64") },
-          { mime: "image/jpeg", base64: remoteImage.toString("base64") },
+          { name: "image.png", mime: "image/png", base64: Buffer.from("local-image").toString("base64") },
+          { name: "remote.jpg", mime: "image/jpeg", base64: remoteImage.toString("base64") },
         ],
       }),
     );
@@ -411,7 +661,7 @@ describe("ImageAnalyze system tool", () => {
     fs.writeFileSync(filePath, "x".repeat(600));
     const upload = resolvedUpload(filePath, fs.statSync(filePath).size);
     const complete = vi.spyOn(AgentImageVisionModelClient.prototype, "complete");
-    const tool = createImageAnalyzeSystemTool({ input: { maxImageCount: 1, maxTotalImageBytes: 1_024 } });
+    const tool = createTestImageAnalyzeSystemTool({ input: { maxImageCount: 1, maxTotalImageBytes: 1_024 } });
 
     await expect(
       tool.execute(
@@ -420,19 +670,19 @@ describe("ImageAnalyze system tool", () => {
             { kind: "senera_resource", uri: upload.manifest.resourceUri },
             { kind: "senera_resource", uri: upload.manifest.resourceUri },
           ],
-          task: "describe",
+          prompt: "Describe the visible evidence.",
         },
         hostContext(workspaceRoot, upload),
       ),
     ).rejects.toMatchObject({ messageKey: "vision.imageCountExceeded" });
     await expect(
-      createImageAnalyzeSystemTool({ input: { maxTotalImageBytes: 1_024 } }).execute(
+      createTestImageAnalyzeSystemTool({ input: { maxTotalImageBytes: 1_024 } }).execute(
         {
           images: [
             { kind: "senera_resource", uri: upload.manifest.resourceUri },
             { kind: "senera_resource", uri: upload.manifest.resourceUri },
           ],
-          task: "describe",
+          prompt: "Describe the visible evidence.",
         },
         hostContext(workspaceRoot, upload),
       ),

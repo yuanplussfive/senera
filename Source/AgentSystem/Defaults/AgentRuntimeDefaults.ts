@@ -49,8 +49,6 @@ export function resolveAgentPromptConfig(config: AgentSystemConfig): ResolvedAge
   return {
     UserMessageEnvelope: configured?.UserMessageEnvelope ?? defaults.Prompt.UserMessageEnvelope,
     TimeZone: timeZone,
-    PrefaceRewrite: configured?.PrefaceRewrite ?? defaults.Prompt.PrefaceRewrite,
-    FinalResponseRewrite: configured?.FinalResponseRewrite ?? defaults.Prompt.FinalResponseRewrite,
     BamlToolAttribution: configured?.BamlToolAttribution ?? defaults.Prompt.BamlToolAttribution,
   };
 }

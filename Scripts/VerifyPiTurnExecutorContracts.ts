@@ -31,6 +31,7 @@ const modelProviderConfig: ResolvedAgentModelProviderConfig = {
   ApiVersion: "",
   Model: "verification-model",
   ToolPlanningMode: "baml",
+  Capabilities: { Chat: true },
   ContextWindowTokens: 128_000,
   Temperature: 0,
   MaxOutputTokens: -1,

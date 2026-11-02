@@ -2,6 +2,7 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "../../lib/util";
+import { useResponsiveMode } from "../../shared/responsive";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -52,6 +53,7 @@ export function SessionRow({
   const selectionFocusRef = useRef<HTMLElement | null>(null);
   const pendingDialogActionRef = useRef<(() => void) | null>(null);
   const { reduceMotion, disableMotion } = useMotionLevel();
+  const { isCoarsePointer } = useResponsiveMode();
   const animateSelection = !reduceMotion && !disableMotion;
   const setItemRef = useCallback((node: HTMLDivElement | null) => registerItem(index, node), [index, registerItem]);
   const actions: SessionMenuAction[] = [
@@ -102,7 +104,8 @@ export function SessionRow({
           ref={setItemRef}
           data-session-row={sessionId}
           className={cn(
-            "group relative isolate z-10 grid h-10 w-full items-center rounded-[10px] px-3 text-left transition-colors duration-150",
+            "group relative isolate z-10 grid w-full items-center rounded-[10px] px-3 text-left transition-colors duration-150",
+            isCoarsePointer ? "h-11" : "h-10",
             "data-[state=open]:bg-surface-hover",
             active
               ? "text-content-primary"
@@ -167,20 +170,22 @@ export function SessionRow({
 
 function SessionTitleContent({ accent, title }: { accent: SessionRowProps["accent"]; title: string }): JSX.Element {
   return (
-    <div className="flex min-w-0 items-center gap-1.5">
-      {accent === "running" ? (
-        <span role="status" aria-label={frontendMessage("session.statusRunning")} className="shrink-0">
-          <ActivityStatusIcon status="running" size={13} />
-        </span>
-      ) : accent === "failed" ? (
-        <AppIcon
-          icon="alert"
-          className="h-3 w-3 shrink-0 text-brick-600"
-          role="img"
-          aria-label={frontendMessage("session.statusFailed")}
-          aria-hidden={undefined}
-        />
-      ) : null}
+    <div className="flex min-w-0 items-center gap-2">
+      <span className="grid h-4 w-4 shrink-0 place-items-center">
+        {accent === "running" ? (
+          <span role="status" aria-label={frontendMessage("session.statusRunning")} className="shrink-0">
+            <ActivityStatusIcon status="running" size={13} />
+          </span>
+        ) : accent === "failed" ? (
+          <AppIcon
+            icon="alert"
+            className="h-3 w-3 shrink-0 text-brick-600"
+            role="img"
+            aria-label={frontendMessage("session.statusFailed")}
+            aria-hidden={undefined}
+          />
+        ) : null}
+      </span>
       <span className="block min-w-0 max-w-full select-none truncate text-[13px] font-normal leading-5 transition-colors duration-150">
         {title}
       </span>

@@ -5,7 +5,7 @@ import { Virtuoso } from "react-virtuoso";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import { useFrontendLocale } from "../../i18n/useFrontendLocale";
-import { cn, formatTime } from "../../lib/util";
+import { cn, formatFileSize, formatTime } from "../../lib/util";
 import { AppIcon, IconButton, MenuSelect, Sheet, SheetContent, Switch, useClipboardCopy } from "../../shared/ui";
 import { EventPhases } from "../../api/generatedEventCatalog";
 import type { EventSourceChannel } from "../../api/eventTypes";
@@ -18,14 +18,16 @@ type ChannelFilter = "all" | EventSourceChannel;
 
 const DirectionFilters: readonly DirectionFilter[] = ["all", "inbound", "outbound", "system"];
 const PhaseFilters = ["all", ...Object.values(EventPhases)] as const satisfies readonly PhaseFilter[];
-const ChannelFilters: readonly ChannelFilter[] = ["all", "console", "qq", "telegram", "discord"];
 const ChannelMessageKeys = {
   all: "observability.channel.all",
   console: "observability.channel.console",
   qq: "observability.channel.qq",
   telegram: "observability.channel.telegram",
   discord: "observability.channel.discord",
+  onebot11: "session.channel.onebot11",
+  onebot: "session.channel.onebot",
 } as const satisfies Record<ChannelFilter, FrontendMessageKey>;
+const ChannelFilters = Object.keys(ChannelMessageKeys) as ChannelFilter[];
 
 export function EventMonitorPanel(): JSX.Element {
   const locale = useFrontendLocale();
@@ -73,7 +75,7 @@ export function EventMonitorPanel(): JSX.Element {
           />
           <span className="min-w-0 flex-1 truncate text-[10px] tabular-nums text-content-muted">
             {frontendMessage(recording ? "observability.recording" : "observability.stopped")} · {records.length} ·{" "}
-            {formatByteSize(totalBytes)}
+            {formatFileSize(totalBytes)}
           </span>
           <div className="flex shrink-0 items-center gap-1">
             <IconButton
@@ -375,10 +377,4 @@ function compactRecord(value: Record<string, unknown>): Record<string, unknown> 
 
 function formatEventTime(timestamp: string): string {
   return formatTime(timestamp) || timestamp;
-}
-
-function formatByteSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }

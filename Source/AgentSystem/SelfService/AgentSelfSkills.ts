@@ -42,26 +42,30 @@ export const AgentSelfSkillSearchLimits = {
  * arbitrary paths from the model.
  */
 export function createAgentSelfSkillsPort(
-  sources: readonly AgentSelfSkillSource[],
+  sources: readonly AgentSelfSkillSource[] | (() => readonly AgentSelfSkillSource[]),
 ): NonNullable<AgentSelfServicePort["skills"]> {
-  const normalized = sources.map((source) => ({ ...source, root: path.resolve(source.root) }));
+  const normalized = () =>
+    (typeof sources === "function" ? sources() : sources).map((source) => ({
+      ...source,
+      root: path.resolve(source.root),
+    }));
   const scanner = new AgentSkillScanner();
 
   return {
-    list: () => projectSkillConflicts(scanSources(normalized, scanner).flatMap((snapshot) => snapshot.skills)),
-    search: (query, limit) => searchSkills(normalized, scanner, query, limit),
-    inspect: (name) => inspectSkill(normalized, scanner, name),
-    resources: (name) => listSkillResources(normalized, scanner, name),
+    list: () => projectSkillConflicts(scanSources(normalized(), scanner).flatMap((snapshot) => snapshot.skills)),
+    search: (query, limit) => searchSkills(normalized(), scanner, query, limit),
+    inspect: (name) => inspectSkill(normalized(), scanner, name),
+    resources: (name) => listSkillResources(normalized(), scanner, name),
     readResource: (name, relativePath, expectedRevision) =>
-      readSkillResource(normalized, scanner, name, relativePath, expectedRevision),
-    diff: (name, revision) => diffSkillRevision(normalized, scanner, name, revision),
-    check: (name) => checkSkills(normalized, scanner, name),
-    create: (name, content) => mutateWorkspaceSkill(normalized, scanner, "create", name, content),
+      readSkillResource(normalized(), scanner, name, relativePath, expectedRevision),
+    diff: (name, revision) => diffSkillRevision(normalized(), scanner, name, revision),
+    check: (name) => checkSkills(normalized(), scanner, name),
+    create: (name, content) => mutateWorkspaceSkill(normalized(), scanner, "create", name, content),
     update: (name, content, expectedRevision) =>
-      mutateWorkspaceSkill(normalized, scanner, "update", name, content, expectedRevision),
-    archive: (name, expectedRevision) => archiveWorkspaceSkill(normalized, scanner, name, expectedRevision),
-    restore: (name, revision) => restoreWorkspaceSkill(normalized, scanner, name, revision),
-    history: (name) => readWorkspaceSkillHistory(normalized, name),
+      mutateWorkspaceSkill(normalized(), scanner, "update", name, content, expectedRevision),
+    archive: (name, expectedRevision) => archiveWorkspaceSkill(normalized(), scanner, name, expectedRevision),
+    restore: (name, revision) => restoreWorkspaceSkill(normalized(), scanner, name, revision),
+    history: (name) => readWorkspaceSkillHistory(normalized(), name),
   };
 }
 
@@ -157,6 +161,7 @@ function scanSource(source: AgentSelfSkillSource, scanner: AgentSkillScanner): S
   const issues: string[] = [];
   for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
     if (entry.name.startsWith(".") || !entry.isDirectory() || entry.isSymbolicLink()) continue;
+    if (source.skillDirectories && !source.skillDirectories.includes(entry.name)) continue;
     const skillRoot = path.join(source.root, entry.name);
     const descriptionFile = path.join(skillRoot, "SKILL.md");
     try {

@@ -17,6 +17,7 @@ describe("Pi native tool provider stream lifecycle", () => {
       ToolPlanningMode: "native",
       Capabilities: { ToolCalling: true },
       Endpoint: "Responses",
+      Pricing: { input: 2, output: 8 },
     });
     const projection = projectSeneraModelProviderToPi(modelProvider);
     const turnState = createTurnState(modelProvider.Model);
@@ -31,7 +32,11 @@ describe("Pi native tool provider stream lifecycle", () => {
           type: "start",
           partial: { ...failureMessage(model, "stream_read_error"), content: [], stopReason: "pending" },
         });
-        stream.push({ type: "error", reason: "error", error: failureMessage(model, "stream_read_error") });
+        const failure = failureMessage(model, "stream_read_error");
+        failure.usage.input = 100;
+        failure.usage.output = 5;
+        failure.usage.totalTokens = 105;
+        stream.push({ type: "error", reason: "error", error: failure });
         return stream;
       }),
     }).create();
@@ -47,6 +52,9 @@ describe("Pi native tool provider stream lifecycle", () => {
 
     expect(result).toMatchObject({ stopReason: "error" });
     expect(result.errorMessage).toContain("stream_read_error");
+    expect(result.usage.input).toBe(100);
+    expect(result.usage.cost.total).toBeCloseTo(0.00024);
+    expect(turnState.context.usageLedger.aggregate()?.cost?.total).toBeCloseTo(0.00024);
   });
 
   test("reports the provider request deadline as an error instead of caller cancellation", async () => {

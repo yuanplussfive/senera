@@ -1,8 +1,4 @@
-import {
-  AgentInteractionSurfaces,
-  type AgentInteractionContext,
-  type AgentInteractionSurface,
-} from "../Interaction/AgentInteractionContext.js";
+import { AgentInteractionSurfaces, type AgentInteractionContext } from "../Interaction/AgentInteractionContext.js";
 import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 
 /**
@@ -12,17 +8,26 @@ import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
  * interaction surface.
  */
 export function isAgentToolAvailableForInteraction(
-  tool: Pick<RegisteredTool, "interactionSurfaces">,
+  tool: Pick<RegisteredTool, "interactionSurfaces" | "interactionPlatforms">,
   interaction?: AgentInteractionContext,
 ): boolean {
   const surfaces = tool.interactionSurfaces;
-  if (!surfaces || surfaces.length === 0) return true;
-  return surfaces.includes(interaction?.surface ?? AgentInteractionSurfaces.Console);
+  const resolvedInteraction = interaction ?? { surface: AgentInteractionSurfaces.Console };
+  if (surfaces && surfaces.length > 0 && !surfaces.includes(resolvedInteraction.surface)) return false;
+  const platforms = tool.interactionPlatforms;
+  return (
+    !platforms ||
+    platforms.length === 0 ||
+    (resolvedInteraction.platform !== undefined && platforms.includes(resolvedInteraction.platform))
+  );
 }
 
 export function isAgentToolScopedToInteractionSurface(
-  tool: Pick<RegisteredTool, "interactionSurfaces">,
-  surface: AgentInteractionSurface,
+  tool: Pick<RegisteredTool, "interactionSurfaces" | "interactionPlatforms">,
+  interaction: AgentInteractionContext,
 ): boolean {
-  return tool.interactionSurfaces?.includes(surface) === true;
+  return (
+    tool.interactionSurfaces?.includes(interaction.surface) === true &&
+    isAgentToolAvailableForInteraction(tool, interaction)
+  );
 }

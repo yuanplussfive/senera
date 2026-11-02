@@ -1,5 +1,5 @@
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
-import type { AppIconName } from "../shared/ui";
+import type { AppIconName } from "../shared/ui/AppIcon";
 
 export interface FilePreviewInput {
   name: string;

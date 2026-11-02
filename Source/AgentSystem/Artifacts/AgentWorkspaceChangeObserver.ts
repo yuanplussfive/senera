@@ -1,6 +1,7 @@
 import { isUtf8 } from "node:buffer";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { createAgentWorkspaceUndoCheckpoint } from "../Continuity/AgentContinuityLedger.js";
 import ParcelWatcher from "@parcel/watcher";
 import ignore, { type Ignore } from "ignore";
 import readdirp, { type EntryInfo as ReaddirpEntry } from "readdirp";
@@ -581,17 +582,16 @@ export class AgentWorkspaceChangeObserver implements AgentWorkspaceChangeObserve
       hash = `sha256:${sha256Hex(bytes)}`;
       if (size > sizeLimit) {
         content = { state: "omitted", reason: "size_limit", byteLength: size };
-      } else if (!isUtf8(bytes) || isProbablyBinary(bytes)) {
-        content = { state: "omitted", reason: "binary", byteLength: size };
       } else {
-        const text = bytes.toString("utf8");
+        const encoding = isUtf8(bytes) && !isProbablyBinary(bytes) ? "utf8" : "base64";
+        const text = bytes.toString(encoding);
         contentRef = sha256Hex(bytes);
         await this.observerStore().saveText(contentRef, text);
         content = {
           state: "captured",
-          encoding: "utf8",
+          encoding,
           byteLength: size,
-          lineCount: countLines(text),
+          lineCount: encoding === "utf8" ? countLines(text) : 0,
         };
         budget.bytes += size;
       }
@@ -707,6 +707,7 @@ export class AgentWorkspaceChangeObserver implements AgentWorkspaceChangeObserve
       before,
       after,
       changes,
+      checkpoint: createAgentWorkspaceUndoCheckpoint({ before, after, changes }),
     };
   }
 

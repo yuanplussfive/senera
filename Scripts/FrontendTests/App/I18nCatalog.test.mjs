@@ -5,6 +5,8 @@ import enUsChatMessages from "../../../Frontend/src/i18n/messages/chat.en-US.jso
 import zhCnChatMessages from "../../../Frontend/src/i18n/messages/chat.zh-CN.json" with { type: "json" };
 import enUsFeatureMessages from "../../../Frontend/src/i18n/messages/feature.en-US.json" with { type: "json" };
 import zhCnFeatureMessages from "../../../Frontend/src/i18n/messages/feature.zh-CN.json" with { type: "json" };
+import enUsModelConfigMessages from "../../../Frontend/src/i18n/messages/model-config.en-US.json" with { type: "json" };
+import zhCnModelConfigMessages from "../../../Frontend/src/i18n/messages/model-config.zh-CN.json" with { type: "json" };
 import {
   FrontendDefaultLocale,
   FrontendLocales,
@@ -18,6 +20,7 @@ test("frontend i18n catalogs expose the same message keys across locales", () =>
     [enUsMessages, zhCnMessages],
     [enUsChatMessages, zhCnChatMessages],
     [enUsFeatureMessages, zhCnFeatureMessages],
+    [enUsModelConfigMessages, zhCnModelConfigMessages],
   ]) {
     const expectedKeys = Object.keys(zhCn).sort();
     expect(Object.keys(enUs).sort()).toEqual(expectedKeys);

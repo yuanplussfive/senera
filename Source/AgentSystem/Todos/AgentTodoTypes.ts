@@ -9,9 +9,7 @@ export type AgentTodoStatus = (typeof AgentTodoStatuses)[keyof typeof AgentTodoS
 
 /** Stable model-facing Tool names shared by runtime, prompts, and extensions. */
 export const AgentTodoToolNames = {
-  Add: "TodoAdd",
-  Update: "TodoUpdate",
-  Read: "TodoRead",
+  Write: "todo_write",
 } as const;
 
 export const AgentTodoChangeSources = {
@@ -80,6 +78,7 @@ export interface AgentTodoPromptContext {
 }
 
 export interface AgentTodoPolicy {
+  readonly allowParallelInProgress?: boolean;
   readonly maxItems: number;
   readonly maxContentCharacters: number;
   readonly maxResultCharacters: number;

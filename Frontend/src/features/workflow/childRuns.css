@@ -1,0 +1,99 @@
+.child-run-board {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.child-run-board__header {
+  flex: none;
+  padding: 16px;
+  border-bottom: 1px solid var(--line-subtle);
+}
+.child-run-board__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: 4px 8px 12px;
+}
+.child-run-board__detail {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: 16px 16px 24px;
+}
+.child-run-row {
+  display: block;
+  width: 100%;
+  padding: 13px 8px;
+  border-bottom: 1px solid var(--line-subtle);
+  border-radius: 6px;
+  text-align: left;
+  transition: background-color 140ms ease-out;
+}
+.child-run-row:hover {
+  background: var(--surface-hover);
+}
+.child-run-row:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: -2px;
+}
+.child-run-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  height: 40px;
+  margin: 7px 0 0 23px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--content-secondary);
+}
+.child-run-row__meta {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 12px;
+  margin: 7px 0 0 23px;
+  font-size: 11px;
+  color: var(--content-muted);
+  font-variant-numeric: tabular-nums;
+}
+.child-run-activity {
+  padding: 4px 0;
+}
+.child-run-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line-subtle);
+}
+.child-run-todos {
+  display: grid;
+  gap: 9px;
+}
+.child-run-todos li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--content-secondary);
+}
+.child-run-todos svg {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 3px;
+}
+.child-run-todos [data-status="cancelled"] {
+  color: var(--content-muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .child-run-row {
+    transition: none;
+  }
+}

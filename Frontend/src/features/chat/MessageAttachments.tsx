@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Download } from "lucide-react";
 import { toast } from "sonner";
 import type { UploadAttachmentData } from "../../api/eventTypes";
 import { buildResourceContentUrl } from "../../api/uploadClient";
@@ -7,9 +6,8 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { downloadUrl } from "../../lib/download";
 import { isImageFilePreview } from "../../lib/filePreview";
 import { cn, formatFileSize } from "../../lib/util";
-import { FilePreviewDialog } from "../../shared/media/FilePreviewDialog";
-import { ImagePreviewDialog } from "../../shared/media/ImagePreviewDialog";
-import { IconButton } from "../../shared/ui";
+import { useWorkspaceResourceController } from "../../shared/workspace/WorkspaceResourceProvider";
+import { AppIcon, IconButton } from "../../shared/ui";
 import { FilePreviewIcon } from "./FilePreviewIcon";
 import { useUploadPreviewRegistry } from "./UploadPreviewRegistry";
 
@@ -24,15 +22,9 @@ interface ImageAttachmentSource {
   previewSource?: string;
 }
 
-interface FileAttachmentSource {
-  attachment: UploadAttachmentData;
-  canonicalSource?: string;
-  previewSource?: string;
-}
-
 export function MessageAttachments({ attachments, uploadUrl }: MessageAttachmentsProps): JSX.Element {
-  const [failedResourceUris, setFailedResourceUris] = useState<ReadonlySet<string>>(() => new Set());
-  const [selectedResourceUri, setSelectedResourceUri] = useState<string | null>(null);
+  const [failedSources, setFailedSources] = useState<ReadonlySet<string>>(() => new Set());
+  const workspace = useWorkspaceResourceController();
   const previewRegistry = useUploadPreviewRegistry();
   const projected = attachments.map((attachment) => ({
     attachment,
@@ -41,7 +33,7 @@ export function MessageAttachments({ attachments, uploadUrl }: MessageAttachment
     previewSource: previewRegistry.resolve(attachment.resourceUri),
   }));
   const images = projected.flatMap((item) =>
-    item.imageCandidate && item.canonicalSource && !failedResourceUris.has(item.attachment.resourceUri)
+    item.imageCandidate && item.canonicalSource && !failedSources.has(item.canonicalSource)
       ? [
           {
             attachment: item.attachment,
@@ -52,15 +44,11 @@ export function MessageAttachments({ attachments, uploadUrl }: MessageAttachment
       : [],
   );
   const files = projected.filter(
-    (item) => !item.imageCandidate || !item.canonicalSource || failedResourceUris.has(item.attachment.resourceUri),
+    (item) => !item.imageCandidate || !item.canonicalSource || failedSources.has(item.canonicalSource),
   );
-  const selectedImage = images.find((image) => image.attachment.resourceUri === selectedResourceUri) ?? null;
-  const selectedFile: FileAttachmentSource | null =
-    files.find((file) => file.attachment.resourceUri === selectedResourceUri) ?? null;
 
-  const markPreviewUnavailable = (resourceUri: string): void => {
-    setFailedResourceUris((current) => new Set(current).add(resourceUri));
-    setSelectedResourceUri((current) => (current === resourceUri ? null : current));
+  const markPreviewUnavailable = (image: ImageAttachmentSource): void => {
+    setFailedSources((current) => new Set(current).add(image.canonicalSource));
   };
 
   return (
@@ -82,10 +70,11 @@ export function MessageAttachments({ attachments, uploadUrl }: MessageAttachment
                 "cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
               )}
               aria-label={frontendMessage("chat.attachment.imagePreview", { name: image.attachment.name })}
-              onClick={() => setSelectedResourceUri(image.attachment.resourceUri)}
+              onClick={() => workspace?.openPreview({ ...image.attachment, source: image.canonicalSource })}
               data-message-image={image.attachment.resourceUri}
             >
               <ProgressiveMessageImage
+                key={image.canonicalSource}
                 image={image}
                 onCanonicalLoad={() => {
                   if (image.previewSource) {
@@ -96,7 +85,7 @@ export function MessageAttachments({ attachments, uploadUrl }: MessageAttachment
                   if (image.previewSource) {
                     previewRegistry.release(image.attachment.resourceUri, image.previewSource);
                   }
-                  markPreviewUnavailable(image.attachment.resourceUri);
+                  markPreviewUnavailable(image);
                 }}
               />
             </button>
@@ -112,31 +101,12 @@ export function MessageAttachments({ attachments, uploadUrl }: MessageAttachment
               attachment={attachment}
               downloadSource={canonicalSource}
               previewUnavailable={imageCandidate}
-              onPreview={canonicalSource ? () => setSelectedResourceUri(attachment.resourceUri) : undefined}
+              onPreview={
+                canonicalSource ? () => workspace?.openPreview({ ...attachment, source: canonicalSource }) : undefined
+              }
             />
           ))}
         </div>
-      ) : null}
-
-      {selectedImage ? (
-        <AttachmentImagePreviewDialog
-          key={selectedImage.attachment.resourceUri}
-          image={selectedImage}
-          onClose={() => setSelectedResourceUri(null)}
-          onLoadError={() => markPreviewUnavailable(selectedImage.attachment.resourceUri)}
-        />
-      ) : null}
-      {selectedFile ? (
-        <FilePreviewDialog
-          mime={selectedFile.attachment.mime}
-          name={selectedFile.attachment.name}
-          size={selectedFile.attachment.size}
-          source={selectedFile.previewSource ?? selectedFile.canonicalSource}
-          open
-          onOpenChange={(open) => {
-            if (!open) setSelectedResourceUri(null);
-          }}
-        />
       ) : null}
     </div>
   );
@@ -238,56 +208,8 @@ function AttachmentFileRow({
           download();
         }}
       >
-        <Download className="h-3.5 w-3.5" />
+        <AppIcon icon="download" size={14} />
       </IconButton>
     </div>
-  );
-}
-
-function AttachmentImagePreviewDialog({
-  image,
-  onClose,
-  onLoadError,
-}: {
-  image: ImageAttachmentSource;
-  onClose: () => void;
-  onLoadError: () => void;
-}): JSX.Element {
-  const source = image.previewSource ?? image.canonicalSource;
-
-  return (
-    <ImagePreviewDialog
-      alt={image.attachment.name}
-      closeLabel={frontendMessage("ui.close")}
-      labels={{
-        actualSize: frontendMessage("chat.attachment.actualSize"),
-        fit: frontendMessage("chat.attachment.fitImage"),
-        zoomIn: frontendMessage("chat.attachment.zoomIn"),
-        zoomOut: frontendMessage("chat.attachment.zoomOut"),
-      }}
-      open
-      source={source}
-      title={frontendMessage("chat.attachment.imagePreview", { name: image.attachment.name })}
-      onError={onLoadError}
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-      headerActions={
-        <IconButton
-          label={frontendMessage("chat.attachment.downloadImage")}
-          tooltip={frontendMessage("chat.attachment.downloadImage")}
-          tooltipSide="bottom"
-          size="md"
-          className="text-content-secondary hover:bg-surface-hover hover:text-content-primary"
-          onClick={() => {
-            void downloadUrl(image.canonicalSource, image.attachment.name).catch(() => {
-              toast.error(frontendMessage("chat.attachment.downloadFailed"));
-            });
-          }}
-        >
-          <Download className="h-4 w-4" />
-        </IconButton>
-      }
-    />
   );
 }

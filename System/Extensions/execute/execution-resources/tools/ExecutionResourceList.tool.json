@@ -21,9 +21,7 @@
   "inputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
-    "additionalProperties": {
-      "not": {}
-    },
+    "additionalProperties": false,
     "definitions": {}
   },
   "permissions": ["process:shell"],
@@ -34,7 +32,6 @@
   },
   "runtime": {
     "Lifecycle": "Immediate",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "SelfManaged"
   },

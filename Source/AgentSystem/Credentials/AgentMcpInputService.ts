@@ -29,6 +29,8 @@ export interface AgentMcpInputStatus {
   readonly placeholder?: string;
   readonly min?: number;
   readonly max?: number;
+  readonly durationUnit?: AgentMcpInputDefinition["durationUnit"];
+  readonly modelSelection?: AgentMcpInputDefinition["modelSelection"];
   readonly updatedAt?: string;
 }
 
@@ -152,6 +154,8 @@ export class AgentMcpInputService implements AgentExtensionValueResolver {
         ...(definition.placeholder !== undefined ? { placeholder: definition.placeholder } : {}),
         ...(definition.min !== undefined ? { min: definition.min } : {}),
         ...(definition.max !== undefined ? { max: definition.max } : {}),
+        ...(definition.durationUnit ? { durationUnit: definition.durationUnit } : {}),
+        ...(definition.modelSelection ? { modelSelection: definition.modelSelection } : {}),
         ...(metadata ? { updatedAt: metadata.updatedAt } : {}),
       };
     });

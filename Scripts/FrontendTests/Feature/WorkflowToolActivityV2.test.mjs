@@ -773,6 +773,14 @@ test("a legacy truncation envelope never reaches the row as raw JSON", () => {
   expect(inspection.label).not.toContain("preview=");
   // The declared action survives; only the unreadable argument detail is gone.
   expect(inspection.label).toBe("修改");
+  const technical = projectToolActivityInspection({
+    toolName: "job_output",
+    origin: origin({ action: localized("查看任务输出") }),
+    arguments: { cursor: 0, job_id: "run_1c93888d40fa42e69436680640ac2859759", wait: true },
+    status: "completed",
+  });
+  expect(technical.label).toBe("查看任务输出");
+  expect(technical.argumentPreviewParts).toEqual([]);
 });
 
 test("a legacy envelope alongside declared pointers still renders the pointer value", () => {

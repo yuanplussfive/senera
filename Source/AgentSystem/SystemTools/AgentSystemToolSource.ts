@@ -3,7 +3,6 @@ import { assertArtifactPolicyTemplates } from "../Artifacts/AgentArtifactTemplat
 import { AgentJsonFileLoader } from "../Config/AgentJsonFileLoader.js";
 import { deepFreeze } from "../Core/AgentDeepFreeze.js";
 import { agentDirectoryRevision } from "../Core/AgentDirectoryRevision.js";
-import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import type { AgentExtensionRegistry } from "../Extensions/AgentExtensionRegistry.js";
 import {
   createAgentExtensionLocalizedText,
@@ -12,8 +11,9 @@ import {
 } from "../Extensions/AgentExtensionLocalization.js";
 import { AgentSkillScanner } from "../Skills/AgentSkillScanner.js";
 import type { RegisteredSkill } from "../Skills/AgentSkillTypes.js";
-import { AgentJsonSchemaPromptContractProjector } from "../ToolContracts/AgentJsonSchemaPromptContractProjector.js";
+import { createAgentToolContract } from "../ToolContracts/AgentToolContractIdentity.js";
 import { ensureObjectRootJsonSchema } from "../ToolContracts/AgentJsonSchemaObjectRoot.js";
+import { AgentToolModelOutputJsonSchemaKeyword } from "../ToolContracts/AgentToolModelOutput.js";
 import type { AgentJsonSchema } from "../ToolContracts/AgentJsonSchemaPointer.js";
 import type { RegisteredSidecarTool, RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
 import type { AgentToolPresentation } from "../Types/AgentToolPresentationTypes.js";
@@ -53,9 +53,34 @@ import { validateAgentToolResourceManifests } from "../ToolRuntime/AgentToolReso
 export type { AgentSystemExtensionConfigurationSettings } from "./AgentSystemExtensionConfiguration.js";
 
 export interface AgentSystemExtensionCatalogOptions {
+  /** Host capabilities implemented by the runtime that owns this catalog. */
   readonly capabilities: ReadonlySet<string>;
+  /**
+   * Complete capability namespace understood by this runtime family. When a
+   * composition supplies fewer executable capabilities, packages requiring a
+   * missing known capability are not published into that composition. A
+   * contribution outside this namespace remains a hard contract error.
+   */
+  readonly capabilityUniverse?: ReadonlySet<string>;
+  /**
+   * Host capabilities that this runtime expects packages to publish exactly
+   * once. This is deliberately separate from `capabilities`: focused catalog
+   * tests can supply a small capability universe, while a production runtime
+   * can make a missing package contract a startup error.
+   */
+  readonly requiredHostCapabilities?: ReadonlySet<string>;
+  /** Internal sidecar capabilities that this runtime expects packages to publish exactly once. */
+  readonly requiredSidecarCapabilities?: ReadonlySet<string>;
   readonly configurations?: Readonly<Record<string, AgentSystemExtensionConfig>>;
   readonly platform?: AgentSystemExtensionPlatform;
+}
+
+interface AgentSystemExtensionToolPublication {
+  readonly extensionId: string;
+  readonly kind: "hostTool" | "sidecarTool";
+  readonly capability: string;
+  readonly name: string;
+  readonly contractPath: string;
 }
 
 export interface AgentSystemMcpContribution {
@@ -73,6 +98,9 @@ export interface AgentSystemExtensionToolSettingsItem {
 }
 
 export interface AgentSystemExtensionSettingsItem {
+  readonly documentation?: AgentExtensionLocalizedText;
+  readonly skills?: readonly { readonly name: string; readonly title?: string; readonly description: string }[];
+  readonly usageExamples?: readonly import("../Extensions/AgentPluginUsageExamples.js").AgentPluginUsageExample[];
   readonly id: string;
   /** Declared owner for the package's user-facing settings configuration. */
   readonly settingsSurface: AgentSystemExtensionSettingsSurface;
@@ -83,7 +111,6 @@ export interface AgentSystemExtensionSettingsItem {
     readonly description: AgentExtensionLocalizedText;
     readonly presentation: AgentToolPresentation;
   };
-  readonly version: string;
   readonly displayName: AgentExtensionLocalizedText;
   readonly description: AgentExtensionLocalizedText;
   /** Resolved domain and extension-level presentation default. */
@@ -104,18 +131,36 @@ export interface AgentSystemExtensionSettingsItem {
  */
 export class AgentSystemExtensionCatalog {
   private readonly json = new AgentJsonFileLoader();
-  private readonly contracts = new AgentJsonSchemaPromptContractProjector();
-  private readonly ajv = new Ajv({ allErrors: true, strict: true, validateFormats: false });
+  // Package schemas use normal JSON Schema composition to express cross-field
+  // requirements. AJV's strictRequired lint only accepts repeated property
+  // declarations inside each composition branch, which would duplicate the
+  // public contract rather than strengthen it.
+  private readonly ajv = new Ajv({
+    allErrors: true,
+    strict: true,
+    strictRequired: false,
+    validateFormats: false,
+  }).addKeyword(AgentToolModelOutputJsonSchemaKeyword);
   private readonly configurations = new AgentSystemExtensionConfigurationReader();
   private readonly bindings = new Map<string, Set<string>>();
   private readonly mcpContributions: AgentSystemMcpContribution[] = [];
   private readonly extensions: AgentSystemExtensionSettingsItem[] = [];
   private readonly dedicatedSettingsSurfaces = new Map<string, string>();
+  private readonly hostContracts = new Map<string, AgentSystemToolContract>();
+  private readonly sidecarContracts = new Map<string, AgentSystemSidecarToolContract>();
 
   registerRoot(registry: AgentExtensionRegistry, rootPath: string, options: AgentSystemExtensionCatalogOptions): void {
     const packages = discoverAgentSystemExtensionPackages(rootPath);
     const packageIds = new Set(packages.map((source) => source.manifest.id));
-    for (const source of packages) this.registerPackage(registry, source, options);
+    const platformPackages = packages.filter((source) =>
+      isAgentSystemExtensionApplicable(source.manifest.platforms, options.platform),
+    );
+    this.assertKnownHostCapabilities(platformPackages, options.capabilityUniverse ?? options.capabilities);
+    const applicablePackages = platformPackages.filter((source) =>
+      this.isExecutableInRuntime(source, options.capabilities),
+    );
+    this.preflightPublishedContracts(applicablePackages, options);
+    for (const source of applicablePackages) this.registerPackage(registry, source, options);
     this.applySkillToolBindings(registry);
     const unknownConfigurations = Object.keys(options.configurations ?? {}).filter((id) => !packageIds.has(id));
     if (unknownConfigurations.length > 0) {
@@ -135,10 +180,133 @@ export class AgentSystemExtensionCatalog {
     return [...this.mcpContributions];
   }
 
-  listExtensions(): readonly AgentSystemExtensionSettingsItem[] {
-    return [...this.extensions].sort(
-      (left, right) => (right.priority ?? 0) - (left.priority ?? 0) || left.id.localeCompare(right.id),
+  listExtensions(skills: readonly RegisteredSkill[] = []): readonly AgentSystemExtensionSettingsItem[] {
+    return this.extensions
+      .map((extension) => {
+        const tools = new Set(extension.tools.map((tool) => tool.name));
+        const related = new Map((extension.skills ?? []).map((skill) => [skill.name, skill]));
+        for (const skill of skills) {
+          if (skill.source.kind !== "system" || !skill.recommendedTools.some((tool) => tools.has(tool))) continue;
+          related.set(skill.name, { name: skill.name, title: skill.title, description: skill.description });
+        }
+        return { ...extension, skills: [...related.values()], skillCount: related.size };
+      })
+      .sort((left, right) => (right.priority ?? 0) - (left.priority ?? 0) || left.id.localeCompare(right.id));
+  }
+
+  private assertKnownHostCapabilities(
+    packages: readonly AgentSystemExtensionPackageSource[],
+    capabilityUniverse: ReadonlySet<string>,
+  ): void {
+    for (const sourcePackage of packages) {
+      for (const contribution of sourcePackage.manifest.contributions ?? []) {
+        if (contribution.kind !== "hostTool" || capabilityUniverse.has(contribution.capability)) continue;
+        throw new Error(
+          `System extension ${sourcePackage.manifest.id} references unregistered host capability ${contribution.capability}.`,
+        );
+      }
+    }
+  }
+
+  private isExecutableInRuntime(
+    sourcePackage: AgentSystemExtensionPackageSource,
+    capabilities: ReadonlySet<string>,
+  ): boolean {
+    return (sourcePackage.manifest.contributions ?? [])
+      .filter((contribution): contribution is AgentSystemHostToolContribution => contribution.kind === "hostTool")
+      .every((contribution) => capabilities.has(contribution.capability));
+  }
+
+  /**
+   * System package contracts are a closed publication set. Resolve every
+   * contract before registering anything so duplicate symbols cannot be
+   * hidden by registry priority and a missing required contract fails before
+   * a partially populated runtime escapes.
+   */
+  private preflightPublishedContracts(
+    packages: readonly AgentSystemExtensionPackageSource[],
+    options: AgentSystemExtensionCatalogOptions,
+  ): void {
+    const unavailableRequiredCapabilities = [...(options.requiredHostCapabilities ?? [])].filter(
+      (capability) => !options.capabilities.has(capability),
     );
+    if (unavailableRequiredCapabilities.length > 0) {
+      throw new Error(
+        `Required System host capabilities are not registered by this runtime: ${unavailableRequiredCapabilities.sort().join(", ")}.`,
+      );
+    }
+
+    const hostCapabilities = new Map<string, AgentSystemExtensionToolPublication>();
+    const sidecarCapabilities = new Map<string, AgentSystemExtensionToolPublication>();
+    const toolNames = new Map<string, AgentSystemExtensionToolPublication>();
+    for (const sourcePackage of packages) {
+      const packageRoot = sourcePackage.packageRoot;
+      for (const contribution of sourcePackage.manifest.contributions ?? []) {
+        if (contribution.kind === "hostTool") {
+          const contractPath = resolveSystemExtensionPackageFile(
+            packageRoot,
+            contribution.contract,
+            "host Tool contract",
+          );
+          const contract = this.readContract(contractPath);
+          const publication: AgentSystemExtensionToolPublication = {
+            extensionId: sourcePackage.manifest.id,
+            kind: contribution.kind,
+            capability: contribution.capability,
+            name: contract.name,
+            contractPath,
+          };
+          this.claimPublication(hostCapabilities, publication.capability, "host capability", publication);
+          this.claimPublication(toolNames, publication.name, "tool name", publication);
+          continue;
+        }
+        if (contribution.kind !== "sidecarTool") continue;
+        const contractPath = resolveSystemExtensionPackageFile(
+          packageRoot,
+          contribution.contract,
+          "sidecar Tool contract",
+        );
+        const contract = this.readSidecarContract(contractPath);
+        const publication: AgentSystemExtensionToolPublication = {
+          extensionId: sourcePackage.manifest.id,
+          kind: contribution.kind,
+          capability: contribution.capability,
+          name: contract.name,
+          contractPath,
+        };
+        this.claimPublication(sidecarCapabilities, publication.capability, "sidecar capability", publication);
+        this.claimPublication(toolNames, publication.name, "tool name", publication);
+      }
+    }
+    this.assertRequiredPublications(options.requiredHostCapabilities, hostCapabilities, "host capability");
+    this.assertRequiredPublications(options.requiredSidecarCapabilities, sidecarCapabilities, "sidecar capability");
+  }
+
+  private claimPublication(
+    publications: Map<string, AgentSystemExtensionToolPublication>,
+    key: string,
+    label: string,
+    publication: AgentSystemExtensionToolPublication,
+  ): void {
+    const existing = publications.get(key);
+    if (!existing) {
+      publications.set(key, publication);
+      return;
+    }
+    throw new Error(
+      `System extension '${publication.extensionId}' publishes duplicate ${label} '${key}' from ${publication.contractPath}; it is already published by '${existing.extensionId}' from ${existing.contractPath}.`,
+    );
+  }
+
+  private assertRequiredPublications(
+    required: ReadonlySet<string> | undefined,
+    publications: ReadonlyMap<string, AgentSystemExtensionToolPublication>,
+    label: string,
+  ): void {
+    if (!required || required.size === 0) return;
+    const missing = [...required].filter((capability) => !publications.has(capability)).sort();
+    if (missing.length === 0) return;
+    throw new Error(`System extension catalog is missing required ${label} publication(s): ${missing.join(", ")}.`);
   }
 
   private applySkillToolBindings(registry: AgentExtensionRegistry): void {
@@ -202,20 +370,7 @@ export class AgentSystemExtensionCatalog {
     const sidecarToolContributions = contributions.filter(
       (contribution): contribution is AgentSystemSidecarToolContribution => contribution.kind === "sidecarTool",
     );
-    assertUnique(
-      toolContributions.map((contribution) => contribution.contract),
-      `contract in ${manifest.id}`,
-    );
-    assertUnique(
-      toolContributions.map((contribution) => contribution.capability),
-      `capability in ${manifest.id}`,
-    );
     const projectedTools = toolContributions.map((contribution) => {
-      if (!options.capabilities.has(contribution.capability)) {
-        throw new Error(
-          `System extension ${manifest.id} references unregistered host capability ${contribution.capability}.`,
-        );
-      }
       const contractPath = resolveSystemExtensionPackageFile(packageRoot, contribution.contract, "host Tool contract");
       const contract = this.readContract(contractPath);
       const presentation = resolveAgentSystemToolPresentation(extensionPresentation, contract.presentation);
@@ -291,9 +446,11 @@ export class AgentSystemExtensionCatalog {
           description: sourcePackage.domain.description,
           presentation: deepFreeze(sourcePackage.domain.presentation),
         },
-        version: manifest.version,
         displayName: manifest.displayName,
         description: manifest.description,
+        ...(manifest.usageExamples ? { usageExamples: manifest.usageExamples } : {}),
+        ...(manifest.documentation ? { documentation: manifest.documentation } : {}),
+        skills: skills.map(({ name, title, description }) => ({ name, ...(title ? { title } : {}), description })),
         presentation: deepFreeze(extensionPresentation),
         enabled,
         configured: configured !== undefined,
@@ -318,6 +475,8 @@ export class AgentSystemExtensionCatalog {
   }
 
   private readContract(filePath: string): AgentSystemToolContract {
+    const cached = this.hostContracts.get(filePath);
+    if (cached) return cached;
     const loaded = this.json.load(filePath, AgentSystemToolContractSchema) as AgentSystemToolContract;
     validateAgentToolResourceManifests(loaded.resources);
     const source = deepFreeze({
@@ -330,15 +489,19 @@ export class AgentSystemExtensionCatalog {
       argumentsSchema: source.inputSchema,
       resultSchema: source.outputSchema,
     });
+    this.hostContracts.set(filePath, source);
     return source;
   }
 
   private readSidecarContract(filePath: string): AgentSystemSidecarToolContract {
+    const cached = this.sidecarContracts.get(filePath);
+    if (cached) return cached;
     const source = deepFreeze(
       this.json.load(filePath, AgentSystemSidecarToolContractSchema) as AgentSystemSidecarToolContract,
     );
     this.ajv.compile(source.inputSchema);
     this.ajv.compile(source.outputSchema);
+    this.sidecarContracts.set(filePath, source);
     return source;
   }
 
@@ -361,24 +524,12 @@ export class AgentSystemExtensionCatalog {
     presentation: NonNullable<RegisteredTool["presentation"]>,
   ): RegisteredTool {
     const description = resolveSystemToolDescription(source.description);
-    return {
+    const tool: RegisteredTool = {
       owner,
       name: source.name,
+      description,
       loading: source.loading,
       ...(source.planningModes ? { planningModes: source.planningModes } : {}),
-      contract: deepFreeze({
-        digest: sha256HexOfCanonicalJson({
-          planningModes: source.planningModes,
-          inputSchema: source.inputSchema,
-          outputSchema: source.outputSchema,
-          resultStorage: source.runtime.ResultStorage,
-          artifacts: source.artifacts,
-          surfaces: source.surfaces,
-          resources: source.resources,
-        }),
-        arguments: this.contracts.project(source.inputSchema),
-        outputSchema: source.outputSchema,
-      }),
       permissions: source.permissions,
       handler: { kind: "HostCapability", capability, resources: source.resources },
       execution: source.execution,
@@ -392,7 +543,9 @@ export class AgentSystemExtensionCatalog {
       approval: source.approval,
       artifactPolicy: source.artifacts,
       interactionSurfaces: source.surfaces,
+      interactionPlatforms: source.platforms,
     };
+    return { ...tool, contract: createAgentToolContract(tool, source.inputSchema, source.outputSchema) };
   }
 
   private projectSidecarTool(
@@ -420,12 +573,4 @@ function localizeSystemToolDescription(value: string | AgentExtensionLocalizedTe
 
 function resolveSystemToolDescription(value: string | AgentExtensionLocalizedText): string {
   return typeof value === "string" ? value : resolveAgentExtensionLocalizedText(value);
-}
-
-function assertUnique(values: readonly string[], label: string): void {
-  const seen = new Set<string>();
-  for (const value of values) {
-    if (seen.has(value)) throw new Error(`Duplicate ${label}: ${value}`);
-    seen.add(value);
-  }
 }

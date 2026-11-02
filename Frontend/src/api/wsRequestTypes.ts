@@ -4,17 +4,18 @@ import type {
   ProviderModelEndpointInput,
   UploadAttachmentData,
   UserProfileData,
-  ConversationIdentityData,
   ExplicitActivationSet,
 } from "./eventTypes";
 import type { ProviderModelConfigRequest } from "./providerModelCommandTypes";
 import type { InteractionInputAction, InteractionInputContent } from "./interactionInputEventTypes";
+import type { FeedbackCategory, FeedbackRating } from "./feedbackEventTypes";
 import type { ExecutionApprovalMode } from "./executionApprovalMode";
 
 export type WsRequest =
-  | { type: "session.create"; sessionId?: string }
+  | { type: "session.create"; sessionId?: string; agentId?: string }
   | {
       type: "session.message";
+      agentId?: string;
       sessionId: string;
       requestId?: string;
       modelProviderId?: string;
@@ -58,8 +59,17 @@ export type WsRequest =
   | { type: "session.runtime_status"; sessionId: string }
   | { type: "session.export"; sessionId: string; format: "jsonl" | "html" }
   | { type: "session.list" }
-  | { type: "session.history"; sessionId: string; refresh?: boolean; initialWindow?: boolean }
+  | { type: "session.history"; sessionId: string; refresh?: boolean; initialWindow?: boolean; before?: string }
+  | { type: "session.run_history"; sessionId: string; requestId: string }
   | { type: "session.rename"; sessionId: string; title: string }
+  | {
+      type: "session.feedback";
+      sessionId: string;
+      requestId: string;
+      /** `null` retracts a previously recorded rating. */
+      rating: FeedbackRating | null;
+      category?: FeedbackCategory;
+    }
   | { type: "model.list" }
   | { type: "provider.models.fetch"; providerId: string; force?: boolean; endpoint?: ProviderModelEndpointInput }
   | { type: "config.get" }
@@ -71,7 +81,7 @@ export type WsRequest =
   | { type: "runtimeDependency.check"; dependencyId: string }
   | { type: "runtimeDependency.install"; dependencyId: string }
   | { type: "mcpServer.restart"; serverId: string }
-  | { type: "channel.connect"; kind: "telegram" | "qq" | "discord" }
+  | { type: "channel.connect"; kind: import("../../../Source/AgentSystem/Channels/AgentChannelTypes").AgentChannelKind }
   | {
       type: "mcpInput.set";
       serverId: string;
@@ -99,9 +109,7 @@ export type WsRequest =
   | { type: "profile.get" }
   | {
       type: "profile.update";
-      profile: Pick<UserProfileData, "name" | "avatarDataUrl" | "avatarPath"> & {
-        assistant?: ConversationIdentityData;
-      };
+      profile: Pick<UserProfileData, "name" | "avatarDataUrl" | "avatarPath">;
     }
   | { type: "approval.resolve"; approvalId: string; decision: ApprovalDecision; message?: string }
   | {

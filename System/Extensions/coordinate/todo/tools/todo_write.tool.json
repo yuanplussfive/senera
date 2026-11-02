@@ -1,0 +1,116 @@
+{
+  "name": "todo_write",
+  "loading": "Bootstrap",
+  "description": "Replace the complete current task plan. Each item has content and status. Omitted items are removed; an empty list clears the plan. Use for substantial multi-step work, and keep it current at milestones.",
+  "presentation": {
+    "category": "todo",
+    "icon": "list-checks",
+    "activity": {
+      "action": {
+        "zh-CN": "更新计划",
+        "en-US": "Update plan"
+      },
+      "detailPaths": ["/todos/*/content"]
+    },
+    "preview": {
+      "body": {
+        "pointer": "/todos",
+        "from": "result"
+      }
+    }
+  },
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "todos": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "status": {
+              "type": "string",
+              "enum": ["pending", "in_progress", "completed"]
+            }
+          },
+          "required": ["content", "status"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["todos"],
+    "additionalProperties": false
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "todos": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "status": {
+              "type": "string",
+              "enum": ["pending", "in_progress", "completed"]
+            }
+          },
+          "required": ["content", "status"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["todos"],
+    "additionalProperties": false
+  },
+  "permissions": ["session:todo"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Lifecycle": "Immediate",
+    "ResultAssessment": "ProcessExit",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [],
+  "search": {
+    "Summary": "完整替换当前任务计划，统一维护步骤和状态。",
+    "Tags": ["todo", "计划", "进度"],
+    "Capabilities": [
+      {
+        "Id": "todo.write",
+        "Title": "Task plan",
+        "Description": "Replace the complete current task plan. Each item has content and status. Omitted items are removed; an empty list clears the plan. Use for substantial multi-step work, and keep it current at milestones.",
+        "Facets": {
+          "Actions": ["replace"],
+          "Targets": ["task-plan"],
+          "Inputs": ["todos"],
+          "Outputs": ["todos"],
+          "Effects": ["session-state"]
+        },
+        "Risk": {
+          "SideEffect": "session-state",
+          "Permission": "write"
+        },
+        "Aliases": ["todo_write", "Task plan"]
+      }
+    ],
+    "UseCases": ["维护多步骤工作进度"],
+    "Avoid": ["一步即可完成的请求无需计划"]
+  },
+  "evidenceCapabilities": []
+}

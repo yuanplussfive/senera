@@ -1,10 +1,12 @@
 import { describe, expect, test, vi } from "vitest";
+import { createAgentToolExecutionDigest } from "../../../Source/AgentSystem/ToolContracts/AgentToolContractIdentity.js";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
   AgentPiToolExecutionBridge as AgentPiToolExecutionBridgeBase,
   type AgentPiToolExecutionBridgeOptions,
 } from "../../../Source/AgentSystem/Pi/AgentPiToolExecutionBridge.js";
 import { AgentToolSourceViewInvariantError } from "../../../Source/AgentSystem/Artifacts/AgentToolSourceView.js";
+import { projectAgentToolResultForHistory } from "../../../Source/AgentSystem/Types/ToolRuntimeTypes.js";
 import { AgentPiToolResultStatuses } from "../../../Source/AgentSystem/Pi/AgentPiTypes.js";
 import {
   AgentWorkspaceChangeSetProtocol,
@@ -17,6 +19,9 @@ import { AgentTurnTokenBudget } from "../../../Source/AgentSystem/Text/AgentTurn
 import { toolAccessGrant } from "../Support/AgentTestFixtures.js";
 import { AgentToolExposureState } from "../../../Source/AgentSystem/ToolRuntime/AgentToolExposureState.js";
 import { AgentPiTurnState } from "../../../Source/AgentSystem/Pi/AgentPiTurnState.js";
+import { AgentPiRunCollector } from "../../../Source/AgentSystem/Pi/AgentPiRunCollector.js";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import { AgentEventKinds, type AgentDomainEvent } from "../../../Source/AgentSystem/Events/AgentEvent.js";
 import { AgentModelUsageLedger } from "../../../Source/AgentSystem/ModelEndpoints/AgentModelUsage.js";
 import { AgentPiToolPlanCoordinator } from "../../../Source/AgentSystem/PiShared/AgentPiToolPlanCoordinator.js";
 import {
@@ -45,6 +50,80 @@ class AgentPiToolExecutionBridge extends AgentPiToolExecutionBridgeBase {
 }
 
 describe("Pi tool execution bridge behavior", () => {
+  test("observation projection failure preserves the completed result and its published source", async () => {
+    const executed = toolResult({ callId: "call-view-error", artifact: artifactFixture("Source remains available") });
+    const compressor = createTestToolObservationCompressor();
+    vi.spyOn(compressor, "compress").mockRejectedValue(new Error("derived view unavailable"));
+    const context = createToolContext("SearchTool", "call-view-error");
+    const bridge = new AgentPiToolExecutionBridge({
+      executeToolCall: async () => ({ kind: "ToolResults", value: [executed] }),
+      recordToolArtifacts: async () => [executed],
+      observationCompressor: compressor,
+    });
+    const result = await bridge.execute({
+      tool: registeredTool("SearchTool"),
+      params: {},
+      toolCallId: "call-view-error",
+      context,
+    });
+    expect(parseObservation(result)).toMatchObject({
+      status: "success",
+      execution_status: "completed",
+      artifact_uri: executed.artifact!.artifactUri,
+      observation_view: { complete: false, omissions: [{ reason: "observation_projection_failed" }] },
+    });
+    expect(result.details?.senera.status).toBe("success");
+    expect(parseObservation(result).error).toBeUndefined();
+  });
+  test("publishes actual artifact-backed results to inspectors before compacting durable history", async () => {
+    const context = createToolContext("SearchTool", "call-artifact");
+    const executed = toolResult({
+      callId: "call-artifact",
+      result: { answer: "A complete answer", additionalDetail: { count: 3 } },
+      artifact: artifactFixture("A concise model observation"),
+    });
+    const bridge = new AgentPiToolExecutionBridge({
+      executeToolCall: async () => ({ kind: "ToolResults", value: [executed] }),
+      recordToolArtifacts: async () => [executed],
+    });
+    const events: AgentDomainEvent[] = [];
+    const collector = new AgentPiRunCollector({
+      requestId: "request-call-artifact",
+      step: 1,
+      turnState: context.turnState,
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    await collector.collect({
+      type: "tool_execution_start",
+      toolCallId: "call-artifact",
+      toolName: "SearchTool",
+      args: {},
+    } as AgentSessionEvent);
+    const observation = await bridge.execute({
+      tool: registeredTool("SearchTool"),
+      params: {},
+      toolCallId: "call-artifact",
+      context,
+    });
+    await collector.collect({
+      type: "tool_execution_end",
+      toolCallId: "call-artifact",
+      toolName: "SearchTool",
+      result: observation,
+      isError: false,
+    } as AgentSessionEvent);
+    expect(events.find((event) => event.kind === AgentEventKinds.ToolCallResultDetail)?.data).toMatchObject({
+      value: executed.result,
+    });
+    expect(collector.snapshot().traces[0]?.toolResult).toEqual(executed.result);
+    expect(collector.snapshot().executedTools[0]?.result).toMatchObject({
+      artifactUri: executed.artifact!.artifactUri,
+    });
+    expect(JSON.stringify(collector.snapshot().executedTools)).not.toContain("A complete answer");
+  });
+
   test("lets self-managed orchestration tools own child-run scheduling", async () => {
     const executed = toolResult({ callId: "call-spawn", name: "AgentSpawn" });
     const run = vi.fn(async () => {
@@ -75,7 +154,7 @@ describe("Pi tool execution bridge behavior", () => {
     const bridge = new AgentPiToolExecutionBridge({
       executeToolCall: async () => ({ kind: "ToolResults", value: [executed] }),
       recordToolArtifacts: async () => [executed],
-      attributionEnabled: () => true,
+      observationAttribution: true,
     });
 
     const result = await bridge.execute({
@@ -94,6 +173,26 @@ describe("Pi tool execution bridge behavior", () => {
     const text = readAgentPiMessageTextContent(message);
 
     expect(() => JSON.parse(text)).not.toThrow();
+    expect(JSON.parse(text)).toMatchObject({ type: "senera.tool_observation.v5" });
+  });
+
+  test("keeps native observations as bare JSON without the BAML envelope", async () => {
+    const executed = toolResult({ callId: "call-native", name: "SearchTool" });
+    const bridge = new AgentPiToolExecutionBridge({
+      executeToolCall: async () => ({ kind: "ToolResults", value: [executed] }),
+      recordToolArtifacts: async () => [executed],
+    });
+
+    const result = await bridge.execute({
+      tool: registeredTool("SearchTool"),
+      params: { query: "native" },
+      toolCallId: "call-native",
+      context: createToolContext("SearchTool", "call-native"),
+    });
+    const content = result.content[0];
+    const text = content?.type === "text" ? content.text : "";
+
+    expect(text.startsWith("<observation")).toBe(false);
     expect(JSON.parse(text)).toMatchObject({ type: "senera.tool_observation.v5" });
   });
 
@@ -273,7 +372,7 @@ describe("Pi tool execution bridge behavior", () => {
       {
         name: "SearchTool",
         arguments: { query: "answer" },
-        expectedContractDigest: null,
+        expectedExecutionDigest: createAgentToolExecutionDigest(registeredTool("SearchTool")),
         callId: "call-1",
         index: 0,
       },
@@ -381,11 +480,14 @@ describe("Pi tool execution bridge behavior", () => {
       toolName: "LargeResultTool",
       artifactUri: executed.artifact?.artifactUri,
       callId: executed.callId,
+      workspaceContext: { version: 1, outputs: [] },
       status: AgentPiToolResultStatuses.Success,
       executionStatus: "completed",
       outputAvailability: "complete",
     });
-    expect(context.turnState?.takeExecutedToolResult("call-large")).toMatchObject({
+    const transient = context.turnState?.takeExecutedToolResult("call-large");
+    expect(transient?.result).toBe(executed.result);
+    expect(projectAgentToolResultForHistory(transient!)).toMatchObject({
       result: {
         type: "senera.artifact_backed_tool_result.v1",
         artifactUri: "senera://artifact/art_0123456789abcdef01234567",
@@ -475,7 +577,9 @@ describe("Pi tool execution bridge behavior", () => {
         result: { artifacts: { item: [{ memories: { item: [{ content: "visible-source-page" }] } }] } },
       },
     });
-    expect(context.turnState?.takeExecutedToolResult("call-source-view")).toMatchObject({
+    const transient = context.turnState?.takeExecutedToolResult("call-source-view");
+    expect(transient?.result).toBe(executed.result);
+    expect(projectAgentToolResultForHistory(transient!)).toMatchObject({
       result: {
         type: "senera.source_view_tool_result.v1",
         sourceArtifacts: [{ artifactUri: sourceUri, refs: ["raw"] }],
@@ -785,7 +889,6 @@ function registeredTool(name: string, scheduling?: "ResourceClaims" | "SelfManag
     handler: { kind: "HostCapability", capability: name },
     runtime: {
       Lifecycle: "Immediate",
-      ProtocolVersion: 2,
       ResultAssessment: "ProcessExit",
       ...(scheduling ? { Scheduling: scheduling } : {}),
       Capabilities: { Cancellation: true },

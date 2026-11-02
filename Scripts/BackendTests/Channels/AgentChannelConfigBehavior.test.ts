@@ -28,13 +28,6 @@ describe("channel config resolution", () => {
     expect(resolved.channels.qq.enabled).toBe(true);
   });
 
-  test("channel final response rewrite is independently disabled by default", () => {
-    expect(resolveAgentChannelsConfig(configWithChannelsExtension({})).finalResponseRewrite).toBe(false);
-    expect(
-      resolveAgentChannelsConfig(configWithChannelsExtension({ finalResponseRewrite: true })).finalResponseRewrite,
-    ).toBe(true);
-  });
-
   test("absent extension section keeps the subsystem disabled", () => {
     const resolved = resolveAgentChannelsConfig({} as unknown as AgentSystemConfig);
     expect(resolved.enabled).toBe(false);
@@ -55,6 +48,17 @@ describe("channel config resolution", () => {
       configWithChannelsExtension({ qq: { enabled: true, appId: "app", appSecret: "secret", allowAllUsers: false } }),
     );
     expect(resolved.channels.qq.allowAllUsers).toBe(false);
+  });
+
+  test("resolves a usable local OneBot gateway from its minimal configuration", () => {
+    const resolved = resolveAgentChannelsConfig(configWithChannelsExtension({ onebot11: { enabled: true } }));
+
+    expect(resolved.channels.onebot11).toMatchObject({
+      enabled: true,
+      mode: "embedded",
+      allowAllUsers: true,
+    });
+    expect(resolved.channels.onebot11.unknown).toBeUndefined();
   });
 
   test("keeps QQ resilience and STT settings typed instead of routing them through unknown fields", () => {

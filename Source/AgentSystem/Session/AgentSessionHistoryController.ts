@@ -34,6 +34,13 @@ export interface AgentSessionHistoryReplayRequest {
   readonly sessionId: string;
   readonly refresh?: boolean;
   readonly initialWindow?: boolean;
+  readonly before?: string;
+  readonly onEvent?: AgentEventSink;
+}
+
+export interface AgentSessionRunHistoryReplayRequest {
+  readonly sessionId: string;
+  readonly requestId: string;
   readonly onEvent?: AgentEventSink;
 }
 
@@ -89,11 +96,15 @@ export class AgentSessionHistoryController {
 
   constructor(private readonly options: AgentSessionHistoryControllerOptions) {}
 
-  replay(request: AgentSessionHistoryReplayRequest): Promise<void> {
-    return this.options.admissions.run(request.sessionId, async () => {
-      await this.options.ready();
-      await this.recoverSession(request.sessionId);
+  async replay(request: AgentSessionHistoryReplayRequest): Promise<void> {
+    await this.withRetainedHistoryRead(request.sessionId, async () => {
       await this.options.replay.replay(request);
+    });
+  }
+
+  async replayRunHistory(request: AgentSessionRunHistoryReplayRequest): Promise<void> {
+    await this.withRetainedHistoryRead(request.sessionId, async () => {
+      await this.options.replay.replayRunHistory(request);
     });
   }
 
@@ -102,8 +113,26 @@ export class AgentSessionHistoryController {
       await this.options.ready();
       this.invalidate(request.sessionId);
       const lookup = this.options.store.get(request.sessionId);
-      const truncated =
-        lookup.kind === "found" ? await this.truncateExistingSession(lookup.session, request) : undefined;
+      if (lookup.kind === "missing") {
+        await this.emitHistoryBoundaryMissing(request, request.requestId);
+        return;
+      }
+      const conversation = this.options.store.loadConversation(request.sessionId);
+      const visited = new Set<string>();
+      let boundary = request.requestId;
+      while (true) {
+        if (visited.has(boundary)) throw new Error("Session queued-message ownership contains a cycle.");
+        visited.add(boundary);
+        const parent = conversation.find((entry) => entry.requestId === boundary)?.metadata?.queue?.parentRequestId;
+        if (!parent) break;
+        boundary = parent;
+      }
+      const effectiveRequest = {
+        ...request,
+        requestId: boundary,
+        ...(boundary !== request.requestId ? { preparation: undefined } : {}),
+      };
+      const truncated = await this.truncateExistingSession(lookup.session, effectiveRequest);
       if (truncated?.kind === "boundary_missing") {
         await this.emitHistoryBoundaryMissing(request, truncated.requestId);
         return;
@@ -113,7 +142,7 @@ export class AgentSessionHistoryController {
         this.options.store.persistMetadata(lookup.session);
       }
       await this.emitSessionTruncated(
-        request,
+        effectiveRequest,
         truncated?.removedEntries ?? 0,
         truncated?.kind === "committed" ? truncated.removedRequestIds : undefined,
       );
@@ -315,6 +344,29 @@ export class AgentSessionHistoryController {
 
   async recoverSession(sessionId: string): Promise<void> {
     await this.options.mutations.recoverSession(sessionId);
+  }
+
+  /**
+   * History is a snapshot read. It must not queue behind an active turn: a
+   * reconnect while a model is working still needs the transcript, approvals
+   * and live run state immediately. Retention only prevents the working-set
+   * cache from evicting the session while its fixed snapshot is streamed.
+   *
+   * A pending destructive history mutation is the one exception. Recover it
+   * through the normal admission lane before reading so the snapshot cannot
+   * straddle a truncated branch.
+   */
+  private async withRetainedHistoryRead<TValue>(sessionId: string, operation: () => Promise<TValue>): Promise<TValue> {
+    await this.options.ready();
+    const releaseRetention = this.options.store.retainWorkingSession(sessionId);
+    try {
+      if (this.options.store.loadPendingHistoryMutation(sessionId)) {
+        await this.options.admissions.run(sessionId, () => this.recoverSession(sessionId));
+      }
+      return await operation();
+    } finally {
+      releaseRetention();
+    }
   }
 
   private async truncateExistingSession(session: AgentSession, request: AgentSessionTruncateRequest) {

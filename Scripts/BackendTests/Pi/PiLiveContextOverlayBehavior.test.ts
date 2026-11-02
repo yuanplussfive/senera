@@ -7,6 +7,28 @@ import {
 } from "../../../Source/AgentSystem/Pi/AgentPiTurnContextMessage.js";
 
 describe("Pi durable turn context", () => {
+  test("keeps complete host records beyond the retired character limit", () => {
+    const record = JSON.stringify({ note: "x".repeat(14_000), tail: "complete record" });
+    const context = projectAgentPiTurnContext({
+      turnContext: record,
+      skills: [],
+      selectedPromptTemplates: [],
+    });
+    expect(context).toContain(record);
+    expect(context).toMatch(/<\/senera_turn_context>$/u);
+    expect(context).not.toContain("<scope>");
+  });
+
+  test("normalizes inline media without truncating the surrounding context", () => {
+    const context = projectAgentPiTurnContext({
+      turnContext: '{"image":"data:image/png;base64,aGVsbG8=","end":"still complete"}',
+      skills: [],
+      selectedPromptTemplates: [],
+    });
+    expect(context).toContain("[inline media omitted");
+    expect(context).not.toContain("aGVsbG8=");
+    expect(context).toContain('"end":"still complete"');
+  });
   test("merges host context into one user message without a request overlay", () => {
     const context = projectAgentPiTurnContext({
       turnContext: 'senera.live_state=v1\n[senera.scene] encoding=compact-json\n{"activity":"current"}',

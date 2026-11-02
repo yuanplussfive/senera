@@ -1,11 +1,12 @@
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { forwardRef, useRef, type CSSProperties, type ReactNode } from "react";
+import { forwardRef, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { Transition, VariantLabels, Variants } from "framer-motion";
 import { cn } from "../../lib/util";
 import { dialogPresenceExitMs, MotionDialogContent, MotionDialogOverlay, type DialogMotionPreset } from "../motion";
 import { Button, type ButtonProps } from "./Button";
 import { AppIcon } from "./AppIcon";
+import { OverlayPortalScope } from "./overlayPortalScope";
 
 export const Dialog = DialogPrimitive.Root;
 export const DialogTrigger = DialogPrimitive.Trigger;
@@ -99,6 +100,7 @@ const DialogContentFrame = forwardRef<
     },
     ref,
   ) => {
+    const [portalContainer, setPortalContainer] = useState<HTMLDivElement | null>(null);
     const liveContent: DialogContentSnapshot = {
       bodyClassName,
       children,
@@ -125,60 +127,63 @@ const DialogContentFrame = forwardRef<
 
     return (
       <div ref={ref} className={className} data-state={dataState} style={frameStyle} {...props}>
-        <MotionDialogContent
-          className={content.panelClassName}
-          data-dialog-panel="true"
-          data-state={dataState}
-          motionPreset={content.motionPreset}
-          initial={content.contentInitial}
-          variants={content.contentVariants}
-          transition={content.contentTransition}
-        >
-          {content.showHeader ? (
-            <div className="flex select-none items-start gap-4 bg-surface-panel px-6 pb-4 pt-5">
-              <div className="min-w-0 flex-1">
-                <DialogPrimitive.Title className="text-[16px] font-medium leading-6 text-content-strong">
-                  {content.title ?? ""}
-                </DialogPrimitive.Title>
-                {content.description ? (
-                  <DialogPrimitive.Description className="mt-1 text-[13px] leading-5 text-content-secondary">
-                    {content.description}
-                  </DialogPrimitive.Description>
+        <div ref={setPortalContainer} className="contents" />
+        <OverlayPortalScope.Provider value={portalContainer}>
+          <MotionDialogContent
+            className={content.panelClassName}
+            data-dialog-panel="true"
+            data-state={dataState}
+            motionPreset={content.motionPreset}
+            initial={content.contentInitial}
+            variants={content.contentVariants}
+            transition={content.contentTransition}
+          >
+            {content.showHeader ? (
+              <div className="flex select-none items-start gap-4 bg-surface-panel px-6 pb-4 pt-5">
+                <div className="min-w-0 flex-1">
+                  <DialogPrimitive.Title className="text-[16px] font-medium leading-6 text-content-strong">
+                    {content.title ?? ""}
+                  </DialogPrimitive.Title>
+                  {content.description ? (
+                    <DialogPrimitive.Description className="mt-1 text-[13px] leading-5 text-content-secondary">
+                      {content.description}
+                    </DialogPrimitive.Description>
+                  ) : null}
+                </div>
+                {content.showClose ? (
+                  <DialogClose asChild>
+                    <button
+                      type="button"
+                      className={cn(
+                        "grid h-6 w-6 flex-shrink-0 place-items-center rounded-md text-content-muted",
+                        "cursor-pointer",
+                        "transition-colors duration-[var(--menu-item-dur)] ease-out",
+                        "hover:bg-surface-hover hover:text-content-primary",
+                        "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
+                      )}
+                      aria-label={frontendMessage("ui.close")}
+                    >
+                      <AppIcon icon="close" size={14} aria-hidden="true" />
+                    </button>
+                  </DialogClose>
                 ) : null}
               </div>
-              {content.showClose ? (
-                <DialogClose asChild>
-                  <button
-                    type="button"
-                    className={cn(
-                      "grid h-6 w-6 flex-shrink-0 place-items-center rounded-md text-content-muted",
-                      "cursor-pointer",
-                      "transition-colors duration-[var(--menu-item-dur)] ease-out",
-                      "hover:bg-surface-hover hover:text-content-primary",
-                      "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-                    )}
-                    aria-label={frontendMessage("ui.close")}
-                  >
-                    <AppIcon icon="close" size={14} aria-hidden="true" />
-                  </button>
-                </DialogClose>
-              ) : null}
-            </div>
-          ) : (
-            <>
-              <DialogPrimitive.Title className="sr-only">{content.title ?? ""}</DialogPrimitive.Title>
-              {content.description ? (
-                <DialogPrimitive.Description className="sr-only">{content.description}</DialogPrimitive.Description>
-              ) : null}
-            </>
-          )}
-          <div className={content.bodyClassName}>{content.children}</div>
-          {content.footer ? (
-            <div className={cn("shrink-0 px-6 pb-3.5 pt-4", content.footerClassName)} data-dialog-footer>
-              {content.footer}
-            </div>
-          ) : null}
-        </MotionDialogContent>
+            ) : (
+              <>
+                <DialogPrimitive.Title className="sr-only">{content.title ?? ""}</DialogPrimitive.Title>
+                {content.description ? (
+                  <DialogPrimitive.Description className="sr-only">{content.description}</DialogPrimitive.Description>
+                ) : null}
+              </>
+            )}
+            <div className={content.bodyClassName}>{content.children}</div>
+            {content.footer ? (
+              <div className={cn("shrink-0 px-6 pb-3.5 pt-4", content.footerClassName)} data-dialog-footer>
+                {content.footer}
+              </div>
+            ) : null}
+          </MotionDialogContent>
+        </OverlayPortalScope.Provider>
       </div>
     );
   },

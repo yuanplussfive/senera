@@ -312,7 +312,6 @@ describe("SettingsWorkbench", () => {
           id: "execution",
           settingsSurface: "system-tools",
           domain: SystemToolsTestDomain,
-          version: "1.0.0",
           displayName: { "zh-CN": "命令执行", "en-US": "Shell Commands" },
           description: {
             "zh-CN": "在受控执行环境中运行命令。",
@@ -352,7 +351,6 @@ describe("SettingsWorkbench", () => {
     expect(await screen.findAllByText("命令执行")).toHaveLength(1);
     expect(await screen.findByText("在受控执行环境中运行命令。")).toBeInTheDocument();
     expect(screen.getByText("ShellCommandTool")).toBeInTheDocument();
-    expect(screen.getByText("v1.0.0")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "返回插件目录" }));
     fireEvent.click(screen.getByRole("switch", { name: "启用或停用 命令执行" }));
     expect(screen.queryByRole("button", { name: "保存更改" })).not.toBeInTheDocument();
@@ -592,7 +590,6 @@ describe("SettingsWorkbench", () => {
           id: "execution",
           settingsSurface: "system-tools",
           domain: SystemToolsTestDomain,
-          version: "1.0.0",
           displayName: { "zh-CN": "命令执行", "en-US": "Shell Commands" },
           description: { "zh-CN": "运行命令。", "en-US": "Runs commands." },
           presentation: SystemToolsTestDomain.presentation,
@@ -666,7 +663,6 @@ describe("SettingsWorkbench", () => {
           id: "execution",
           settingsSurface: "system-tools",
           domain: SystemToolsTestDomain,
-          version: "1.0.0",
           displayName: { "zh-CN": "命令执行", "en-US": "Shell Commands" },
           description: {
             "zh-CN": "在受控执行环境中运行命令。",

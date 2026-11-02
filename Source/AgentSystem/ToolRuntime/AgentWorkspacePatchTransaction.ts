@@ -1,9 +1,14 @@
-import type { FileError, FileInfo, Result } from "@earendil-works/pi-agent-core";
+import type {
+  SeneraFileError as FileError,
+  SeneraFileInfo as FileInfo,
+  SeneraOperationResult as Result,
+} from "../Execution/SeneraFileSystemTypes.js";
 import type { SeneraExecutionEnv } from "../Execution/SeneraExecutionTypes.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
 import { WorkspaceApplyPatchError } from "./AgentWorkspacePatchError.js";
 import { errorMessage } from "../Core/AgentErrors.js";
 import { sha256Hex } from "../Core/AgentHash.js";
+import { AgentResourceAccessIntents } from "../Execution/SeneraResourceAccess.js";
 import {
   AgentWorkspaceMutationReceiptProtocol,
   type AgentWorkspaceMutationReceipt,
@@ -32,11 +37,14 @@ export async function applyWorkspacePatchTransaction(
   plan: WorkspacePatchTransactionPlan,
   files: SeneraExecutionEnv,
 ): Promise<AgentWorkspaceMutationReceipt> {
+  // Validate the whole transaction before any write can create directories.
+  for (const { target } of plan.writes.values())
+    await requireFileResult(files.resolveResourcePath(target.relativePath, AgentResourceAccessIntents.Replace), target);
+  for (const { target } of plan.deletes.values())
+    await requireFileResult(files.resolveResourcePath(target.relativePath, AgentResourceAccessIntents.Remove), target);
   const rollback = await captureRollbackSnapshot(plan, files);
   try {
-    for (const parent of parentDirectories(plan.writes)) {
-      await requireFileResult(files.createDir(parent, { recursive: true }), { input: parent, relativePath: parent });
-    }
+    // The execution environment creates parents as part of the authorized write.
     for (const write of plan.writes.values()) {
       await requireFileResult(files.writeFile(write.target.relativePath, write.content), write.target);
     }
@@ -208,15 +216,6 @@ function sameWorkspaceMutationImage(
   if (left.kind !== "file" || right.kind !== "file") return true;
   if (left.bytes.byteLength !== right.bytes.byteLength) return false;
   return left.bytes.every((value, index) => value === right.bytes[index]);
-}
-
-function parentDirectories(writes: ReadonlyMap<string, unknown>): string[] {
-  const parents = new Set<string>();
-  for (const relativePath of writes.keys()) {
-    const index = relativePath.lastIndexOf("/");
-    if (index > 0) parents.add(relativePath.slice(0, index));
-  }
-  return [...parents].sort((left, right) => left.length - right.length);
 }
 
 function addFilePrecondition(

@@ -6,42 +6,49 @@ export interface AgentChannelCommandDescriptor {
   readonly aliases: readonly string[];
   readonly usage: string;
   readonly descriptionKey: AgentErrorMessageKey;
+  readonly access: "read" | "control";
 }
 
 /** One command catalog drives parsing, help output, and service dispatch. */
 export const AgentChannelCommandRegistry: readonly AgentChannelCommandDescriptor[] = Object.freeze([
   {
     command: AgentChannelCommands.New,
+    access: "control",
     aliases: ["new", "newchat", "new-session", "reset"],
     usage: "/new",
     descriptionKey: "channels.command.new",
   },
   {
     command: AgentChannelCommands.Stop,
+    access: "control",
     aliases: ["stop", "cancel"],
     usage: "/stop",
     descriptionKey: "channels.command.stop",
   },
   {
     command: AgentChannelCommands.Status,
+    access: "read",
     aliases: ["status"],
     usage: "/status",
     descriptionKey: "channels.command.status",
   },
   {
     command: AgentChannelCommands.Queue,
+    access: "read",
     aliases: ["queue"],
     usage: "/queue",
     descriptionKey: "channels.command.queue",
   },
   {
     command: AgentChannelCommands.Steer,
+    access: "control",
     aliases: ["steer"],
     usage: "/steer 指令",
     descriptionKey: "channels.command.steer",
   },
   {
     command: AgentChannelCommands.Help,
+    access: "read",
     aliases: ["help", "commands"],
     usage: "/help",
     descriptionKey: "channels.command.help",

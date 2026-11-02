@@ -43,6 +43,8 @@ export interface AgentToolSearchRegistryReader {
   listTools(): RegisteredTool[];
 }
 
+export type AgentToolSearchCatalogScope = "deferred" | "callable";
+
 /**
  * Request-local result fields derived from one immutable catalog and one query
  * token list. They are shared by rank projection and confidence planning, so
@@ -67,17 +69,19 @@ export class AgentToolSearchIndex {
     private readonly config: ResolvedAgentToolSearchConfig,
     capabilityIndex?: AgentCapabilitySearchIndex,
     resourceDiscovery?: AgentToolResourceDiscoveryReader,
+    scope: AgentToolSearchCatalogScope = "deferred",
   ) {
     const documentBuilder = new AgentToolSearchDocumentBuilder(resourceDiscovery);
     const registeredTools = registry.listTools();
     const toolsByName = new Map(registeredTools.map((tool) => [tool.name, tool]));
     this.toolsByName = toolsByName;
-    // ToolSearch is the deferred-capability protocol. Bootstrap tools are
-    // already present in the provider schema and must be called directly;
-    // indexing them here would invite the model to route resident tools
-    // through ToolDescribe/ToolCall and duplicate their token cost.
+    // Model ToolSearch discovers deferred tools; scripts search their entire
+    // callable catalog. Both use the same ranking and semantic evidence.
     this.docs = registeredTools
-      .filter((tool) => isAgentToolDynamicallyDiscoverable(tool) && !isAgentToolMetaToolName(tool.name))
+      .filter(
+        (tool) =>
+          (scope === "callable" || isAgentToolDynamicallyDiscoverable(tool)) && !isAgentToolMetaToolName(tool.name),
+      )
       .map((tool) => documentBuilder.build(tool));
     this.docs.forEach((doc) => this.docsByTool.set(doc.toolName, doc));
     this.capabilityIndex =
@@ -264,7 +268,7 @@ export class AgentToolSearchIndex {
         .filter((toolName) => {
           const tool = this.toolsByName.get(toolName);
           if (!tool || !isAgentToolAvailableForInteraction(tool, options.interaction)) return false;
-          return isAgentToolDynamicallyDiscoverable(tool);
+          return true;
         }),
     );
   }

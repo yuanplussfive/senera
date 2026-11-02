@@ -1,6 +1,7 @@
-import { useEffect, useMemo, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   getFiletypeFromFileName,
+  getHighlighterIfLoaded,
   getHighlighterOptions,
   preloadHighlighter,
   type FileContents,
@@ -101,19 +102,36 @@ export function PierreFilePreview({
     () => (file.lang ?? getFiletypeFromFileName(file.name)) as SupportedLanguages,
     [file.lang, file.name],
   );
+  const languageKey = String(highlightLanguage);
+  const [preloadedLanguage, setPreloadedLanguage] = useState<string>();
+
+  // Pierre renders synchronously only once the shared highlighter holds both
+  // the themes and the language. Mounting earlier makes the first render wait
+  // on `asyncHighlight`, and React re-running effects (StrictMode) discards
+  // that result, leaving the Shadow DOM permanently empty. Gate the mount on
+  // the documented `preloadHighlighter` API instead of repairing the frame.
+  const highlightReady =
+    prerenderedHTML !== undefined ||
+    preloadedLanguage === languageKey ||
+    getHighlighterIfLoaded({ theme: PIERRE_THEMES, lang: highlightLanguage }) != null;
 
   useEffect(() => {
-    const key = String(highlightLanguage);
-    let preload = pierreLanguagePreloads.get(key);
-    if (preload === undefined) {
-      preload = preloadHighlighter(getHighlighterOptions(highlightLanguage, { theme: PIERRE_THEMES }));
-      pierreLanguagePreloads.set(key, preload);
-    }
+    if (prerenderedHTML !== undefined) return;
+    if (getHighlighterIfLoaded({ theme: PIERRE_THEMES, lang: highlightLanguage }) != null) return;
 
-    // Pierre subscribes to the shared highlighter itself. Priming it here
-    // avoids a second component mount when the language becomes available.
-    void preload.catch(() => undefined);
-  }, [highlightLanguage]);
+    let cancelled = false;
+    void readPierreLanguagePreload(highlightLanguage).then(
+      () => {
+        if (!cancelled) setPreloadedLanguage(languageKey);
+      },
+      () => undefined,
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [highlightLanguage, languageKey, prerenderedHTML]);
+
   const options = useMemo(
     () => createPierreFileOptions(resolvedTheme, wrapped, lineNumbers),
     [lineNumbers, resolvedTheme, wrapped],
@@ -121,13 +139,63 @@ export function PierreFilePreview({
 
   return (
     <div className={cn("senera-pierre-code-frame", bounded && "senera-pierre-code-frame--bounded")}>
-      <PierreFile
-        file={file}
-        options={options}
-        className={cn("senera-pierre-code", className)}
-        style={createPierreStyle()}
-        prerenderedHTML={prerenderedHTML}
-      />
+      {highlightReady ? (
+        <PierreFile
+          file={file}
+          options={options}
+          className={cn("senera-pierre-code", className)}
+          style={createPierreStyle()}
+          prerenderedHTML={prerenderedHTML}
+        />
+      ) : (
+        <CodeSourceFallback code={code} className={className} wrapped={wrapped} lineNumbers={lineNumbers} />
+      )}
+    </div>
+  );
+}
+
+function readPierreLanguagePreload(language: SupportedLanguages): Promise<void> {
+  const key = String(language);
+  const existing = pierreLanguagePreloads.get(key);
+  if (existing !== undefined) return existing;
+
+  const preload = preloadHighlighter(getHighlighterOptions(language, { theme: PIERRE_THEMES }));
+  pierreLanguagePreloads.set(key, preload);
+  void preload.catch(() => {
+    if (pierreLanguagePreloads.get(key) === preload) pierreLanguagePreloads.delete(key);
+  });
+  return preload;
+}
+
+function CodeSourceFallback({
+  code,
+  className,
+  wrapped,
+  lineNumbers,
+}: {
+  readonly code: string;
+  readonly className?: string;
+  readonly wrapped: boolean;
+  readonly lineNumbers: boolean;
+}): JSX.Element {
+  return (
+    <div
+      className={cn(
+        "code-artifact-viewer__highlighted senera-pierre-code__fallback",
+        wrapped && "is-wrapped",
+        !lineNumbers && "without-line-numbers",
+        className,
+      )}
+    >
+      <pre>
+        <code>
+          {code.split("\n").map((line, index) => (
+            <div key={index} data-line={index + 1}>
+              {line}
+            </div>
+          ))}
+        </code>
+      </pre>
     </div>
   );
 }

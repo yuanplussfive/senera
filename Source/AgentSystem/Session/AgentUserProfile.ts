@@ -2,56 +2,24 @@ import { z } from "zod";
 import type { AgentDomainEvent, AgentEventSink } from "../Events/AgentEvent.js";
 import { AgentEventKinds, emitAgentEvent } from "../Events/AgentEvent.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import type { AgentDirectory } from "../Profile/AgentDirectory.js";
 import {
   AgentProfileAvatarIdentities,
   type AgentProfileAvatarIdentity,
   AgentProfileAvatarStore,
 } from "./AgentProfileAvatarStore.js";
 
-export const AgentUserProfileLimits = {
-  NameMaxLength: 48,
-  AvatarDataUrlMaxLength: 512 * 1024,
-} as const;
-
-const AvatarDataUrlSchema = z
-  .string()
-  .max(AgentUserProfileLimits.AvatarDataUrlMaxLength)
-  .regex(/^data:image\/(?:png|jpe?g|webp|gif);base64,[a-z0-9+/=\s]+$/i);
-
-/**
- * Avatars are workspace resources. The legacy data URL remains accepted only
- * so profiles written by older hosts can be read and migrated by the host.
- */
-const AvatarPathSchema = z.string().trim().min(1).max(512);
-
-export const AgentProfileIdentityInputSchema = z
-  .object({
-    name: z.string().trim().min(1).max(AgentUserProfileLimits.NameMaxLength),
-    avatarDataUrl: AvatarDataUrlSchema.nullable().optional(),
-    avatarPath: AvatarPathSchema.nullable().optional(),
-  })
-  .strict();
-
-export const AgentProfileIdentitySchema = z
-  .object({
-    name: z.string().trim().min(1).max(AgentUserProfileLimits.NameMaxLength),
-    avatarDataUrl: AvatarDataUrlSchema.nullable(),
-    avatarPath: AvatarPathSchema.nullable(),
-  })
-  .strict();
-
-export const AgentUserProfileInputSchema = AgentProfileIdentityInputSchema.extend({
-  assistant: AgentProfileIdentityInputSchema.optional(),
-}).strict();
-
-export const AgentUserProfileSchema = AgentProfileIdentitySchema.extend({
-  assistant: AgentProfileIdentitySchema,
-  updatedAt: z.string().min(1),
-}).strict();
-
-export type AgentUserProfileInput = z.output<typeof AgentUserProfileInputSchema>;
-export type AgentUserProfile = z.output<typeof AgentUserProfileSchema>;
-export type AgentProfileIdentity = z.output<typeof AgentProfileIdentitySchema>;
+import {
+  AgentProfileIdentityInputSchema,
+  AgentUserProfileInputSchema,
+  AgentUserProfileSchema,
+  type AgentUserProfileInput,
+  type AgentUserProfile,
+  type AgentProfileIdentity,
+  AgentUserProfileUpdateSchema,
+  type AgentUserProfileUpdate,
+} from "../Core/AgentProfileContract.js";
+export * from "../Core/AgentProfileContract.js";
 
 export interface AgentUserProfileRepository {
   loadUserProfile(): AgentUserProfile;
@@ -117,10 +85,11 @@ export class AgentUserProfileManager {
   constructor(
     private readonly repository: AgentUserProfileRepository,
     private readonly avatarStore?: AgentProfileAvatarStore,
+    private readonly directory?: AgentDirectory,
   ) {}
 
   async emitSnapshot(request: { onEvent?: AgentEventSink }): Promise<void> {
-    const current = this.repository.loadUserProfile();
+    const current = this.currentProfile();
     const materialized = await this.materialize(current);
     const profile = hasAvatarStateChanged(current, materialized)
       ? this.repository.saveUserProfile(toProfileInput(materialized))
@@ -128,11 +97,11 @@ export class AgentUserProfileManager {
     await emitAgentEvent(request.onEvent, this.snapshotEvent(profile));
   }
 
-  async updateProfile(request: { profile: AgentUserProfileInput; onEvent?: AgentEventSink }): Promise<void> {
-    const current = this.repository.loadUserProfile();
+  async updateProfile(request: { profile: AgentUserProfileUpdate; onEvent?: AgentEventSink }): Promise<void> {
+    const current = this.currentProfile();
     const requested = createAgentUserProfile({
-      ...request.profile,
-      assistant: request.profile.assistant ?? current.assistant,
+      ...AgentUserProfileUpdateSchema.parse(request.profile),
+      assistant: current.assistant,
     });
     const materialized = await this.materialize(requested);
     const profile = this.repository.saveUserProfile(toProfileInput(materialized));
@@ -146,10 +115,19 @@ export class AgentUserProfileManager {
       previous.avatarPath !== next.avatarPath
         ? this.avatarStore.remove(AgentProfileAvatarIdentities.User, previous.avatarPath)
         : undefined,
-      previous.assistant.avatarPath !== next.assistant.avatarPath
+      previous.assistant.avatarPath !== next.assistant.avatarPath &&
+      !this.directory?.snapshot().agents.some((agent) => agent.avatarPath === previous.assistant.avatarPath)
         ? this.avatarStore.remove(AgentProfileAvatarIdentities.Assistant, previous.assistant.avatarPath)
         : undefined,
     ]).catch(() => undefined);
+  }
+
+  private currentProfile(): AgentUserProfile {
+    const profile = this.repository.loadUserProfile();
+    const agent = this.directory?.get();
+    return agent
+      ? { ...profile, assistant: { name: agent.name, avatarPath: agent.avatarPath, avatarDataUrl: null } }
+      : profile;
   }
 
   private async materialize(profile: AgentUserProfile): Promise<AgentUserProfile> {

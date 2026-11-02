@@ -1,6 +1,8 @@
-import { AgentConversationEntryKinds, type AgentConversationEntry } from "../Conversation/AgentConversation.js";
+import { isAgentHumanUserMessage, type AgentConversationEntry } from "../Conversation/AgentConversation.js";
 import type { AgentSession } from "./AgentSession.js";
 import { agentErrorMessage } from "../I18n/AgentMessageCatalog.js";
+import { AgentChannelKinds } from "../Channels/AgentChannelTypes.js";
+import { formatAgentTimeMonthDayMinute } from "../Time/AgentTime.js";
 
 const AgentSessionTitleMaxCharacters = 24;
 const EmptySessionTitle = agentErrorMessage("session.defaultTitle");
@@ -14,40 +16,34 @@ export class AgentSessionTitleProjector {
   constructor(private readonly loadFirstUserMessage: (sessionId: string) => AgentConversationEntry | undefined) {}
 
   project(session: AgentSessionListRecord): string {
-    return this.readTitleFromEntries(session.conversation) ?? this.readPersistedTitle(session) ?? EmptySessionTitle;
+    return deriveAgentSessionTitle(session, () =>
+      session.messageCount > 0 ? this.loadFirstUserMessage(session.id) : undefined,
+    );
   }
+}
 
-  private readPersistedTitle(session: AgentSessionListRecord): string | undefined {
-    const metadataTitle = this.compactTitle(session.metadata?.title ?? "");
-    if (metadataTitle) {
-      return metadataTitle;
-    }
-
-    if (session.messageCount === 0) {
-      return undefined;
-    }
-
-    const firstUserMessage = this.loadFirstUserMessage(session.id);
-    return firstUserMessage?.kind === AgentConversationEntryKinds.UserMessage
-      ? this.compactTitle(firstUserMessage.content)
-      : undefined;
+/** Shared by persistence, live snapshots and the session catalog. */
+export function deriveAgentSessionTitle(
+  session: AgentSession,
+  loadFirstUserMessage?: () => AgentConversationEntry | undefined,
+): string {
+  const explicitTitle = session.metadata?.title?.trim();
+  if (explicitTitle) return explicitTitle;
+  const channel = session.metadata?.channel;
+  if (channel?.platform === AgentChannelKinds.OneBot11 && channel.chatName?.trim()) {
+    return `${compactTitle(channel.chatName)} · ${formatAgentTimeMonthDayMinute(session.createdAt)}`;
   }
+  const entry = session.conversation.find(isAgentHumanUserMessage);
+  const conversationTitle = entry ? compactTitle(entry.content) : undefined;
+  if (conversationTitle) return conversationTitle;
+  const persistedTitle = session.title?.trim();
+  if (persistedTitle && persistedTitle !== EmptySessionTitle) return persistedTitle;
+  const firstUser = loadFirstUserMessage?.();
+  return (isAgentHumanUserMessage(firstUser) ? compactTitle(firstUser.content) : undefined) ?? EmptySessionTitle;
+}
 
-  private readTitleFromEntries(entries: readonly AgentConversationEntry[]): string | undefined {
-    const firstUserMessage = entries.find((entry) => entry.kind === AgentConversationEntryKinds.UserMessage);
-    if (!firstUserMessage || firstUserMessage.kind !== AgentConversationEntryKinds.UserMessage) {
-      return undefined;
-    }
-
-    return this.compactTitle(firstUserMessage.content);
-  }
-
-  private compactTitle(content: string): string | undefined {
-    const text = content.replace(/\s+/g, " ").trim();
-    if (!text) {
-      return undefined;
-    }
-
-    return text.length > AgentSessionTitleMaxCharacters ? `${text.slice(0, AgentSessionTitleMaxCharacters)}…` : text;
-  }
+function compactTitle(content: string): string | undefined {
+  const text = content.replace(/\s+/g, " ").trim();
+  if (!text) return undefined;
+  return text.length > AgentSessionTitleMaxCharacters ? `${text.slice(0, AgentSessionTitleMaxCharacters)}…` : text;
 }

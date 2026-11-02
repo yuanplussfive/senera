@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { AppIcon } from "./AppIcon";
@@ -10,10 +10,11 @@ export interface SecretInputProps {
   placeholder?: string;
   ariaLabel?: string;
   className?: string;
-  trailing?: ReactNode;
+  name?: string;
+  autoComplete?: string;
+  required?: boolean;
   showLabel?: string;
   hideLabel?: string;
-  hideRevealWhenEmpty?: boolean;
 
   showClearButton?: boolean;
   clearButtonLabel?: string;
@@ -30,10 +31,11 @@ export function SecretInput({
   placeholder,
   ariaLabel,
   className,
-  trailing,
+  name,
+  autoComplete,
+  required,
   showLabel = frontendMessage("settings.mcp.showSecret"),
   hideLabel = frontendMessage("settings.mcp.hideSecret"),
-  hideRevealWhenEmpty,
   showClearButton,
   clearButtonLabel = frontendMessage("settings.mcp.clearSecret"),
   onChange,
@@ -59,6 +61,9 @@ export function SecretInput({
       )}
     >
       <input
+        name={name}
+        autoComplete={autoComplete}
+        required={required}
         type={revealed ? "text" : "password"}
         value={value}
         disabled={disabled}
@@ -79,7 +84,7 @@ export function SecretInput({
         }}
       />
 
-      <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+      <div className="flex h-full shrink-0 items-center border-l border-line-subtle px-1">
         {showClearButton && onClear ? (
           <button
             type="button"
@@ -96,27 +101,24 @@ export function SecretInput({
           </button>
         ) : null}
 
-        {trailing ? <span className="flex items-center">{trailing}</span> : null}
-
-        {(!hideRevealWhenEmpty || value) && (
-          <button
-            type="button"
-            disabled={disabled || !value}
-            className={cn(
-              "grid w-7 place-items-center rounded text-content-muted transition hover:bg-surface-hover hover:text-content-primary disabled:pointer-events-none disabled:opacity-40",
-              compact ? "h-7" : "h-8",
-            )}
-            onClick={() => setRevealed(!revealed)}
-            onMouseDown={preventBlur}
-            aria-label={revealed ? hideLabel : showLabel}
-          >
-            {revealed ? (
-              <AppIcon icon="eye-off" size={14} aria-hidden="true" />
-            ) : (
-              <AppIcon icon="eye" size={14} aria-hidden="true" />
-            )}
-          </button>
-        )}
+        <button
+          type="button"
+          disabled={disabled || !value}
+          className={cn(
+            "grid w-7 place-items-center rounded text-content-muted transition hover:bg-surface-hover hover:text-content-primary disabled:pointer-events-none disabled:opacity-40",
+            compact ? "h-7" : "h-8",
+          )}
+          onClick={() => setRevealed(!revealed)}
+          onMouseDown={preventBlur}
+          aria-label={revealed ? hideLabel : showLabel}
+          aria-pressed={revealed}
+        >
+          {revealed ? (
+            <AppIcon icon="eye-off" size={14} aria-hidden="true" />
+          ) : (
+            <AppIcon icon="eye" size={14} aria-hidden="true" />
+          )}
+        </button>
       </div>
     </div>
   );

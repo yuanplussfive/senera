@@ -1,10 +1,14 @@
 import type { AgentPiSession } from "./AgentPiRuntimeTypes.js";
+import type { AgentImageInputCapabilities } from "../Images/AgentImageNormalizationService.js";
 
 export interface AgentPiActiveSessionHandle {
   sessionId: string;
   requestId: string;
   step: number;
   session: AgentPiSession;
+  /** Contract fixed when the active provider session was created. */
+  imageInputCapabilities?: AgentImageInputCapabilities;
+  tokenBudget?: import("../Text/AgentTurnTokenBudget.js").AgentToolTokenBudget;
 }
 
 export class AgentPiActiveSessionRegistry {

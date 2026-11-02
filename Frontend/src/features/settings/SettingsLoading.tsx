@@ -6,7 +6,7 @@ export function SettingsSectionLoading({
   variant = "form",
   className,
 }: {
-  variant?: "form" | "split";
+  variant?: "form" | "split" | "directory";
   className?: string;
 }): JSX.Element {
   return (
@@ -19,7 +19,34 @@ export function SettingsSectionLoading({
       data-settings-section-loading-variant={variant}
     >
       <span className="sr-only">{frontendMessage("settings.loading")}</span>
-      {variant === "split" ? <SplitSettingsLoading /> : <FormSettingsLoading />}
+      {variant === "split" ? (
+        <SplitSettingsLoading />
+      ) : variant === "directory" ? (
+        <DirectorySettingsLoading />
+      ) : (
+        <FormSettingsLoading />
+      )}
+    </div>
+  );
+}
+
+function DirectorySettingsLoading(): JSX.Element {
+  return (
+    <div className="mx-auto w-full max-w-[924px] px-5 py-5 sm:px-8" aria-hidden="true">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-4 border-b border-line-subtle pb-4">
+        <Skeleton className="h-5 w-56 max-w-full" />
+        <Skeleton className="h-7 w-36" />
+      </div>
+      {Array.from({ length: 6 }, (_, index) => (
+        <div key={index} className="flex items-center gap-3 py-5">
+          <Skeleton className="h-6 w-6 shrink-0" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="h-2.5 w-[75%]" />
+          </div>
+          <Skeleton className="h-4 w-7 rounded-full" />
+        </div>
+      ))}
     </div>
   );
 }

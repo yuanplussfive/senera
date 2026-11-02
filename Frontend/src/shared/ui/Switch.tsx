@@ -45,7 +45,7 @@ interface SwitchMetrics {
 }
 
 const switchMetrics: Record<SwitchSize, SwitchMetrics> = {
-  sm: { trackWidth: 28, trackHeight: 16, thumbSize: 12, pillExtend: 2, pressExtend: 3, pressShrink: 3 },
+  sm: { trackWidth: 32, trackHeight: 18, thumbSize: 14, pillExtend: 2, pressExtend: 3, pressShrink: 3 },
   md: { trackWidth: 34, trackHeight: 20, thumbSize: 16, pillExtend: 2, pressExtend: 4, pressShrink: 4 },
 };
 
@@ -91,11 +91,12 @@ function SwitchVisual({
     ? "bg-surface-muted ring-1 ring-inset ring-content-disabled"
     : checked
       ? "bg-content-strong ring-1 ring-inset ring-content-strong"
-      : "bg-ink-300 ring-1 ring-inset ring-ink-300";
+      : "bg-paper-300 ring-1 ring-inset ring-ink-950/15";
 
   return (
     <motion.span
       aria-hidden="true"
+      initial={false}
       data-state={checked ? "checked" : "unchecked"}
       data-disabled={disabled || undefined}
       className={cn("relative inline-block shrink-0 rounded-full", trackState, trackClassName)}
@@ -104,6 +105,7 @@ function SwitchVisual({
       transition={thumbTransition}
     >
       <motion.span
+        initial={false}
         className={cn(
           "absolute left-0 rounded-full shadow-sm",
           disabled ? "bg-content-disabled shadow-none" : "bg-paper-50",

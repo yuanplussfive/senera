@@ -94,7 +94,9 @@ export class AgentExecutionLedgerSqliteStore {
   syncPlan(input: AgentExecutionPlanSyncInput): AgentExecutionSyncResult {
     const sessionId = requireText(input.sessionId, "Execution session id");
     const requestId = requireText(input.requestId, "Execution request id");
-    const objective = requireText(input.objective, "Execution objective");
+    // Event, scheduler and attachment-only turns have no authored text.
+    // Their structured trigger belongs to the request; never invent an objective for the ledger.
+    const objective = input.objective.trim();
     const now = input.now ?? new Date();
     const timestamp = now.toISOString();
     const result = this.db.transaction(() =>

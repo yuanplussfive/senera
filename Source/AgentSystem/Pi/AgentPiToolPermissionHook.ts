@@ -25,6 +25,8 @@ import { AgentBrowserNetworkPermissionId, inspectAgentBrowserTarget } from "../B
 import { AgentExecutionApprovalModes } from "../Safety/AgentExecutionApprovalMode.js";
 import { AgentWebUrlPolicyError } from "../Web/AgentWebUrlPolicy.js";
 import type { RegisteredTool } from "../Types/AgentToolRuntimeTypes.js";
+import type { AgentResourceAccessScope } from "../Execution/SeneraResourceAccess.js";
+import { withEventContext } from "../Events/AgentEvent.js";
 
 export interface AgentPiToolPermissionHookOptions {
   registry: AgentExtensionRegistry;
@@ -32,6 +34,7 @@ export interface AgentPiToolPermissionHookOptions {
   permissionGate?: AgentToolPermissionGate;
   executionCapabilities: () => SeneraExecutionRuntimeCapabilities;
   resourceCapabilities: AgentToolResourceCapabilityRegistry;
+  resourceAccessScope?: (sessionId: string) => AgentResourceAccessScope | undefined;
 }
 
 export type AgentPiToolCallHookEvent = AgentPiToolCallPreflightInput;
@@ -126,8 +129,10 @@ export class AgentPiToolPermissionHook {
         invocation.arguments,
         this.options.resourceCapabilities,
       );
+      const parentToolCallId = context.turnState?.parentToolCallId(event.toolCallId);
       const decision = await this.options.permissionGate.authorize({
         approvalMode,
+        resourceAccessScope: this.options.resourceAccessScope?.(sessionId),
         sessionId,
         requestId,
         toolCallId: event.toolCallId,
@@ -162,8 +167,10 @@ export class AgentPiToolPermissionHook {
             score: skill.score,
           })),
         },
-        onEvent: context.onEvent,
-        signal: context.signal,
+        onEvent: parentToolCallId
+          ? (entry) => context.onEvent?.(withEventContext(entry, { scope: { parentToolCallId } }))
+          : context.onEvent,
+        signal: context.turnState?.toolCompositionSignal(event.toolCallId) ?? context.signal,
       });
       if (decision?.resourceGrant) {
         context.turnState?.registerResourceAccessGrant(event.toolCallId, decision.resourceGrant);

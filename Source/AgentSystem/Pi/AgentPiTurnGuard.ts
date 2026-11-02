@@ -40,7 +40,10 @@ function createInterruptionPromise<T>(options: AgentPiTurnGuardOptions<T>): Inte
   const disposers: Array<() => void> = [];
   const promise = new Promise<never>((_resolve, reject) => {
     const rejectWith = (error: Error, abort?: (reason?: Error) => void | Promise<void>) => {
-      if (abort) void Promise.resolve(abort(error)).catch(() => undefined);
+      if (abort)
+        void Promise.resolve()
+          .then(() => abort(error))
+          .catch(() => undefined);
       reject(error);
     };
 

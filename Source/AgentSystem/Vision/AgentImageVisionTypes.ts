@@ -1,6 +1,7 @@
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 
 export interface AgentImageVisionInput {
+  readonly name?: string;
   readonly mime: string;
   readonly base64: string;
 }

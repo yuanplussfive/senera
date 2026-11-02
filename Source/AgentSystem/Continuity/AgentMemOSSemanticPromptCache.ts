@@ -5,7 +5,7 @@ import type { Tool } from "@earendil-works/pi-ai";
 
 export function createAgentMemOSSemanticPromptCache(input: {
   readonly scopeKey: string;
-  readonly phase: "fragment" | "daily" | "monthly";
+  readonly phase: "fragment" | "relevance" | "retention";
   readonly provider: string;
   readonly api: string;
   readonly model: string;

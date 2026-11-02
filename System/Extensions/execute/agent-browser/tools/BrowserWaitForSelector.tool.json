@@ -12,14 +12,7 @@
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {
-      "selector": { "type": "string", "minLength": 1, "maxLength": 4096 },
-      "waitTimeoutMs": { "type": "integer", "minimum": 1000, "maximum": 900000 },
-      "timeoutMs": {
-        "description": "Optional per-call operation timeout in milliseconds.",
-        "type": "integer",
-        "minimum": 1000,
-        "maximum": 900000
-      }
+      "selector": { "type": "string", "minLength": 1, "maxLength": 4096 }
     },
     "required": ["selector"],
     "additionalProperties": false
@@ -44,7 +37,12 @@
         "properties": {
           "assetId": { "type": "string", "minLength": 1 },
           "mediaType": { "type": "string", "minLength": 1 },
-          "markdown": { "type": "string", "minLength": 1 }
+          "markdown": { "type": "string", "minLength": 1 },
+          "workspacePath": {
+            "description": "Workspace-relative path of the recorded asset. Read it with WorkspaceRead when the image itself is needed.",
+            "type": "string",
+            "minLength": 1
+          }
         },
         "required": ["assetId", "mediaType", "markdown"],
         "additionalProperties": false
@@ -55,7 +53,12 @@
           "assetId": { "type": "string", "minLength": 1 },
           "fileName": { "type": "string", "minLength": 1 },
           "mediaType": { "type": "string", "minLength": 1 },
-          "markdown": { "type": "string", "minLength": 1 }
+          "markdown": { "type": "string", "minLength": 1 },
+          "workspacePath": {
+            "description": "Workspace-relative path of the recorded asset. Read it with WorkspaceRead when the file itself is needed.",
+            "type": "string",
+            "minLength": 1
+          }
         },
         "required": ["assetId", "fileName", "mediaType", "markdown"],
         "additionalProperties": false
@@ -68,9 +71,9 @@
   "execution": { "Targets": ["Local"], "Network": "Allow", "Workspace": "ReadOnly" },
   "runtime": {
     "Lifecycle": "Persistent",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "SelfManaged",
+    "DeadlinePolicy": "ToolAware",
     "Capabilities": { "Progress": true, "Cancellation": true }
   },
   "resources": [],

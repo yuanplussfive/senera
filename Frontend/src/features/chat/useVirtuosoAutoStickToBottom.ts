@@ -28,16 +28,6 @@ export function resolveVirtuosoFollowOutput(shouldStickToBottom: boolean): "auto
   return shouldStickToBottom ? "auto" : false;
 }
 
-export function shouldRequestDynamicHeightAutoscroll({
-  shouldStickToBottom,
-  hasPendingRequest,
-}: {
-  shouldStickToBottom: boolean;
-  hasPendingRequest: boolean;
-}): boolean {
-  return shouldStickToBottom && !hasPendingRequest;
-}
-
 export function shouldAutoscrollForListHeightChange(previousHeight: number | null, nextHeight: number): boolean {
   return previousHeight === null || nextHeight > previousHeight;
 }
@@ -56,6 +46,7 @@ export function useVirtuosoAutoStickToBottom({
   followOutput: (isAtBottom: boolean) => "auto" | false;
   atBottomStateChange: (atBottom: boolean) => void;
   scrollToBottom: (behavior?: VirtuosoScrollBehavior) => void;
+  requestDynamicHeightAutoscroll: () => void;
   beginManualScroll: () => void;
   endManualScroll: () => void;
 } {
@@ -158,6 +149,20 @@ export function useVirtuosoAutoStickToBottom({
     [scheduleScroll],
   );
 
+  const requestDynamicHeightAutoscroll = useCallback((): void => {
+    if (!stickToBottomRef.current) return;
+    const target = scrollerTargetRef.current;
+    if (!target) return;
+
+    // A ResizeObserver delivers this after the streaming row has its final
+    // layout for the frame. Pin the native scroller immediately so the new
+    // line and viewport move together. Indexed scrolling remains for explicit
+    // navigation and appended rows; restarting it for every text delta makes
+    // the virtualizer chase a moving target one frame late.
+    pinScrollerToBottom(target);
+    syncScrollPosition(target);
+  }, [syncScrollPosition]);
+
   const scrollToBottomAndResume = useCallback(
     (behavior: VirtuosoScrollBehavior = "auto") => {
       resumeStickToBottom();
@@ -226,6 +231,7 @@ export function useVirtuosoAutoStickToBottom({
     const target = scroller;
     const handleWheel: EventListener = (event): void => {
       if (!(event instanceof WheelEvent)) return;
+      if (isEventOwnedByNestedScroller(event, target)) return;
       if (event.deltaY < 0) markScrollAwayIntent();
       if (event.deltaY > 0) markScrollTowardBottomIntent();
     };
@@ -248,10 +254,12 @@ export function useVirtuosoAutoStickToBottom({
     };
     const handleTouchStart: EventListener = (event): void => {
       if (!(event instanceof TouchEvent)) return;
+      if (isEventOwnedByNestedScroller(event, target)) return;
       lastTouchYRef.current = event.touches.item(0)?.clientY ?? null;
     };
     const handleTouchMove: EventListener = (event): void => {
       if (!(event instanceof TouchEvent)) return;
+      if (isEventOwnedByNestedScroller(event, target)) return;
       const currentY = event.touches.item(0)?.clientY;
       const lastY = lastTouchYRef.current;
       lastTouchYRef.current = currentY ?? null;
@@ -260,6 +268,7 @@ export function useVirtuosoAutoStickToBottom({
     };
     const handleKeyDown: EventListener = (event): void => {
       if (!(event instanceof KeyboardEvent)) return;
+      if (isEventOwnedByNestedScroller(event, target)) return;
       if (isScrollAwayKey(event)) markScrollAwayIntent();
       if (isScrollTowardBottomKey(event)) markScrollTowardBottomIntent();
     };
@@ -330,6 +339,7 @@ export function useVirtuosoAutoStickToBottom({
       }
     },
     scrollToBottom: scrollToBottomAndResume,
+    requestDynamicHeightAutoscroll,
     beginManualScroll,
     endManualScroll,
   };
@@ -362,6 +372,18 @@ function readScrollMetrics(target: HTMLElement | Window): {
   };
 }
 
+function pinScrollerToBottom(target: HTMLElement | Window): void {
+  const metrics = readScrollMetrics(target);
+  const targetTop = Math.max(0, metrics.scrollHeight - metrics.viewportHeight);
+  if (Math.abs(metrics.scrollTop - targetTop) < 1) return;
+
+  if (target instanceof Window) {
+    target.scrollTo({ top: targetTop, behavior: "auto" });
+    return;
+  }
+  target.scrollTop = targetTop;
+}
+
 function isPointerInVerticalScrollbar(event: PointerEvent, target: HTMLElement | Window): boolean {
   if (target instanceof Window) return false;
   if (target.scrollHeight <= target.clientHeight) return false;
@@ -373,6 +395,20 @@ function isPointerInVerticalScrollbar(event: PointerEvent, target: HTMLElement |
     event.clientY >= rect.top &&
     event.clientY <= rect.bottom
   );
+}
+
+/**
+ * A scrollable detail surface can live inside the virtualized conversation.
+ * Its wheel, touch, and keyboard input bubbles through the chat scroller, but
+ * that input only expresses intent for the detail surface. The declarative
+ * ownership marker keeps nested reading from disabling chat follow mode.
+ */
+export function isEventOwnedByNestedScroller(event: Event, scroller: HTMLElement | Window): boolean {
+  if (!(scroller instanceof HTMLElement)) return false;
+  const source = event.target;
+  if (!(source instanceof Element)) return false;
+  const owner = source.closest<HTMLElement>("[data-senera-scroll-owner]");
+  return owner !== null && owner !== scroller && scroller.contains(owner);
 }
 
 function isScrollAwayKey(event: KeyboardEvent): boolean {

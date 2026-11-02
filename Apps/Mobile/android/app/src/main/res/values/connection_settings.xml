@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="connection_settings_background">#F5F5F4</color>
+    <color name="connection_settings_surface">#FFFFFF</color>
+    <color name="connection_settings_text">#242523</color>
+    <color name="connection_settings_secondary">#737570</color>
+    <color name="connection_settings_line">#E8E9E5</color>
+    <color name="connection_settings_active">#387254</color>
+    <color name="connection_settings_error">#B34238</color>
+    <bool name="connection_settings_light_bars">true</bool>
+    <dimen name="connection_settings_radius">10dp</dimen>
+    <style name="AppTheme.ConnectionSettings" parent="AppTheme.NoActionBar">
+        <item name="android:windowBackground">@color/connection_settings_background</item>
+        <item name="android:statusBarColor">@color/connection_settings_surface</item>
+        <item name="android:navigationBarColor">@color/connection_settings_background</item>
+        <item name="android:windowLightStatusBar">@bool/connection_settings_light_bars</item>
+        <item name="colorAccent">@color/connection_settings_text</item>
+        <item name="colorControlActivated">@color/connection_settings_text</item>
+    </style>
+    <style name="ConnectionSettings.Title" parent="TextAppearance.AppCompat.Body1">
+        <item name="android:textColor">@color/connection_settings_text</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+    <style name="ConnectionSettings.Hint" parent="TextAppearance.AppCompat.Body1">
+        <item name="android:textColor">@color/connection_settings_secondary</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:lineSpacingExtra">4dp</item>
+    </style>
+    <style name="ConnectionSettings.Status" parent="ConnectionSettings.Hint">
+        <item name="android:gravity">end</item>
+        <item name="android:maxWidth">112dp</item>
+    </style>
+    <style name="ConnectionSettings.Row" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">76dp</item>
+        <item name="android:padding">16dp</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:foreground">?attr/selectableItemBackground</item>
+    </style>
+    <style name="ConnectionSettings.Divider" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">1dp</item>
+        <item name="android:layout_marginStart">16dp</item>
+        <item name="android:layout_marginEnd">16dp</item>
+        <item name="android:background">@color/connection_settings_line</item>
+        <item name="android:importantForAccessibility">no</item>
+    </style>
+    <style name="ConnectionSettings.Chevron" parent="">
+        <item name="android:layout_width">16dp</item>
+        <item name="android:layout_height">16dp</item>
+        <item name="android:layout_marginStart">8dp</item>
+        <item name="android:src">@drawable/ic_settings_chevron</item>
+        <item name="android:importantForAccessibility">no</item>
+    </style>
+</resources>

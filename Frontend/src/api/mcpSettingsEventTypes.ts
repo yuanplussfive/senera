@@ -1,6 +1,6 @@
 import type { FrontendLocalizedText } from "../i18n/frontendLocaleModel";
 import type { AgentActivationCatalogSnapshot } from "../../../Source/AgentSystem/Activation/AgentActivationTypes";
-import type { AgentPluginIdentityPresentation } from "../../../Source/AgentSystem/Types/AgentToolPresentationTypes";
+import type { AgentPluginPresentation } from "../../../Source/AgentSystem/Types/AgentToolPresentationTypes";
 
 export type McpInputValue = string | number | boolean | string[] | number[] | boolean[];
 
@@ -22,17 +22,23 @@ export interface McpInputStatus {
   placeholder?: string;
   min?: number;
   max?: number;
+  durationUnit?: import("../../../Source/AgentSystem/Types/AgentDurationUnits").AgentDurationUnit;
+  modelSelection?: {
+    valueKind: "model-name" | "model-connection";
+    capability: import("./configFormEventTypes").ConfigFormModelCapability;
+  };
   updatedAt?: string;
 }
 
 export interface McpServerSettingsItem {
+  skills?: import("./eventTypes").SystemExtensionSettingsItem["skills"];
   id: string;
   packageName: string;
   displayName: FrontendLocalizedText;
   description: FrontendLocalizedText;
   source: "bundled" | "workspace";
   descriptorKind: "mcpb" | "registry" | "legacy" | "connection";
-  presentation?: AgentPluginIdentityPresentation;
+  presentation?: AgentPluginPresentation;
   transport: "stdio" | "http";
   status: "configured" | "needs_input" | "unavailable";
   /** Effective activation state after configuration readiness is evaluated. */

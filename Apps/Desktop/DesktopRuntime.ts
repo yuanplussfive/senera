@@ -17,6 +17,7 @@ import {
   resolveAgentWorkspaceConfigPath,
   resolveAgentWorkspaceLayout,
 } from "../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
+import { formatAgentTimeOffsetMillisecond } from "../../Source/AgentSystem/Time/AgentTime.js";
 
 const { app, dialog } = electron;
 
@@ -33,6 +34,7 @@ export interface DesktopRuntimePaths {
   sandboxRuntimeRoot: string;
   upgradeStateRoot: string;
   frontendIndexHtml: string;
+  startupSurfaceHtml: string;
   windowIconPath: string;
   logPath: string;
 }
@@ -98,6 +100,7 @@ export async function prepareDesktopRuntime(): Promise<DesktopRuntimePaths> {
     sandboxRuntimeRoot,
     upgradeStateRoot,
     frontendIndexHtml: path.join(resourceRoot, "Frontend", "dist", "index.html"),
+    startupSurfaceHtml: path.join(resourceRoot, "Frontend", "dist", "startup.html"),
     windowIconPath: path.join(resourceRoot, "Apps", "Desktop", "Assets", DesktopIconFileName),
     logPath: path.join(desktopDataRoot, "desktop.log"),
   };
@@ -137,9 +140,27 @@ export class DesktopWorkspaceSelectionRequiredError extends Error {
   }
 }
 
+const DesktopSessionMarkerFileName = "desktop.session";
+
+export function readDesktopSessionCrashed(paths: DesktopRuntimePaths): boolean {
+  return fs.existsSync(path.join(paths.desktopDataRoot, DesktopSessionMarkerFileName));
+}
+
+export function beginDesktopSession(paths: DesktopRuntimePaths): void {
+  fs.writeFileSync(
+    path.join(paths.desktopDataRoot, DesktopSessionMarkerFileName),
+    `${new Date().toISOString()} pid=${process.pid}\n`,
+    "utf8",
+  );
+}
+
+export function endDesktopSession(paths: DesktopRuntimePaths): void {
+  fs.rmSync(path.join(paths.desktopDataRoot, DesktopSessionMarkerFileName), { force: true });
+}
+
 export function appendDesktopLog(logPath: string, message: string): void {
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
-  fs.appendFileSync(logPath, `${new Date().toISOString()} ${message}\n`, "utf8");
+  fs.appendFileSync(logPath, `${formatAgentTimeOffsetMillisecond(new Date().toISOString())} ${message}\n`, "utf8");
 }
 
 function resolveAppRoot(): string {

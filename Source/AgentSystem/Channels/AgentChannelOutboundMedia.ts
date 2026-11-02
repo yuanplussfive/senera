@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import type Token from "markdown-it/lib/token.mjs";
 import type { AgentResourceResolverLike, AgentResolvedResource } from "../Resources/AgentResourceResolver.js";
 import { normalizeAgentResourceUri } from "../Resources/AgentResourceUri.js";
-import type { AgentChannelMedia } from "./AgentChannelTypes.js";
+import type { AgentChannelMedia, AgentChannelOutboundSegment } from "./AgentChannelTypes.js";
 import {
   agentChannelMarkdownResourceIdentity,
   appendAgentChannelMarkdownResourceAlias,
@@ -79,8 +79,7 @@ export interface AgentChannelMarkdownResourceManifestOptions {
   readonly maxEntries?: number;
 }
 
-export type AgentChannelOutboundSegment =
-  { readonly kind: "text"; readonly content: string } | { readonly kind: "media"; readonly media: AgentChannelMedia };
+export type { AgentChannelOutboundSegment } from "./AgentChannelTypes.js";
 
 /** Structured final payload returned by the host-owned channel rewriter. */
 export type AgentChannelFinalPart =

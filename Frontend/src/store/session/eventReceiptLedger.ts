@@ -8,6 +8,25 @@ import {
 export interface AgentEventReceiptState {
   processedEventIds: Record<string, string | null>;
   processedEventIdOrder: string[];
+  processedEventRequestIds?: Record<string, string>;
+}
+
+/** Evicted runs must be replayable when their archived page is opened again. */
+export function forgetRequestEventReceipts(
+  state: AgentEventReceiptState,
+  sessionId: string,
+  requestIds: ReadonlySet<string>,
+): void {
+  const removed = new Set(
+    Object.entries(state.processedEventRequestIds ?? {}).flatMap(([eventId, requestId]) =>
+      state.processedEventIds[eventId] === sessionId && requestIds.has(requestId) ? [eventId] : [],
+    ),
+  );
+  for (const eventId of removed) {
+    delete state.processedEventIds[eventId];
+    delete state.processedEventRequestIds?.[eventId];
+  }
+  state.processedEventIdOrder = state.processedEventIdOrder.filter((eventId) => !removed.has(eventId));
 }
 
 export function projectAgentEventOnce(
@@ -48,7 +67,10 @@ export function forgetSessionEventReceiptsForSessions(
       .map(([eventId]) => eventId),
   );
   if (removed.size === 0) return;
-  for (const eventId of removed) delete state.processedEventIds[eventId];
+  for (const eventId of removed) {
+    delete state.processedEventIds[eventId];
+    delete state.processedEventRequestIds?.[eventId];
+  }
   state.processedEventIdOrder = state.processedEventIdOrder.filter((eventId) => !removed.has(eventId));
 }
 
@@ -67,6 +89,8 @@ function recordEventReceipt(state: AgentEventReceiptState, event: EventEnvelope)
   const eventId = normalizeAgentEventId(event.eventId);
   if (!eventId || Object.prototype.hasOwnProperty.call(state.processedEventIds, eventId)) return;
   state.processedEventIds[eventId] = event.sessionId ?? null;
+  const requestId = event.scope?.parentRequestId ?? event.requestId;
+  if (requestId) (state.processedEventRequestIds ??= {})[eventId] = requestId;
   state.processedEventIdOrder.push(eventId);
 
   const overflow = state.processedEventIdOrder.length - AgentEventReceiptRetentionPolicy.maxIds;
@@ -74,5 +98,6 @@ function recordEventReceipt(state: AgentEventReceiptState, event: EventEnvelope)
   const removalCount = Math.max(overflow, AgentEventReceiptRetentionPolicy.evictionBatchSize);
   for (const expiredId of state.processedEventIdOrder.splice(0, removalCount)) {
     delete state.processedEventIds[expiredId];
+    delete state.processedEventRequestIds?.[expiredId];
   }
 }

@@ -102,10 +102,7 @@ export class AgentToolWorkspacePathResourceCapability implements AgentToolResour
   readonly discovery = { queryShapes: [AgentToolResourceQueryShapes.Path] };
   private readonly claimDomain = AgentWorkspacePathClaimDomain;
 
-  constructor(
-    private readonly executionEnv: Pick<SeneraExecutionEnv, "resolveResourcePath"> &
-      Partial<Pick<SeneraExecutionEnv, "inspectResourcePath">>,
-  ) {}
+  constructor(private readonly executionEnv: Pick<SeneraExecutionEnv, "resolveResourcePath" | "inspectResourcePath">) {}
 
   validateManifest(resource: ToolResourceArgumentManifest): void {
     AgentToolWorkspacePathResourceManifestValidator.validateManifest(resource);
@@ -126,7 +123,11 @@ export class AgentToolWorkspacePathResourceCapability implements AgentToolResour
   async claim(input: WorkspacePathResourceInput) {
     const parameters = parseWorkspacePathParameters(input.resource);
     const intent = resolveIntent(parameters, input.args);
-    const paths = await this.resolvePaths(input, parameters);
+    // Scheduling identifies resources; the permission gate authorizes access.
+    const paths = (await this.inspect(input)).map((request) => {
+      if (!request.canonicalPath) throw new Error(`Resource path cannot be canonicalized: ${request.addressedPath}`);
+      return request.canonicalPath;
+    });
     return paths.map((pathValue) => ({
       domain: this.claimDomain,
       identity: pathValue,
@@ -140,12 +141,7 @@ export class AgentToolWorkspacePathResourceCapability implements AgentToolResour
     const parameters = parseWorkspacePathParameters(input.resource);
     const intent = resolveIntent(parameters, input.args);
     const paths = await this.resolveInputPaths(input, parameters);
-    const executionEnv = this.executionEnv;
-    if (!executionEnv.inspectResourcePath) return [];
-    const inspectResourcePath = executionEnv.inspectResourcePath.bind(executionEnv);
-    return (await Promise.all(paths.map((pathValue) => inspectResourcePath(pathValue, intent)))).filter(
-      (request): request is AgentResourceAccessRequest => request !== undefined,
-    );
+    return Promise.all(paths.map((value) => this.executionEnv.inspectResourcePath(value, intent)));
   }
 
   private async resolveSingle(
@@ -159,17 +155,6 @@ export class AgentToolWorkspacePathResourceCapability implements AgentToolResour
     const resolved = await this.executionEnv.resolveResourcePath(value, intent);
     if (!resolved.ok) throw resolved.error;
     return { path: resolved.value, intent };
-  }
-
-  private async resolvePaths(
-    input: WorkspacePathResourceInput,
-    parameters: WorkspacePathParameters,
-  ): Promise<readonly string[]> {
-    const intent = resolveIntent(parameters, input.args);
-    const paths = await this.resolveInputPaths(input, parameters);
-    return (await Promise.all(paths.map((value) => this.resolveSingle(input, intent, value)))).map(
-      (resolved) => resolved.path,
-    );
   }
 
   private async resolveInputPaths(

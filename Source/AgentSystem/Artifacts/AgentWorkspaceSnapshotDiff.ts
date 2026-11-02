@@ -96,7 +96,9 @@ function projectLineChanges(
 }
 
 function readCapturedText(snapshot: ToolWorkspaceFileSnapshot): string | undefined {
-  return snapshot.content?.state === "captured" ? snapshot.content.text : undefined;
+  return snapshot.content?.state === "captured" && snapshot.content.encoding === "utf8"
+    ? snapshot.content.text
+    : undefined;
 }
 
 function workspaceChangeStatus(

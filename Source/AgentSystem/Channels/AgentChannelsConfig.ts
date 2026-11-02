@@ -1,4 +1,5 @@
 import type { AgentSystemConfig } from "../Types/AgentConfigTypes.js";
+import { AgentOneBot11ConnectionSchema } from "./Adapters/AgentOneBot11ConnectionConfig.js";
 import {
   AgentProfileRouteCollectionSchema,
   AgentProfileRouteRegistry,
@@ -34,6 +35,16 @@ export const AgentChannelConfigDefaults: Readonly<Record<AgentChannelKind, Agent
     allowAllUsers: false,
     busyMessageMode: AgentChannelBusyMessageModes.Steer,
   },
+  onebot11: {
+    enabled: false,
+    allowAllUsers: true,
+    busyMessageMode: AgentChannelBusyMessageModes.Steer,
+  },
+  onebot: {
+    enabled: false,
+    allowAllUsers: false,
+    busyMessageMode: AgentChannelBusyMessageModes.Steer,
+  },
 };
 
 /** Subsystem-level defaults every channel inherits unless it overrides them. */
@@ -52,7 +63,6 @@ export function resolveAgentChannelsConfig(config: AgentSystemConfig): AgentChan
     return {
       enabled: false,
       defaultApprovalMode: "agent",
-      finalResponseRewrite: false,
       channels: cloneDefaults(),
       profileRoutes: new AgentProfileRouteRegistry([]),
     };
@@ -67,17 +77,15 @@ export function resolveAgentChannelsConfig(config: AgentSystemConfig): AgentChan
     source.defaultApprovalMode === "always_ask" || source.defaultApprovalMode === "full_access"
       ? source.defaultApprovalMode
       : "agent";
-  const finalResponseRewrite = source.finalResponseRewrite === true;
   const subsystemDefaults: AgentChannelSubsystemDefaults = {
     busyMessageMode: busyMessageModeField(source.busyMessageMode) ?? AgentChannelBusyMessageModes.Steer,
   };
-  channels.telegram = resolveChannelConfig(AgentChannelKinds.Telegram, source.telegram, subsystemDefaults);
-  channels.qq = resolveChannelConfig(AgentChannelKinds.Qq, source.qq, subsystemDefaults);
-  channels.discord = resolveChannelConfig(AgentChannelKinds.Discord, source.discord, subsystemDefaults);
+  for (const kind of Object.values(AgentChannelKinds)) {
+    channels[kind] = resolveChannelConfig(kind, source[kind], subsystemDefaults);
+  }
   return {
     enabled,
     defaultApprovalMode,
-    finalResponseRewrite,
     channels,
     profileRoutes: new AgentProfileRouteRegistry(AgentProfileRouteCollectionSchema.parse(source.profileRoutes ?? [])),
   };
@@ -95,6 +103,9 @@ function resolveChannelConfig(
   const raw = value as Record<string, unknown>;
   return {
     enabled: raw.enabled === true,
+    ...(kind === AgentChannelKinds.OneBot && raw.enabled === true
+      ? { connection: AgentOneBot11ConnectionSchema.parse(raw) }
+      : {}),
     token: stringField(raw.token),
     // Hermes-compatible deployments commonly keep QQ credentials in the
     // process environment. Configuration wins, but blank fields must not
@@ -150,12 +161,15 @@ function resolveMode(kind: AgentChannelKind, value: unknown): string | undefined
   if (kind === AgentChannelKinds.Telegram) {
     return value === "webhook" ? "webhook" : "long_polling";
   }
+  if (kind === AgentChannelKinds.OneBot11) return "embedded";
+  if (kind === AgentChannelKinds.OneBot) return "websocket";
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
 function collectUnknown(raw: Record<string, unknown>): Record<string, unknown> | undefined {
   const known = new Set([
     "enabled",
+    ...Object.keys(AgentOneBot11ConnectionSchema.shape),
     "token",
     "appId",
     "app_id",

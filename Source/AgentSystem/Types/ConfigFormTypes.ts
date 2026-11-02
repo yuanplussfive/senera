@@ -25,8 +25,16 @@ export interface AgentConfigFormOptionSource {
 
 export const AgentConfigFormVersion = 1 as const;
 
-export type AgentConfigFormModelCapability =
-  "Chat" | "Vision" | "ImageOutput" | "Reasoning" | "DeveloperRole" | "StreamingUsage";
+export const AgentConfigFormModelCapabilities = [
+  "Chat",
+  "Vision",
+  "ImageOutput",
+  "Reasoning",
+  "ToolCalling",
+  "DeveloperRole",
+  "StreamingUsage",
+] as const;
+export type AgentConfigFormModelCapability = (typeof AgentConfigFormModelCapabilities)[number];
 
 export interface AgentConfigFormModelSelection {
   id: string;
@@ -51,12 +59,27 @@ export interface AgentConfigFormSection<TText = string> {
   name: string;
   label: TText;
   description?: TText;
+  documentation?: TText;
   icon?: string;
   keyCount: number;
   fields: AgentConfigFormField<TText>[];
 }
 
-export interface AgentConfigFormField<TText = string> {
+export interface AgentConfigFormInputBounds {
+  readonly min?: number;
+  readonly max?: number;
+  readonly minExclusive?: boolean;
+  readonly maxExclusive?: boolean;
+  readonly minLength?: number;
+  readonly maxLength?: number;
+}
+
+export interface AgentConfigFormFieldPresence {
+  /** Optional object ancestors, derived from the schema. Absent objects do not require their children. */
+  readonly optionalParents?: readonly (readonly string[])[];
+}
+
+export interface AgentConfigFormField<TText = string> extends AgentConfigFormInputBounds, AgentConfigFormFieldPresence {
   label: TText;
   section: string;
   key: string;
@@ -73,11 +96,8 @@ export interface AgentConfigFormField<TText = string> {
   options?: AgentConfigFormFieldOptionValue[];
   optionLabels?: Record<string, TText>;
   optionSource?: AgentConfigFormOptionSource;
-  min?: number;
-  max?: number;
-  minLength?: number;
-  maxLength?: number;
   step?: number;
+  durationUnit?: import("./AgentDurationUnits.js").AgentDurationUnit;
   secret?: boolean;
   multiline?: boolean;
   required: boolean;

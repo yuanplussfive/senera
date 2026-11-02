@@ -1,7 +1,7 @@
 import { isUtf8 } from "node:buffer";
 import path from "node:path";
 import { z } from "zod";
-import { createAgentWorkspaceContinuityCheckpoint } from "../Continuity/AgentContinuityLedger.js";
+import { createAgentWorkspaceUndoCheckpoint } from "../Continuity/AgentContinuityLedger.js";
 import { sha256Hex } from "../Core/AgentHash.js";
 import type { ToolArtifactWorkspaceManifest } from "../Types/AgentToolContractTypes.js";
 import {
@@ -75,7 +75,7 @@ export function materializeAgentWorkspaceMutationReceipt(input: {
     before,
     after,
     changes,
-    checkpoint: createAgentWorkspaceContinuityCheckpoint({ before, after, changes }),
+    checkpoint: createAgentWorkspaceUndoCheckpoint({ before, after, changes }),
   };
 }
 
@@ -194,7 +194,13 @@ function captureReceiptFileContent(buffer: Buffer, options: WorkspaceReceiptOpti
     return { state: "omitted", reason: "size_limit", byteLength: buffer.byteLength };
   }
   if (!isUtf8(buffer) || isProbablyBinary(buffer)) {
-    return { state: "omitted", reason: "binary", byteLength: buffer.byteLength };
+    return {
+      state: "captured",
+      encoding: "base64",
+      byteLength: buffer.byteLength,
+      lineCount: 0,
+      text: buffer.toString("base64"),
+    };
   }
 
   const text = buffer.toString("utf8");

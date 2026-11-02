@@ -1,5 +1,6 @@
 import type { SandboxPreparationProgressData, SandboxStatusSnapshotData } from "../../api/eventTypes.js";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog.js";
+import { formatFileSize } from "../../lib/fileSize.js";
 
 export function sandboxStatusDetail(status?: SandboxStatusSnapshotData | null): string {
   return status?.progress
@@ -83,14 +84,5 @@ function formatProgressCount(progress: SandboxPreparationProgressData): string {
 
 function formatImageProgress(progress: SandboxPreparationProgressData): string | undefined {
   if (progress.downloadedBytes === undefined || progress.totalBytes === undefined) return undefined;
-  return `${formatByteSize(progress.downloadedBytes)} / ${formatByteSize(progress.totalBytes)}`;
-}
-
-function formatByteSize(bytes: number): string {
-  const safeBytes = Math.max(0, bytes);
-  const unitIndex = Math.min(Math.floor(Math.log(Math.max(safeBytes, 1)) / Math.log(1024)), 4);
-  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
-  const unit = units[unitIndex] ?? "TiB";
-  const value = safeBytes / 1024 ** unitIndex;
-  return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: unitIndex === 0 ? 0 : 1 }).format(value)} ${unit}`;
+  return `${formatFileSize(progress.downloadedBytes)} / ${formatFileSize(progress.totalBytes)}`;
 }

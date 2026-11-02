@@ -7,6 +7,7 @@ import { AgentMcpExecutionTargets } from "../../../Source/AgentSystem/McpPackage
 import { resolveAgentMcpPackageExecutionPolicy } from "../../../Source/AgentSystem/McpPackages/AgentMcpPackageExecutionPolicy.js";
 import { projectAgentMcpPackageTools } from "../../../Source/AgentSystem/McpPackages/AgentMcpPackageToolProjector.js";
 import { createAgentMcpPackageEndpoint } from "../../../Source/AgentSystem/McpPackages/AgentMcpPackageRuntime.js";
+import { createAgentToolExecutionDigest } from "../../../Source/AgentSystem/ToolContracts/AgentToolContractIdentity.js";
 import {
   AgentMcpPackageSourceKinds,
   type AgentMcpPackage,
@@ -20,6 +21,27 @@ const stdioServer: AgentMcpPackageServer = {
 };
 
 describe("MCP package execution policy", () => {
+  test("refreshes package execution without invalidating unchanged invocation knowledge", () => {
+    const package_ = packageWith({ targets: ["local"], preferred: "local" });
+    const updated = { ...package_, revision: `${package_.revision}-updated` };
+    const policy = resolveAgentMcpPackageExecutionPolicy(package_, stdioServer, hostWith(["local"]));
+    const declarations = [
+      { name: "inspect", description: "Inspect a value.", inputSchema: { type: "object", properties: {} } },
+    ];
+    const project = (source: AgentMcpPackage) =>
+      projectAgentMcpPackageTools(
+        source,
+        stdioServer,
+        declarations,
+        policy,
+        createAgentMcpPackageEndpoint(source, stdioServer),
+      )[0]!;
+    const original = project(package_);
+    const replacement = project(updated);
+    expect(replacement.contract?.digest).toBe(original.contract?.digest);
+    expect(createAgentToolExecutionDigest(replacement)).not.toBe(createAgentToolExecutionDigest(original));
+  });
+
   test("preserves the package preference when the host supports all requested targets", () => {
     const policy = resolveAgentMcpPackageExecutionPolicy(
       packageWith({
@@ -189,6 +211,31 @@ describe("MCP package execution policy", () => {
     expect(parallel?.runtime).toMatchObject({ Scheduling: "Parallel", MaxConcurrency: 3 });
     expect(defaulted?.runtime).toMatchObject({ Scheduling: "Parallel" });
     expect(claimed?.runtime).toMatchObject({ Scheduling: "ResourceClaims" });
+  });
+
+  test("projects a producer-declared execution deadline without package-specific host rules", () => {
+    const execution = {
+      targets: [ToolExecutionTargets.Local],
+      preferred: ToolExecutionTargets.Local,
+      preferredBackend: "local" as const,
+    };
+    const package_ = packageWith({ targets: ["local"], preferred: "local" });
+    const tool = projectAgentMcpPackageTools(
+      package_,
+      stdioServer,
+      [
+        {
+          name: "generate",
+          description: "Generate output.",
+          inputSchema: { type: "object", properties: {} },
+          _meta: { "ai.senera/runtime": { deadlineMs: 300_000 } },
+        },
+      ],
+      execution,
+      createAgentMcpPackageEndpoint(package_, stdioServer),
+    ).at(0);
+
+    expect(tool?.runtime).toMatchObject({ DeadlinePolicy: "ToolAware", DeadlineMs: 300_000 });
   });
 
   test("rejects an unsupported MCP scheduling policy", () => {

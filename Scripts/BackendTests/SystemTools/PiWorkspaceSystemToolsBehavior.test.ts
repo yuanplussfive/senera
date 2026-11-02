@@ -2,13 +2,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { z } from "zod";
-import { createReadTool as createPiReadTool } from "@earendil-works/pi-agent-core";
-import {
-  createFindToolDefinition,
-  createGrepToolDefinition,
-  createLsToolDefinition,
-} from "@earendil-works/pi-coding-agent";
 import { SeneraLocalExecutionEnv } from "../../../Source/AgentSystem/Execution/SeneraLocalExecutionEnv.js";
 import type { AgentSystemToolDefinition } from "../../../Source/AgentSystem/SystemTools/AgentSystemToolDefinition.js";
 import {
@@ -21,6 +14,7 @@ import {
 } from "../../../Source/AgentSystem/SystemTools/PiWorkspaceSystemTools.js";
 import type { AgentHostToolContext } from "../../../Source/AgentSystem/ToolRuntime/AgentToolHostCapabilityRegistry.js";
 import type { RegisteredTool } from "../../../Source/AgentSystem/Types/AgentToolRuntimeTypes.js";
+import { loadSystemToolContractByCapability } from "./SystemToolContractTestSupport.js";
 
 const temporaryRoots: string[] = [];
 
@@ -44,22 +38,13 @@ describe("Pi workspace System Tools", () => {
     );
   });
 
-  test("derives every invocation contract from Pi's public parameter schema", () => {
-    const piSchemas = [
-      createPiReadTool().parameters,
-      createGrepToolDefinition(".").parameters,
-      createFindToolDefinition(".").parameters,
-      createLsToolDefinition(".").parameters,
-    ];
-
-    expect(PiWorkspaceSystemTools).toHaveLength(piSchemas.length);
-    for (const [index, definition] of PiWorkspaceSystemTools.entries()) {
-      const expected = z.fromJSONSchema(piSchemas[index]! as unknown as Parameters<typeof z.fromJSONSchema>[0]);
-      expect(z.toJSONSchema(definition.input, { target: "draft-7", io: "input" })).toEqual(
-        z.toJSONSchema(expected, { target: "draft-7", io: "input" }),
-      );
-      expect(definition.metadata.execution).toEqual({ Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" });
-      expect(definition.metadata.runtime).toMatchObject({
+  test("binds each Pi implementation to one package-owned workspace contract", () => {
+    expect(PiWorkspaceSystemTools).toHaveLength(4);
+    for (const definition of PiWorkspaceSystemTools) {
+      const published = loadSystemToolContractByCapability(definition.capability);
+      expect(published.contract.inputSchema).toMatchObject({ type: "object" });
+      expect(published.contract.execution).toEqual({ Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" });
+      expect(published.contract.runtime).toMatchObject({
         Scheduling: "Parallel",
         Capabilities: { Cancellation: true },
       });
@@ -237,37 +222,35 @@ function hostContext(
     workspaceRoot,
     registry: { getTool: (name) => (name === tool.name ? tool : undefined), listTools: () => [tool] },
     executionEnv: new SeneraLocalExecutionEnv({ workspaceRoot }),
-    toolCallId: `call-${definition.name}`,
+    toolCallId: `call-${tool.name}`,
     signal,
   };
 }
 
 function registeredTool(definition: AgentSystemToolDefinition, workspaceRoot: string): RegisteredTool {
+  const published = loadSystemToolContractByCapability(definition.capability);
+  const { contract, contribution, packageSource } = published;
   return {
     owner: {
       kind: "system",
-      name: definition.extension.name,
-      title: definition.extension.displayName["en-US"],
-      description: definition.extension.description["en-US"],
+      name: packageSource.manifest.id,
+      title: packageSource.manifest.displayName["en-US"],
+      description: packageSource.manifest.description["en-US"],
       rootPath: workspaceRoot,
       revision: "test",
       trusted: true,
       requiresApproval: false,
     },
-    name: definition.name,
-    loading: "Bootstrap",
-    permissions: [...(definition.metadata.permissions ?? [])],
-    handler: { kind: "HostCapability", capability: `system.tool.test.${definition.name}` },
-    execution: definition.metadata.execution ?? { Targets: ["Local"], Network: "Deny", Workspace: "ReadOnly" },
-    runtime: definition.metadata.runtime ?? {
-      Lifecycle: "Immediate",
-      ProtocolVersion: 2,
-      ResultAssessment: "ProcessExit",
-    },
-    sources: definition.metadata.sources ?? [],
-    search: definition.metadata.search,
-    childGrant: "inherit",
-    evidenceCapabilities: [...(definition.metadata.evidenceCapabilities ?? [])],
+    name: contract.name,
+    loading: contract.loading,
+    permissions: [...contract.permissions],
+    handler: { kind: "HostCapability", capability: contribution.capability },
+    execution: contract.execution,
+    runtime: contract.runtime,
+    sources: contract.sources,
+    search: contract.search,
+    childGrant: contribution.childGrant,
+    evidenceCapabilities: [...contract.evidenceCapabilities],
   };
 }
 

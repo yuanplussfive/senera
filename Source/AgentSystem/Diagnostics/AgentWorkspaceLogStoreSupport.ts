@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
+import { relativePathWithin } from "../Core/AgentPath.js";
 import { projectAgentSelfRedacted } from "../SelfService/AgentSelfRedaction.js";
+import { formatAgentTimeOffsetMillisecond, parseAgentTimeBoundary } from "../Time/AgentTime.js";
 import { AgentLogPolicyLimits } from "../Types/AgentLogPolicyLimits.js";
 import type {
   AgentWorkspaceLogPolicy,
@@ -65,6 +67,9 @@ export function assertPolicy(policy: AgentWorkspaceLogPolicy): AgentWorkspaceLog
   if (!Number.isSafeInteger(policy.retentionHours) || policy.retentionHours <= 0) {
     throw new RangeError("日志保留时间必须是正整数。 ");
   }
+  if (!Number.isFinite(policy.maintenanceIntervalMinutes) || policy.maintenanceIntervalMinutes <= 0) {
+    throw new RangeError("日志维护间隔必须是正数。 ");
+  }
   if (
     !Number.isSafeInteger(policy.queryPageSize) ||
     policy.queryPageSize <= 0 ||
@@ -116,8 +121,8 @@ export function normalizeLogQuery(
   const source = cursorQuery ?? input;
   const order = source.order ?? "asc";
   const projected = projectCursorQuery({ ...source, order });
-  const fromMs = parseLogBoundary(projected.from, "from");
-  const toMs = parseLogBoundary(projected.to, "to");
+  const fromMs = parseLogBoundary(projected.from, "from", "start");
+  const toMs = parseLogBoundary(projected.to, "to", "end");
   if (fromMs !== undefined && toMs !== undefined && fromMs > toMs) {
     throw new RangeError("日志时间范围的 from 不能晚于 to。 ");
   }
@@ -129,8 +134,8 @@ export function normalizeLogQuery(
   return {
     ...source,
     ...projected,
-    ...(fromMs === undefined ? {} : { from: new Date(fromMs).toISOString(), fromMs }),
-    ...(toMs === undefined ? {} : { to: new Date(toMs).toISOString(), toMs }),
+    ...(fromMs === undefined ? {} : { from: formatAgentTimeOffsetMillisecond(new Date(fromMs).toISOString()), fromMs }),
+    ...(toMs === undefined ? {} : { to: formatAgentTimeOffsetMillisecond(new Date(toMs).toISOString()), toMs }),
     ...(stream === undefined ? { stream: undefined } : { stream }),
     order,
     limit: normalizeLimit(input.limit, defaultLimit),
@@ -166,7 +171,15 @@ export function sameCursorQuery(query: AgentWorkspaceLogQuery, cursorQuery: Agen
     "scope",
     "stream",
   ];
-  return keys.every((key) => (key === "order" && query.order === undefined) || projected[key] === cursorQuery[key]);
+  return keys.every((key) => {
+    if (key === "order" && query.order === undefined) return true;
+    const left = projected[key];
+    const right = cursorQuery[key];
+    if ((left === undefined) !== (right === undefined)) return false;
+    if (left === undefined || right === undefined) return true;
+    if (key === "from" || key === "to") return Date.parse(left) === Date.parse(right);
+    return left === right;
+  });
 }
 
 export function projectCursorQuery(query: AgentWorkspaceLogQuery): AgentWorkspaceLogCursorQuery {
@@ -194,7 +207,8 @@ export function projectCursorQuery(query: AgentWorkspaceLogQuery): AgentWorkspac
 export function normalizeCursorBoundary(value: string | undefined, name: string): string | undefined {
   const normalized = normalizeQueryField(value, name);
   if (normalized === undefined) return undefined;
-  return new Date(parseLogBoundary(normalized, name)!).toISOString();
+  const boundary = name === "to" ? "end" : "start";
+  return formatAgentTimeOffsetMillisecond(new Date(parseLogBoundary(normalized, name, boundary)!).toISOString());
 }
 
 export function normalizeQueryField(value: string | undefined, name: string): string | undefined {
@@ -204,12 +218,18 @@ export function normalizeQueryField(value: string | undefined, name: string): st
   return normalized;
 }
 
-export function parseLogBoundary(value: string | undefined, name: string): number | undefined {
+export function parseLogBoundary(
+  value: string | undefined,
+  name: string,
+  boundary: "start" | "end" = "start",
+): number | undefined {
   const normalized = normalizeOptionalText(value);
   if (normalized === undefined) return undefined;
-  const parsed = Date.parse(normalized);
-  if (!Number.isFinite(parsed)) throw new RangeError(`日志时间边界 ${name} 必须是有效的 RFC3339 时间。`);
-  return parsed;
+  try {
+    return parseAgentTimeBoundary(normalized, boundary === "end" ? "end-inclusive" : "start");
+  } catch {
+    throw new RangeError(`日志时间边界 ${name} 必须是有效的 RFC3339 时间或 YYYY-MM-DD。`);
+  }
 }
 
 export function normalizeOptionalText(value: string | undefined): string | undefined {
@@ -258,7 +278,9 @@ export function compareLogPositions(
 ): number {
   const leftMs = Date.parse(left.timestamp);
   const rightMs = Date.parse(right.timestamp);
-  if (Number.isFinite(leftMs) && Number.isFinite(rightMs) && leftMs !== rightMs) return leftMs - rightMs;
+  if (Number.isFinite(leftMs) && Number.isFinite(rightMs)) {
+    return leftMs !== rightMs ? leftMs - rightMs : left.recordId.localeCompare(right.recordId);
+  }
   if (Number.isFinite(leftMs) !== Number.isFinite(rightMs)) return Number.isFinite(leftMs) ? -1 : 1;
   return left.timestamp.localeCompare(right.timestamp) || left.recordId.localeCompare(right.recordId);
 }
@@ -389,7 +411,7 @@ export function listFilesRecursivelyWithErrors(
           absolutePath,
           relativePath: path.relative(root, absolutePath).split(path.sep).join("/"),
           sizeBytes: stat.size,
-          updatedAt: stat.mtime.toISOString(),
+          updatedAt: formatAgentTimeOffsetMillisecond(stat.mtime.toISOString()),
         });
       } catch (error) {
         onError?.(`日志文件状态读取失败: ${absolutePath}: ${error instanceof Error ? error.message : String(error)}`);
@@ -404,8 +426,7 @@ export function resolveWorkspaceLogPath(root: string, name: string): string | un
   const normalized = name.trim();
   if (!normalized || path.isAbsolute(normalized)) return undefined;
   const target = path.resolve(root, normalized);
-  const relative = path.relative(root, target);
-  if (relative === "" || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return undefined;
+  if (!relativePathWithin(root, target)) return undefined;
   return containsSymlinkComponent(root, target) ? undefined : target;
 }
 

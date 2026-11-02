@@ -6,10 +6,12 @@ import type { AgentSelfApprovalChannel } from "./AgentSelfApprovalTypes.js";
 import { AgentSelfApprovalRegistry } from "./AgentSelfApprovalRegistry.js";
 import { createHttpApprovalTransport } from "./AgentApprovalTransport.js";
 import type { AgentSelfCommandOutput, AgentSelfServicePort } from "./AgentSelfServiceTypes.js";
+import { AgentSelfCommandMaximumBytes, AgentSelfHttpRoute } from "./AgentSelfCliConnection.js";
+import { errorMessage } from "../Core/AgentErrors.js";
 
-export const AgentSelfHttpRoute = "/senera/self" as const;
+export { AgentSelfHttpRoute } from "./AgentSelfCliConnection.js";
 
-const MaxSelfCommandBytes = 512 * 1_024;
+const MaxSelfCommandBytes = AgentSelfCommandMaximumBytes;
 const DiagnosticFieldNames = new Set(["stack", "stacktrace"]);
 
 export type AgentSelfHttpJsonValue =
@@ -30,6 +32,7 @@ export type AgentSelfHttpPayload =
     };
 
 export interface AgentSelfHttpPublicPayload {
+  readonly revision?: string;
   readonly ok: boolean;
   readonly text?: string;
   readonly data?: AgentSelfHttpJsonValue;
@@ -66,7 +69,9 @@ export class AgentSelfHttpApi {
   }
 
   async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    if (!this.authorized(request)) {
+    const presented = readBearerToken(request);
+    const modelCommand = presented ? this.port.cli?.resolve(presented) : undefined;
+    if (!modelCommand && !this.authorized(request)) {
       this.write(response, 401, {
         ok: false,
         error: { code: "authentication_required", message: "Missing or invalid runtime access token." },
@@ -93,16 +98,26 @@ export class AgentSelfHttpApi {
       });
       return;
     }
+    const controller = new AbortController();
+    const onClose = (): void => {
+      if (!response.writableEnded) controller.abort(new Error("CLI connection closed."));
+    };
+    response.once("close", onClose);
     try {
-      const output = await executeAgentSelfInvocation(parsed.data, this.port, {
-        approvals: this.approvals,
-      });
+      const output = modelCommand
+        ? await modelCommand(parsed.data, controller.signal)
+        : await executeAgentSelfInvocation(parsed.data, this.port, {
+            approvals: this.approvals,
+          });
       this.write(response, 200, output);
-    } catch {
-      this.write(response, 500, {
+    } catch (error) {
+      this.write(response, modelCommand ? 200 : 500, {
         ok: false,
+        text: modelCommand ? errorMessage(error) : "The self-service command could not be completed.",
         error: { code: "command_failed", message: "The self-service command could not be completed." },
       });
+    } finally {
+      response.removeListener("close", onClose);
     }
   }
 
@@ -176,12 +191,14 @@ function readBearerToken(request: IncomingMessage): string | undefined {
 export function projectAgentSelfHttpPayload(payload: AgentSelfHttpPayload): AgentSelfHttpPublicPayload {
   const source: Record<string, unknown> = isRecord(payload) ? payload : {};
   const result: {
+    revision?: string;
     ok: boolean;
     text?: string;
     data?: AgentSelfHttpJsonValue;
     error?: string | { readonly code: string; readonly message: string };
     approvalRequired?: AgentSelfHttpPublicPayload["approvalRequired"];
   } = { ok: source.ok === true };
+  if (typeof source.revision === "string") result.revision = source.revision;
 
   if (typeof source.text === "string") result.text = source.text;
   if (typeof source.error === "string") {

@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { cn } from "../../lib/util";
 import { useMotionLevel } from "../motion";
 import { Button } from "./Button";
+import { Tooltip } from "./Tooltip";
 
 /**
  * Adapted from Rewamp UI's Pill Expand Navbar by palakonweb.
@@ -60,7 +61,6 @@ export function PillExpandNavbar({
         disabled={item.disabled}
         aria-label={item.label}
         aria-pressed={mode === "navigation" ? active : undefined}
-        title={item.label}
         onClick={mode === "navigation" ? () => onValueChange?.(item.id) : undefined}
         onPointerEnter={(event) => {
           if (event.pointerType !== "touch" && !item.disabled) setHovered(item.id);
@@ -96,13 +96,15 @@ export function PillExpandNavbar({
       </MotionButton>
     );
     return mode === "tabs" ? (
-      <TabsPrimitive.Trigger key={item.id} value={item.id} asChild disabled={item.disabled}>
-        {button}
-      </TabsPrimitive.Trigger>
+      <Tooltip key={item.id} content={item.label}>
+        <TabsPrimitive.Trigger value={item.id} asChild disabled={item.disabled}>
+          {button}
+        </TabsPrimitive.Trigger>
+      </Tooltip>
     ) : (
-      <span key={item.id} className="contents">
+      <Tooltip key={item.id} content={item.label}>
         {button}
-      </span>
+      </Tooltip>
     );
   });
   const props = {

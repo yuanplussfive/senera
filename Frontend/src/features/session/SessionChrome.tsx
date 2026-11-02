@@ -1,4 +1,6 @@
-import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
+import { frontendMessage } from "../../i18n/frontendMessageCatalog";
+import { SessionChannelMessageKeys } from "./sessionChannelPresentation";
+import { DesktopReleaseChannelBadge } from "../../app/DesktopReleaseChannelBadge";
 import type { EventSourceChannel } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
 import { useResponsiveMode } from "../../shared/responsive";
@@ -15,14 +17,6 @@ import {
 } from "../../shared/ui";
 
 type SessionChannelFilter = "all" | EventSourceChannel;
-
-const SessionChannelMessageKeys = {
-  all: "session.channel.all",
-  console: "session.channel.console",
-  qq: "session.channel.qq",
-  telegram: "session.channel.telegram",
-  discord: "session.channel.discord",
-} as const satisfies Record<SessionChannelFilter, FrontendMessageKey>;
 
 interface SessionHeaderProps {
   collapsed?: boolean;
@@ -126,6 +120,7 @@ export function SessionHeader({
             <span className="inline-flex min-w-0 items-center gap-2">
               <LogoMark size={18} />
               <LogoWordmark className="truncate" />
+              <DesktopReleaseChannelBadge />
             </span>
             <AppIcon
               icon="chevron-down"

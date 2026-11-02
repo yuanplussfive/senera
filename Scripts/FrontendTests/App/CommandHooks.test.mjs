@@ -12,6 +12,8 @@ function configuredChatModel(id, isDefault = false) {
   return {
     id,
     capabilities: { Chat: true },
+    toolPlanningMode: "baml",
+    stream: true,
     kind: "openai",
     endpoint: "chat",
     baseUrl: "https://models.invalid/v1",
@@ -23,7 +25,7 @@ function configuredChatModel(id, isDefault = false) {
 beforeEach(() => {
   installMemoryLocalStorage();
   clearTestToastCalls();
-  resetFrontendStore();
+  resetFrontendStore({ agentDirectory: null, selectedAgentId: null });
 });
 
 afterEach(() => {
@@ -49,7 +51,9 @@ test("useChatCommands creates a missing session and sends its first message as o
     serverKnownSessionIdsRef,
   });
 
-  act(() => handleRef.current.sendMessage("Inspect the workspace"));
+  act(() => {
+    void handleRef.current.sendMessage("Inspect the workspace");
+  });
 
   expect(send).toHaveBeenCalledTimes(1);
   const messageRequest = send.mock.calls[0][0];
@@ -74,6 +78,44 @@ test("useChatCommands creates a missing session and sends its first message as o
     messages: [expect.objectContaining({ content: "Inspect the workspace", role: "user" })],
   });
 });
+
+test.each([false, true])(
+  "conversation sends keep their owning Agent and distinguish explicit model changes (override: %s)",
+  (override) => {
+    const sessionId = "agent-owned-session";
+    const agentId = "6b1aadf5-8129-4f19-bac2-893aa4706430";
+    const otherAgentId = "babdd3c9-6f27-43a5-95df-20e05c40875c";
+    registerTestSession(sessionId);
+    useStore.setState((state) => {
+      state.sessions[sessionId].agentId = agentId;
+      state.sessions[sessionId].effectiveModel = { providerId: "model-primary", source: "agent" };
+      state.agentDirectory = {
+        revision: 1,
+        defaultAgentId: otherAgentId,
+        deletingAgentIds: [],
+        agents: [
+          { id: agentId, enabled: true, name: "Current", modelProviderId: "model-primary" },
+          { id: otherAgentId, enabled: true, name: "Other", modelProviderId: "model-other" },
+        ],
+      };
+      state.selectedAgentId = otherAgentId;
+      state.modelProviders = [configuredChatModel("model-primary"), configuredChatModel("model-other", true)];
+      state.defaultModelProviderId = "model-other";
+      state.selectedModelProviderId = "model-primary";
+      if (override) state.selectedModelProviderIdsBySession[sessionId] = "model-primary";
+    });
+    const send = vi.fn(() => true);
+    const handleRef = { current: null };
+    renderChatCommands({ activeSessionId: sessionId, handleRef, send });
+    act(() => {
+      void handleRef.current.sendMessage("Continue this conversation");
+    });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0][0]).toMatchObject({ type: "session.message", sessionId, agentId });
+    expect(send.mock.calls[0][0].modelProviderId).toBe(override ? "model-primary" : undefined);
+    expect(useStore.getState().agentDirectory.agents[0].modelProviderId).toBe("model-primary");
+  },
+);
 
 test("useChatCommands blocks sends while history is recovering without mutating state", () => {
   const sessionId = "session-recovering";
@@ -106,7 +148,9 @@ test("omits a persisted model selection that is absent from the current catalog"
   const handleRef = { current: null };
   renderChatCommands({ activeSessionId: sessionId, handleRef, send });
 
-  act(() => handleRef.current.sendMessage("Use the replacement model"));
+  act(() => {
+    void handleRef.current.sendMessage("Use the replacement model");
+  });
 
   expect(send).toHaveBeenCalledWith(
     expect.objectContaining({
@@ -827,6 +871,7 @@ function renderChatCommands({
       lastSendRef,
       registerSession: useStore.getState().registerCreatingSession,
       send,
+      sendAccepted: (request) => (send(request) ? Promise.resolve() : false),
       serverKnownSessionIdsRef,
       status,
     }),

@@ -1,4 +1,20 @@
-import { Temporal } from "@js-temporal/polyfill";
+import { AgentMemoryDiaryRuntime } from "./AgentMemoryDiaryRuntime.js";
+import { AgentMemoryDiaryStore } from "./AgentMemoryDiaryStore.js";
+import { agentMemoryEpisodeDisplayValues, readAgentMemoryEpisodeSubject } from "../Memory/AgentMemoryEpisodeRecords.js";
+import { agentMemoryDiaryDate, type AgentMemoryDiaryConfig } from "./AgentMemoryDiaryContract.js";
+import { projectAgentMemoryDiarySources } from "./AgentMemoryDiarySources.js";
+import type { AgentMemoryLearningLedger } from "./AgentMemoryLearningLedger.js";
+import { AgentMemOSMemoryAssessment } from "./AgentMemOSMemoryAssessment.js";
+import { AgentMemoryUtilityVersion } from "./AgentMemoryUtilityContract.js";
+import { AgentMemoryRetrievalTrust } from "./AgentMemoryQuality.js";
+import { AgentMemoryRetentionModel } from "./AgentMemoryRetentionModel.js";
+import {
+  agentMemoryRetention,
+  agentMemoryRetentionDeadline,
+  AgentMemoryRetentionDecisionSchema,
+  type AgentMemoryRetention,
+  type AgentMemoryRetentionPolicy,
+} from "./AgentMemoryRetention.js";
 import type { MemOS, MemoryNode } from "@mem-os/sdk";
 import { sha256HexOfCanonicalJson } from "../Core/AgentHash.js";
 import type { AgentLogger } from "../Diagnostics/AgentLogger.js";
@@ -14,7 +30,6 @@ import type {
   AgentMemoryRecordedTurn,
   AgentMemorySourceRepository,
 } from "../Memory/AgentMemorySourceRepository.js";
-import { DefaultAgentTimeZone, projectAgentTime } from "../Time/AgentTime.js";
 import type { ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import type { AgentIdentityDisplayValues } from "../Text/AgentTextParts.js";
 import {
@@ -22,11 +37,11 @@ import {
   createAgentMemOSExtractionRecordSchema,
 } from "./AgentMemOSSemanticModelClient.js";
 import type {
-  AgentMemOSDigestEntry,
   AgentMemOSFragmentHistoryEntry,
   AgentMemOSSemanticCandidate,
   AgentMemOSSemanticDecision,
   AgentMemOSSemanticFragment,
+  AgentMemOSSemanticMemoryType,
 } from "./AgentMemOSSemanticTypes.js";
 import {
   projectAgentMemOSSemanticIdentityDecision,
@@ -35,31 +50,23 @@ import {
 } from "./AgentMemOSSemanticIdentity.js";
 import {
   AgentMemOSTags,
-  agentMemOSDayTag,
-  agentMemOSMonthTag,
-  agentMemOSWriteTag,
-  agentMemOSLocalMonth,
-  readAgentMemOSDay,
-  readAgentMemOSMonth,
-  replaceAgentMemOSWriteTag,
   AgentMemOSSummarySchema,
+  createAgentMemOSFragmentMetadata,
+  createAgentMemOSKnowledgeMetadata,
+  isAgentMemOSLearningMemoryType,
+  mergeAgentMemOSKnowledgeMetadata,
+  readAgentMemOSSemanticMetadata,
 } from "./AgentMemOSSemanticTypes.js";
 import {
   AgentMemOSDeleteRequestSchema,
   AgentMemOSFragmentCommitSchema,
   MaximumTimerDelayMs,
-  completedDate,
-  digestSourceRevision,
   errorMessage,
-  firstEntry,
   fragmentSourceRevision,
   fragmentTaskKey,
   previewForModel,
-  projectDigestEntry,
   projectMemoryIntents,
   projectStateCard,
-  readNodeIds,
-  splitByTokenBudget,
   unique,
   validateConfig,
 } from "./AgentMemOSSemanticLearningSupport.js";
@@ -76,8 +83,7 @@ export interface AgentMemOSSemanticLearningConfig {
   readonly fragmentHistoryTurns: number;
   readonly knowledgeCandidateLimit: number;
   readonly assistantPreviewTokens: number;
-  readonly digestInputTokenBudget: number;
-  readonly digestSummaryTokenLimit: number;
+  readonly fragmentSummaryTokenLimit: number;
 }
 
 export interface AgentMemOSSemanticLearningFlushOptions {
@@ -86,17 +92,26 @@ export interface AgentMemOSSemanticLearningFlushOptions {
 }
 
 export interface AgentMemOSSemanticLearningRuntimeOptions {
+  readonly canonicalSubject?: (subject: string) => string;
   readonly memos: MemOS;
   readonly namespace: string;
   readonly sourceRepository: AgentMemorySourceRepository;
   readonly learningRequests: AgentBackgroundLearningRequestLedger;
+  readonly learningLedger?: AgentMemoryLearningLedger;
   readonly modelProvider: () => ResolvedAgentModelProviderConfig;
   readonly policy: () => AgentMemOSSemanticLearningPolicy;
   readonly config: () => AgentMemOSSemanticLearningConfig;
+  readonly retentionPolicy: () => AgentMemoryRetentionPolicy;
+  readonly retentionInputTokenBudget: () => number;
   readonly cacheScopeKey: string;
   /** Current host profile values are presentation-only, never semantic facts. */
-  readonly identityDisplayValues?: () => AgentIdentityDisplayValues;
+  readonly identityDisplayValues?: (sessionId?: string) => AgentIdentityDisplayValues;
   readonly logger?: AgentLogger;
+  readonly diary: {
+    readonly store: AgentMemoryDiaryStore;
+    readonly config: () => AgentMemoryDiaryConfig;
+    readonly now?: () => string;
+  };
 }
 
 interface AgentMemOSSemanticMatch extends AgentMemOSSemanticCandidate {
@@ -109,6 +124,8 @@ interface AgentMemOSSemanticMatch extends AgentMemOSSemanticCandidate {
  * solely to build bounded context and to recover unfinished work after restart.
  */
 export class AgentMemOSSemanticLearningRuntime {
+  private readonly assessments: AgentMemOSMemoryAssessment;
+  private readonly diaries: AgentMemoryDiaryRuntime;
   private readonly tasks = new Set<Promise<unknown>>();
   private readonly periodTasks = new Map<string, Promise<void>>();
   private readonly dirtyPeriods = new Set<string>();
@@ -124,14 +141,33 @@ export class AgentMemOSSemanticLearningRuntime {
   private timer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(private readonly options: AgentMemOSSemanticLearningRuntimeOptions) {
+    this.assessments = new AgentMemOSMemoryAssessment(options.memos, options.learningLedger);
     validateConfig(options.config());
+    this.diaries = new AgentMemoryDiaryRuntime({
+      canonicalSubject: options.canonicalSubject,
+      store: options.diary.store,
+      config: options.diary.config,
+      sources: () => this.diarySources(),
+      model: options.modelProvider,
+      scopeKey: options.cacheScopeKey,
+      learningRequests: options.learningRequests,
+      withModelSlot: (operation) => this.withLearningSlot(operation),
+      policy: options.policy,
+      signal: this.shutdown.signal,
+      now: options.diary.now,
+    });
   }
 
   start(): void {
     if (this.started || this.stopped) return;
-    if (!this.options.policy().enabled) return;
     this.started = true;
+    void this.enqueue("recall-settlements", async () => {
+      for (const episode of this.options.sourceRepository.listCompletedEpisodes())
+        this.options.learningLedger?.completeRecall(episode.sessionId, episode.requestId, episode.completedAt);
+      this.scheduleScoreSync();
+    });
     void this.enqueue("startup", async () => {
+      if (!this.options.policy().enabled) return;
       const deletionRequests = this.options.learningRequests.listAll({
         board: "semantic_memory",
         stage: "semantic_delete",
@@ -140,6 +176,11 @@ export class AgentMemOSSemanticLearningRuntime {
       for (const record of deletionRequests)
         if (!latestDeletes.has(record.operationKey)) latestDeletes.set(record.operationKey, record);
       for (const record of latestDeletes.values()) {
+        const references = AgentMemOSDeleteRequestSchema.parse(record.metadata);
+        for (const uri of [...references.episodeUris, ...references.sourceUris]) this.deletedReferences.add(uri);
+      }
+      await this.migrateLegacyDiaries();
+      for (const record of latestDeletes.values()) {
         if (!this.options.learningRequests.isRecoverable(record, this.options.policy())) continue;
         const references = AgentMemOSDeleteRequestSchema.parse(record.metadata);
         await this.deleteSources(references.episodeUris, references.sourceUris);
@@ -147,17 +188,29 @@ export class AgentMemOSSemanticLearningRuntime {
       await this.reconcilePersistedTurns();
       await this.reconcilePeriods();
     });
-    this.scheduleNextBoundary();
+    if (this.options.policy().enabled) this.scheduleNextBoundary();
   }
 
   recordCompletedTurn(recordedTurn: AgentMemoryRecordedTurn): void {
     if (this.stopped) return;
+    this.options.learningLedger?.completeRecall(
+      recordedTurn.episode.sessionId,
+      recordedTurn.episode.requestId,
+      recordedTurn.episode.completedAt,
+    );
     this.deletedReferences.delete(recordedTurn.episode.uri);
     this.start();
-    if (!this.options.policy().enabled || recordedTurn.episode.metadata.stateCard === undefined) return;
+    this.scheduleScoreSync();
+    if (!this.options.policy().enabled) return;
     void this.enqueue(recordedTurn.episode.uri, async () => {
-      await this.scheduleFragment(recordedTurn);
-      await this.reconcilePeriods(completedDate(recordedTurn.episode));
+      try {
+        if (recordedTurn.episode.metadata.stateCard !== undefined) await this.scheduleFragment(recordedTurn);
+      } finally {
+        const timeZone = this.options.diary.config().TimeZone;
+        const today = agentMemoryDiaryDate(this.options.diary.now?.() ?? new Date().toISOString(), timeZone);
+        if (agentMemoryDiaryDate(recordedTurn.episode.completedAt, timeZone) < today)
+          void this.enqueue("diaries", () => this.reconcilePeriods());
+      }
     });
   }
 
@@ -165,86 +218,60 @@ export class AgentMemOSSemanticLearningRuntime {
     if (episodeUris.length === 0 && sourceUris.length === 0) return Promise.resolve();
     for (const reference of [...episodeUris, ...sourceUris]) this.deletedReferences.add(reference);
     const operationKey = `delete:${sha256HexOfCanonicalJson([...episodeUris, ...sourceUris])}`;
+    const precedingFragments = this.fragmentTail;
     const task = this.enqueue(operationKey, () =>
-      this.fragmentTail.then(() =>
-        this.runWithRetry(
-          {
-            operationKey,
-            board: "semantic_memory",
-            stage: "semantic_delete",
-            metadata: { episodeUris: [...episodeUris], sourceUris: [...sourceUris] },
-          },
-          async () => {
-            await this.waitForPeriodTasks();
-            const records = this.options.learningRequests.listAll({
-              board: "semantic_memory",
-              stage: "semantic_fragment",
-            });
-            const contributions = await Promise.all(
-              records.map(async (record) => {
-                const fragment = await this.findByTags([
-                  AgentMemOSTags.fragment,
-                  agentMemOSWriteTag(record.operationKey),
-                ]);
-                const knowledge = await this.findByTags([
-                  AgentMemOSTags.knowledge,
-                  agentMemOSWriteTag(record.operationKey),
-                ]);
-                const edges = fragment ? await this.options.memos.getEdges(fragment.id) : [];
-                return {
-                  record,
-                  ids: unique([
-                    ...readNodeIds(record.metadata),
-                    ...(fragment ? [fragment.id] : []),
-                    ...(knowledge ? [knowledge.id] : []),
-                    ...edges
-                      .filter((edge) => edge.targetId === fragment?.id && edge.relation === "derived_from")
-                      .map((edge) => edge.sourceId),
-                  ]),
-                };
-              }),
-            );
-            const affected = new Set([...episodeUris, ...sourceUris]);
-            const nodeIds = new Set<string>();
-            let expanded: boolean;
-            do {
-              expanded = false;
-              for (const { record, ids } of contributions) {
-                if (!record.entityUri || (!affected.has(record.entityUri) && !ids.some((id) => nodeIds.has(id))))
-                  continue;
-                if (!affected.has(record.entityUri)) {
-                  affected.add(record.entityUri);
-                  expanded = true;
-                }
-                for (const id of ids)
-                  if (!nodeIds.has(id)) {
-                    nodeIds.add(id);
-                    expanded = true;
-                  }
-              }
-            } while (expanded);
-            await Promise.all([...nodeIds].map((nodeId) => this.options.memos.forget(nodeId)));
-            const episodes = this.options.sourceRepository
-              .listCompletedEpisodes()
-              .filter((episode) => affected.has(episode.uri))
-              .sort((left, right) => left.completedAtMs - right.completedAtMs || left.id.localeCompare(right.id));
-            for (const episode of episodes) {
-              await this.learnFragment(
-                { episode, sources: this.options.sourceRepository.listSources(episode.uri) },
-                true,
-              );
+      this.runWithRetry(
+        {
+          operationKey,
+          board: "semantic_memory",
+          stage: "semantic_delete",
+          metadata: { episodeUris: [...episodeUris], sourceUris: [...sourceUris] },
+        },
+        async () => {
+          // The request is durable before waiting for extraction or changing derived files.
+          this.diaries.invalidateSources(episodeUris, sourceUris);
+          await precedingFragments;
+          const deleted = new Set([...episodeUris, ...sourceUris]);
+          const fragments = (await this.listSemanticNodes([AgentMemOSTags.semantic, AgentMemOSTags.fragment])).filter(
+            (node) => this.isDeletedFragment(node, deleted),
+          );
+          const fragmentsById = new Set(fragments.map((fragment) => fragment.id));
+          const impactedKnowledgeIds = new Set<string>();
+          for (const fragment of fragments) {
+            for (const edge of await this.options.memos.getEdges(fragment.id)) {
+              if (edge.relation === "derived_from" && edge.targetId === fragment.id)
+                impactedKnowledgeIds.add(edge.sourceId);
             }
-            await this.reconcilePeriods();
-          },
-        ),
+          }
+          await Promise.all(fragments.map((fragment) => this.options.memos.forget(fragment.id)));
+          await Promise.all(
+            [...impactedKnowledgeIds].map((knowledgeId) =>
+              this.removeDeletedKnowledgeContribution(knowledgeId, fragmentsById),
+            ),
+          );
+          this.scheduleScoreSync();
+        },
       ),
     );
     this.fragmentTail = task.catch(() => {});
+    void task.then(
+      () => {
+        void this.enqueue("diaries", () => this.reconcilePeriods());
+      },
+      () => {},
+    );
     return task;
   }
 
   async flush(options: AgentMemOSSemanticLearningFlushOptions = {}): Promise<void> {
     while (this.tasks.size > 0) await Promise.allSettled([...this.tasks]);
+    try {
+      await this.synchronizeScores();
+      this.failures.delete("knowledge-scores");
+    } catch (error) {
+      this.failures.set("knowledge-scores", error);
+      this.options.logger?.warn("memory.memos.score_sync_failed", { message: errorMessage(error) });
+    }
     if (options.surfaceFailures !== false && this.failures.size > 0)
       throw new AggregateError([...this.failures.values()], "MemOS background learning failed.");
   }
@@ -262,6 +289,7 @@ export class AgentMemOSSemanticLearningRuntime {
     if (this.deletedReferences.has(recordedTurn.episode.uri)) return;
     const operationKey = `memos:fragment:${recordedTurn.episode.uri}:${recordedTurn.episode.updatedAt}`;
     const sourceRevision = fragmentSourceRevision(recordedTurn.episode);
+    let previousCommit: ReturnType<typeof AgentMemOSFragmentCommitSchema.parse> | undefined;
     if (!force) {
       const completed = this.options.learningRequests.list({
         board: "semantic_memory",
@@ -273,25 +301,44 @@ export class AgentMemOSSemanticLearningRuntime {
       })[0];
       if (completed) {
         const commit = AgentMemOSFragmentCommitSchema.parse(completed.metadata);
-        if (commit.nodeIds.length === 0) return;
+        const assessmentCurrent =
+          commit.assessmentVersion === AgentMemoryUtilityVersion ||
+          !this.options.learningLedger?.delivered(recordedTurn.episode.sessionId, recordedTurn.episode.requestId)
+            .length;
+        if (commit.nodeIds.length === 0 && assessmentCurrent) return;
         const nodes = await Promise.all(commit.nodeIds.map((id) => this.options.memos.retrieve(id)));
-        if (nodes.length > 0 && nodes.every(Boolean)) return;
-        force = true;
+        if (nodes.every(Boolean)) {
+          if (assessmentCurrent) return;
+          previousCommit = commit;
+        } else force = true;
       }
     }
     const stateCard = projectStateCard(recordedTurn.episode.metadata.stateCard);
     if (!stateCard) return;
-    const identity = this.options.identityDisplayValues?.();
+    const identity = agentMemoryEpisodeDisplayValues(
+      recordedTurn.episode,
+      this.options.identityDisplayValues?.(recordedTurn.episode.sessionId),
+    );
     const model = this.options.modelProvider();
     const config = this.options.config();
-    const extractionRecordSchema = createAgentMemOSExtractionRecordSchema(config.digestSummaryTokenLimit);
+    const ledger = this.options.learningLedger;
+    const task = ledger?.binding(recordedTurn.episode.sessionId, recordedTurn.episode.requestId);
+    const deliveries = ledger?.delivered(recordedTurn.episode.sessionId, recordedTurn.episode.requestId) ?? [];
+    const deliveryRevision = sha256HexOfCanonicalJson(deliveries);
+    const learningOperationKey = `${operationKey}:utility:${AgentMemoryUtilityVersion}:delivery:${deliveryRevision}`;
+    const sources = this.assessments.sources(recordedTurn);
+    const isCurrent = () =>
+      !this.deletedReferences.has(recordedTurn.episode.uri) &&
+      this.isCurrentEpisode(recordedTurn.episode, sourceRevision);
+    const extractionRecordSchema = createAgentMemOSExtractionRecordSchema(config.fragmentSummaryTokenLimit);
     await this.withLearningSlot(async () => {
       await this.runWithRetry(
         {
-          operationKey,
+          operationKey: learningOperationKey,
           board: "semantic_memory",
           stage: "semantic_fragment",
           entityUri: recordedTurn.episode.uri,
+          sessionId: recordedTurn.episode.sessionId,
           sourceRevision,
           providerId: model.Id,
           model: model.Model,
@@ -307,29 +354,62 @@ export class AgentMemOSSemanticLearningRuntime {
                 limit: 1,
               })[0]
             : undefined;
-          const cachedExtraction = cached ? extractionRecordSchema.parse(cached.metadata) : undefined;
-          const committedFragment = await this.findByTags([AgentMemOSTags.fragment, agentMemOSWriteTag(operationKey)]);
-          if (committedFragment) {
-            const contribution = (await this.options.memos.getEdges(committedFragment.id)).find(
-              (edge) => edge.targetId === committedFragment.id && edge.relation === "derived_from",
-            );
-            if (contribution)
-              return unique([
-                committedFragment.id,
-                contribution.sourceId,
-                ...(cachedExtraction?.candidateId ? [cachedExtraction.candidateId] : []),
-              ]);
-          }
+          const cachedExtraction =
+            cached?.metadata.assessmentVersion === AgentMemoryUtilityVersion &&
+            cached.metadata.deliveryRevision === deliveryRevision
+              ? extractionRecordSchema.parse(cached.metadata)
+              : undefined;
+          const committedFragment = await this.findByMetadata([AgentMemOSTags.semantic, AgentMemOSTags.fragment], {
+            senera_operation_key: operationKey,
+          });
+          const contribution = committedFragment
+            ? (await this.options.memos.getEdges(committedFragment.id)).find(
+                (edge) => edge.targetId === committedFragment.id && edge.relation === "derived_from",
+              )
+            : undefined;
           const candidates = cachedExtraction
             ? []
             : await this.findKnowledgeCandidates(
                 recordedTurn.episode.standaloneRequest,
                 config.knowledgeCandidateLimit,
+                task,
               );
+          if (!cachedExtraction && ledger) {
+            for (const delivery of deliveries) {
+              const match = candidates.find((candidate) => candidate.nodeId === delivery.id);
+              if (match) {
+                candidates[candidates.indexOf(match)] = {
+                  ...match,
+                  delivered: true,
+                  deliveredVersions: [
+                    ...(match.deliveredVersions ?? []),
+                    { revision: delivery.revision, summary: delivery.summary },
+                  ],
+                };
+                continue;
+              }
+              const node = await this.options.memos.retrieve(delivery.id);
+              if (node && isAgentMemOSLearningMemoryType(node.type)) {
+                const metadata = readAgentMemOSSemanticMetadata(node);
+                candidates.push({
+                  ref: candidates.length,
+                  nodeId: node.id,
+                  summary: AgentMemOSSummarySchema.parse(node.summary),
+                  type: node.type,
+                  delivered: true,
+                  assessmentOnly:
+                    task !== undefined &&
+                    (!this.sameSubject(metadata?.senera_subject_id, task.subjectId) ||
+                      (node.type === "context" && metadata?.senera_task_id !== task.taskId)),
+                  deliveredVersions: [{ revision: delivery.revision, summary: delivery.summary }],
+                });
+              }
+            }
+          }
           const client = new AgentMemOSSemanticModelClient(
             model,
             this.options.cacheScopeKey,
-            config.digestSummaryTokenLimit,
+            config.fragmentSummaryTokenLimit,
           );
           const result: AgentMemOSSemanticDecision = cachedExtraction
             ? cachedExtraction.fragment.action === "skip"
@@ -337,10 +417,11 @@ export class AgentMemOSSemanticLearningRuntime {
               : client.normalizeFragment(cachedExtraction.fragment)
             : await this.options.learningRequests.run(
                 {
-                  operationKey,
+                  operationKey: learningOperationKey,
                   board: "semantic_memory",
                   stage: "semantic_extract",
                   entityUri: recordedTurn.episode.uri,
+                  sessionId: recordedTurn.episode.sessionId,
                   sourceRevision,
                   providerId: model.Id,
                   model: model.Model,
@@ -350,6 +431,7 @@ export class AgentMemOSSemanticLearningRuntime {
                   client
                     .extractFragment(
                       {
+                        subject: readAgentMemoryEpisodeSubject(recordedTurn.episode),
                         user: projectAgentMemOSSemanticIdentityText(recordedTurn.episode.rawUserText, identity),
                         assistant: projectAgentMemOSSemanticIdentityText(
                           previewForModel(
@@ -365,19 +447,43 @@ export class AgentMemOSSemanticLearningRuntime {
                           identity,
                         ),
                         history: this.projectHistory(recordedTurn.episode, model.Model, identity),
-                        candidates: candidates.map(({ ref, summary, type }) => ({
-                          ref,
-                          summary: projectAgentMemOSSemanticIdentityText(summary, identity),
-                          type,
-                        })),
+                        candidates: candidates.map(
+                          ({ ref, summary, type, delivered, deliveredVersions, assessmentOnly }) => ({
+                            ref,
+                            summary: projectAgentMemOSSemanticIdentityText(summary, identity),
+                            type,
+                            ...(delivered ? { delivered } : {}),
+                            ...(assessmentOnly ? { assessmentOnly } : {}),
+                            ...(deliveredVersions
+                              ? {
+                                  deliveredVersions: deliveredVersions.map((version) => ({
+                                    revision: version.revision,
+                                    summary: projectAgentMemOSSemanticIdentityText(version.summary, identity),
+                                  })),
+                                }
+                              : {}),
+                          }),
+                        ),
+                        ...(ledger || sources.length
+                          ? {
+                              sources: sources.map((source, ref) => ({
+                                ref,
+                                kind: source.sourceKind,
+                                text: source.textContent ?? source.summary ?? "",
+                              })),
+                            }
+                          : {}),
                       },
-                      operationKey,
+                      learningOperationKey,
                       this.shutdown.signal,
                     )
                     .then((decision) => projectAgentMemOSSemanticIdentityDecision(decision, identity)),
                 (fragment) => ({
                   metadata: extractionRecordSchema.parse({
                     fragment,
+                    assessmentVersion: AgentMemoryUtilityVersion,
+                    deliveryRevision,
+                    assessmentTargets: candidates.map((candidate) => candidate.nodeId),
                     ...(fragment.action === "skip" || fragment.candidate === undefined
                       ? {}
                       : { candidateId: candidates[fragment.candidate]?.nodeId }),
@@ -385,12 +491,34 @@ export class AgentMemOSSemanticLearningRuntime {
                 }),
               );
           let resolvedResult = projectAgentMemOSSemanticIdentityDecision(result, identity);
-          if (resolvedResult.action === "skip") return [];
-          if (cachedExtraction && resolvedResult.candidate !== undefined) {
+          const assessmentTargets = cachedExtraction
+            ? cachedExtraction.assessmentTargets
+            : candidates.map((candidate) => candidate.nodeId);
+          if (!isCurrent()) return [];
+          // Re-evaluate old task utility independently of its already committed
+          // knowledge. An assessment upgrade must never learn the same turn twice.
+          const retainedNodes =
+            previousCommit?.nodeIds ??
+            (committedFragment && contribution
+              ? unique([
+                  committedFragment.id,
+                  contribution.sourceId,
+                  ...(cachedExtraction?.candidateId ? [cachedExtraction.candidateId] : []),
+                ])
+              : undefined);
+          if (
+            !retainedNodes &&
+            cachedExtraction &&
+            resolvedResult.action !== "skip" &&
+            resolvedResult.candidate !== undefined
+          ) {
             if (!cachedExtraction.candidateId) throw new Error("Persisted MemOS reconciliation is missing its target.");
             const target = await this.options.memos.retrieve(cachedExtraction.candidateId);
             if (!target) {
               throw new Error("The persisted MemOS reconciliation target is no longer available.");
+            }
+            if (!isAgentMemOSLearningMemoryType(target.type)) {
+              throw new Error("The persisted MemOS reconciliation target has an unsupported semantic type.");
             }
             candidates.push({
               ref: 0,
@@ -402,9 +530,23 @@ export class AgentMemOSSemanticLearningRuntime {
           }
           if (this.deletedReferences.has(recordedTurn.episode.uri)) return [];
           if (!this.isCurrentEpisode(recordedTurn.episode, sourceRevision)) return [];
-          return this.reconcileFragment(recordedTurn.episode, resolvedResult, candidates, operationKey);
+          const nodeIds =
+            retainedNodes ??
+            (resolvedResult.action === "skip"
+              ? []
+              : await this.reconcileFragment(
+                  recordedTurn,
+                  resolvedResult,
+                  candidates,
+                  operationKey,
+                  await this.resolveRetention(recordedTurn, resolvedResult, candidates, model, attempt),
+                ));
+          await this.assessments.settle(recordedTurn, resolvedResult, assessmentTargets, nodeIds[1], isCurrent);
+          return nodeIds;
         },
-        (nodeIds) => ({ metadata: AgentMemOSFragmentCommitSchema.parse({ nodeIds }) }),
+        (nodeIds) => ({
+          metadata: AgentMemOSFragmentCommitSchema.parse({ nodeIds, assessmentVersion: AgentMemoryUtilityVersion }),
+        }),
       );
     });
   }
@@ -416,62 +558,145 @@ export class AgentMemOSSemanticLearningRuntime {
   ): AgentMemOSFragmentHistoryEntry[] {
     const history = this.options.sourceRepository
       .listEpisodes(current.sessionId)
+      .filter(
+        (episode) =>
+          !this.options.canonicalSubject ||
+          this.sameSubject(readAgentMemoryEpisodeSubject(current)?.id, readAgentMemoryEpisodeSubject(episode)?.id),
+      )
       .filter((episode) => episode.uri !== current.uri && episode.completedAtMs <= current.startedAtMs)
       .slice()
       .sort((left, right) => right.completedAtMs - left.completedAtMs || right.id.localeCompare(left.id))
       .slice(0, this.options.config().fragmentHistoryTurns)
       .reverse();
     return history.flatMap((episode) => {
+      const episodeIdentity = agentMemoryEpisodeDisplayValues(episode, identity);
       const stateCard = projectStateCard(episode.metadata.stateCard);
       if (!stateCard) return [];
       return {
-        user: projectAgentMemOSSemanticIdentityText(episode.rawUserText, identity),
+        user: projectAgentMemOSSemanticIdentityText(episode.rawUserText, episodeIdentity),
         assistant: projectAgentMemOSSemanticIdentityText(
           previewForModel(episode.assistantText, model, this.options.config().assistantPreviewTokens),
-          identity,
+          episodeIdentity,
         ),
-        stateCard: projectAgentMemOSSemanticIdentityValue(stateCard, identity),
+        stateCard: projectAgentMemOSSemanticIdentityValue(stateCard, episodeIdentity),
       };
     });
   }
 
-  private async reconcilePersistedTurns(force = false, affected?: ReadonlySet<string>): Promise<void> {
+  private async reconcilePersistedTurns(): Promise<void> {
     const persisted = this.options.sourceRepository.listCompletedEpisodes();
     const candidates = persisted
-      .filter((episode) => (!affected || affected.has(episode.uri)) && projectStateCard(episode.metadata.stateCard))
+      .filter((episode) => projectStateCard(episode.metadata.stateCard))
       .sort((left, right) => left.completedAtMs - right.completedAtMs || left.id.localeCompare(right.id));
     const limit = this.options.policy().maxJobsPerDrain;
     for (let offset = 0; offset < candidates.length; offset += limit) {
+      if (this.stopped) return;
       const batch = candidates.slice(offset, offset + limit);
-      await Promise.all(
+      await Promise.allSettled(
         batch.map((episode) =>
-          this.scheduleFragment(
-            {
+          this.enqueue(episode.uri, () =>
+            this.scheduleFragment({
               episode,
               sources: this.options.sourceRepository.listSources(episode.uri),
-            },
-            force,
+            }),
           ),
         ),
       );
     }
   }
 
+  private async resolveRetention(
+    turn: AgentMemoryRecordedTurn,
+    fragment: AgentMemOSSemanticFragment,
+    candidates: readonly AgentMemOSSemanticMatch[],
+    model: ResolvedAgentModelProviderConfig,
+    attempt: number,
+  ): Promise<AgentMemoryRetention> {
+    const policy = this.options.retentionPolicy();
+    const confirmedAt = turn.episode.completedAt;
+    if (fragment.type !== "fact") return { days: fragment.type === "context" ? policy.ContextDays : 0, confirmedAt };
+    const targetId = fragment.candidate === undefined ? undefined : candidates[fragment.candidate]?.nodeId;
+    const target = targetId ? await this.options.memos.retrieve(targetId) : undefined;
+    const previous = target ? agentMemoryRetention(target, policy) : undefined;
+    const sourceRevision = sha256HexOfCanonicalJson({
+      episode: fragmentSourceRevision(turn.episode),
+      fact: { topic: fragment.topic, summary: fragment.summary },
+      previous,
+      defaultDays: policy.FactDays,
+    });
+    const cached = this.options.learningRequests.list({
+      board: "semantic_memory",
+      stage: "semantic_retention",
+      entityUri: turn.episode.uri,
+      sourceRevision,
+      status: "completed",
+      limit: 1,
+    })[0];
+    const decision = cached
+      ? AgentMemoryRetentionDecisionSchema.parse(cached.metadata.retention)
+      : await this.options.learningRequests.run(
+          {
+            operationKey: `memory-retention:${sourceRevision}`,
+            board: "semantic_memory",
+            stage: "semantic_retention",
+            entityUri: turn.episode.uri,
+            sessionId: turn.episode.sessionId,
+            sourceRevision,
+            providerId: model.Id,
+            model: model.Model,
+            attempt,
+          },
+          () =>
+            new AgentMemoryRetentionModel(model, this.options.cacheScopeKey).assess(
+              {
+                fact: { topic: fragment.topic, summary: fragment.summary },
+                user: turn.episode.rawUserText,
+                memoryIntents: projectMemoryIntents(turn),
+                history: this.projectHistory(
+                  turn.episode,
+                  model.Model,
+                  this.options.identityDisplayValues?.(turn.episode.sessionId),
+                ).map(({ user, assistant }) => ({ request: user, assistant })),
+                sources: this.assessments
+                  .sources(turn)
+                  .map((source) => ({ kind: source.sourceKind, text: source.textContent ?? source.summary ?? "" })),
+                previous,
+                confirmedAt,
+                defaultDays: policy.FactDays,
+                inputTokenBudget: this.options.retentionInputTokenBudget(),
+              },
+              `memory-retention:${sourceRevision}`,
+              this.shutdown.signal,
+            ),
+          (retention) => ({ metadata: { retention } }),
+        );
+    const retention = { ...decision, confirmedAt };
+    agentMemoryRetentionDeadline(retention);
+    return retention;
+  }
+
   private async reconcileFragment(
-    episode: AgentMemoryEpisodeRecord,
+    recordedTurn: AgentMemoryRecordedTurn,
     fragment: AgentMemOSSemanticFragment,
     candidates: readonly AgentMemOSSemanticMatch[],
     operationKey: string,
+    retention: AgentMemoryRetention,
   ): Promise<readonly string[]> {
-    if (!this.isCurrentEpisode(episode, fragmentSourceRevision(episode))) return [];
-    const writeTag = agentMemOSWriteTag(operationKey);
-    const existingKnowledge = await this.findByTags([AgentMemOSTags.semantic, AgentMemOSTags.knowledge, writeTag]);
+    const { episode, sources } = recordedTurn;
+    const task = this.options.learningLedger?.binding(episode.sessionId, episode.requestId);
+    if (this.deletedReferences.has(episode.uri) || !this.isCurrentEpisode(episode, fragmentSourceRevision(episode)))
+      return [];
+    const existingKnowledge = await this.findByMetadata([AgentMemOSTags.semantic, AgentMemOSTags.knowledge], {
+      senera_operation_key: operationKey,
+    });
     const candidate = fragment.candidate === undefined ? undefined : candidates[fragment.candidate];
     if (!existingKnowledge && (fragment.action === "update" || fragment.action === "supersede") && !candidate) {
       throw new Error(`MemOS semantic action ${fragment.action} references an unavailable candidate.`);
     }
     const content = `${fragment.topic}\n${fragment.summary}`;
-    let fragmentNode = await this.findByTags([AgentMemOSTags.fragment, writeTag]);
+    let fragmentNode = await this.findByMetadata([AgentMemOSTags.semantic, AgentMemOSTags.fragment], {
+      senera_operation_key: operationKey,
+    });
     if (!fragmentNode)
       fragmentNode = (
         await this.options.memos.store(content, {
@@ -480,13 +705,11 @@ export class AgentMemOSSemanticLearningRuntime {
           source: "agent_inferred",
           namespace: this.options.namespace,
           validFrom: episode.completedAtMs,
-          tags: [
-            AgentMemOSTags.semantic,
-            AgentMemOSTags.fragment,
-            writeTag,
-            agentMemOSDayTag(completedDate(episode)),
-            agentMemOSMonthTag(agentMemOSLocalMonth(completedDate(episode))),
-          ],
+          tags: [AgentMemOSTags.semantic, AgentMemOSTags.fragment],
+          metadata: {
+            ...createAgentMemOSFragmentMetadata({ episode, sources, operationKey }),
+            senera_retention: retention,
+          },
         })
       ).node;
     let knowledgeId = existingKnowledge?.id;
@@ -497,12 +720,16 @@ export class AgentMemOSSemanticLearningRuntime {
         content,
         summary: fragment.summary,
         type: fragment.type,
-        tags: replaceAgentMemOSWriteTag(current.tags, writeTag),
+        metadata: {
+          ...mergeAgentMemOSKnowledgeMetadata(current, { episode, sources, operationKey, type: fragment.type }),
+          senera_retention: retention,
+          ...(task ? { senera_task_id: task.taskId, senera_subject_id: task.subjectId } : {}),
+        },
       });
       if (!updated) throw new Error(`MemOS candidate ${candidate.nodeId} disappeared before update.`);
       knowledgeId = candidate.nodeId;
     }
-    if (!knowledgeId) knowledgeId = (await this.storeKnowledgeNode(episode, fragment, writeTag)).id;
+    if (!knowledgeId) knowledgeId = (await this.storeKnowledgeNode(recordedTurn, fragment, operationKey, retention)).id;
     if (fragment.action === "supersede" && candidate) {
       const superseded = await this.options.memos.supersede(candidate.nodeId, knowledgeId);
       if (!superseded) throw new Error(`MemOS candidate ${candidate.nodeId} disappeared before supersede.`);
@@ -515,261 +742,125 @@ export class AgentMemOSSemanticLearningRuntime {
   }
 
   private async storeKnowledgeNode(
-    episode: AgentMemoryEpisodeRecord,
+    recordedTurn: AgentMemoryRecordedTurn,
     fragment: AgentMemOSSemanticFragment,
-    writeTag: string,
+    operationKey: string,
+    retention: AgentMemoryRetention,
   ): Promise<MemoryNode> {
+    const { episode, sources } = recordedTurn;
+    const task = this.options.learningLedger?.binding(episode.sessionId, episode.requestId);
     const stored = await this.options.memos.store(`${fragment.topic}\n${fragment.summary}`, {
       type: fragment.type,
       summary: fragment.summary,
       source: "agent_inferred",
+      trustScore: AgentMemoryRetrievalTrust,
       namespace: this.options.namespace,
       validFrom: episode.completedAtMs,
-      tags: [AgentMemOSTags.semantic, AgentMemOSTags.knowledge, writeTag],
+      tags: [AgentMemOSTags.semantic, AgentMemOSTags.knowledge],
+      metadata: {
+        ...createAgentMemOSKnowledgeMetadata({ episode, sources, operationKey, type: fragment.type }),
+        senera_retention: retention,
+        ...(task ? { senera_task_id: task.taskId, senera_subject_id: task.subjectId } : {}),
+      },
     });
     return stored.node;
   }
 
-  private async findKnowledgeCandidates(query: string, limit: number): Promise<AgentMemOSSemanticMatch[]> {
+  private sameSubject(left: string | undefined, right: string | undefined): boolean {
+    if (!left || !right) return false;
+    const canonical = this.options.canonicalSubject;
+    return canonical ? canonical(left) === canonical(right) : left === right;
+  }
+
+  private async findKnowledgeCandidates(
+    query: string,
+    limit: number,
+    task?: { readonly subjectId: string; readonly taskId: string },
+  ): Promise<AgentMemOSSemanticMatch[]> {
     await this.options.memos.flushEmbeddings();
     const results = await this.options.memos.search({
       query: query.trim(),
       namespace: this.options.namespace,
       tags: [AgentMemOSTags.semantic, AgentMemOSTags.knowledge],
-      limit,
+      limit: this.semanticNodeScanLimit(),
       sortBy: "relevance",
       sortOrder: "desc",
     });
-    const matches = results.map(({ node }) => ({
-      nodeId: node.id,
-      summary: AgentMemOSSummarySchema.parse(node.summary),
-      type: node.type,
-    }));
+    const matches = results
+      .filter(
+        (
+          result,
+        ): result is (typeof results)[number] & {
+          readonly node: MemoryNode & { readonly type: AgentMemOSSemanticMemoryType };
+        } =>
+          isAgentMemOSLearningMemoryType(result.node.type) &&
+          readAgentMemOSSemanticMetadata(result.node)?.senera_scope !== "period" &&
+          (!task ||
+            (this.sameSubject(readAgentMemOSSemanticMetadata(result.node)?.senera_subject_id, task.subjectId) &&
+              (result.node.type !== "context" ||
+                readAgentMemOSSemanticMetadata(result.node)?.senera_task_id === task.taskId))),
+      )
+      .slice(0, limit)
+      .map(({ node }) => ({
+        nodeId: node.id,
+        summary: AgentMemOSSummarySchema.parse(node.summary),
+        type: node.type,
+      }));
     return matches.map((match, ref) => ({ ...match, ref }));
   }
 
-  private async reconcilePeriods(singleDate?: string): Promise<void> {
-    if (!this.options.policy().enabled) return;
-    const today = projectAgentTime(new Date().toISOString(), DefaultAgentTimeZone).localDate;
-    const existingDays = singleDate
-      ? []
-      : await this.listSemanticNodes([AgentMemOSTags.semantic, AgentMemOSTags.dailyDigest]);
-    const existingMonths = singleDate
-      ? []
-      : await this.listSemanticNodes([AgentMemOSTags.semantic, AgentMemOSTags.monthlyDigest]);
-    const dates = singleDate
-      ? [singleDate]
-      : unique(
-          this.options.sourceRepository
-            .listCompletedEpisodes()
-            .map(completedDate)
-            .concat(existingDays.map((node) => readAgentMemOSDay(node.tags)))
-            .filter((date) => date <= today),
-        );
-    const eligibleDates = dates.filter((date) => date <= today).sort();
-    await Promise.all(
-      eligibleDates.map((date) => this.schedulePeriod(agentMemOSDayTag(date), () => this.aggregateDay(date))),
-    );
-    const months = unique(
-      eligibleDates
-        .map(agentMemOSLocalMonth)
-        .concat(existingMonths.map((node) => readAgentMemOSMonth(node.tags)))
-        .filter((month) => month <= agentMemOSLocalMonth(today)),
-    );
-    await Promise.all(
-      months.map((month) => this.schedulePeriod(agentMemOSMonthTag(month), () => this.aggregateMonth(month))),
-    );
+  private async reconcilePeriods(): Promise<void> {
+    if (this.stopped || !this.options.policy().enabled) return;
+    await this.schedulePeriod("diaries", () => this.diaries.reconcile());
   }
 
-  private async aggregateDay(localDate: string): Promise<void> {
-    const config = this.options.config();
-    const model = this.options.modelProvider();
-    const periodTag = agentMemOSDayTag(localDate);
-    const existing = await this.findByTags([AgentMemOSTags.semantic, AgentMemOSTags.dailyDigest, periodTag]);
-    const fragments = await this.listSemanticNodes([AgentMemOSTags.semantic, AgentMemOSTags.fragment, periodTag]);
-    if (fragments.length === 0) {
-      if (existing) await this.options.memos.forget(existing.id);
-      return;
-    }
-    const entries = fragments
-      .map(projectDigestEntry)
-      .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
-    const sourceRevision = digestSourceRevision(entries, {
-      inputTokenBudget: config.digestInputTokenBudget,
-      summaryTokenLimit: config.digestSummaryTokenLimit,
-      providerId: model.Id,
-      model: model.Model,
+  private async diarySources() {
+    return projectAgentMemoryDiarySources({
+      fragments: await this.listSemanticNodes([AgentMemOSTags.semantic, AgentMemOSTags.fragment]),
+      requests: this.options.learningRequests.listAll({ board: "semantic_memory", stage: "semantic_fragment" }),
+      sourceRepository: this.options.sourceRepository,
+      learningLedger: this.options.learningLedger,
+      deletedReferences: this.deletedReferences,
+      identityDisplayValues: this.options.identityDisplayValues,
     });
-    if (existing && this.hasCompletedLearning("daily_digest", `memos:day:${localDate}`, sourceRevision)) return;
-    const summary = await this.summarizeEntries("day", localDate, entries, config, model);
-    const tags = [
-      AgentMemOSTags.semantic,
-      AgentMemOSTags.dailyDigest,
-      periodTag,
-      agentMemOSMonthTag(agentMemOSLocalMonth(localDate)),
-    ];
-    await this.runWithRetry(
-      {
-        operationKey: `memos:day:write:${localDate}`,
-        board: "semantic_memory",
-        stage: "daily_digest",
-        entityUri: `memos:day:${localDate}`,
-        sourceRevision,
-        providerId: model.Id,
-        model: model.Model,
-      },
-      async () => {
-        if (existing) {
-          const updated = await this.options.memos.update(existing.id, { content: summary, summary, tags });
-          if (!updated) throw new Error(`MemOS daily digest ${existing.id} disappeared before update.`);
-          return;
-        }
-        await this.options.memos.store(summary, {
-          type: "context",
-          summary,
-          source: "agent_inferred",
-          namespace: this.options.namespace,
-          tags,
-        });
-      },
-    );
   }
 
-  private async aggregateMonth(localMonth: string): Promise<void> {
-    const config = this.options.config();
-    const model = this.options.modelProvider();
-    const periodTag = agentMemOSMonthTag(localMonth);
-    const existing = await this.findByTags([AgentMemOSTags.semantic, AgentMemOSTags.monthlyDigest, periodTag]);
-    const digests = await this.listSemanticNodes([AgentMemOSTags.semantic, AgentMemOSTags.dailyDigest, periodTag]);
-    if (digests.length === 0) {
-      if (existing) await this.options.memos.forget(existing.id);
-      return;
-    }
-    const entries = digests
-      .map(projectDigestEntry)
-      .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
-    const sourceRevision = digestSourceRevision(entries, {
-      inputTokenBudget: config.digestInputTokenBudget,
-      summaryTokenLimit: config.digestSummaryTokenLimit,
-      providerId: model.Id,
-      model: model.Model,
-    });
-    if (existing && this.hasCompletedLearning("monthly_digest", `memos:month:${localMonth}`, sourceRevision)) return;
-    const summary = await this.summarizeEntries("month", localMonth, entries, config, model);
-    const tags = [AgentMemOSTags.semantic, AgentMemOSTags.monthlyDigest, periodTag];
-    await this.runWithRetry(
-      {
-        operationKey: `memos:month:write:${localMonth}`,
-        board: "semantic_memory",
-        stage: "monthly_digest",
-        entityUri: `memos:month:${localMonth}`,
-        sourceRevision,
-        providerId: model.Id,
-        model: model.Model,
-      },
-      async () => {
-        if (existing) {
-          const updated = await this.options.memos.update(existing.id, { content: summary, summary, tags });
-          if (!updated) throw new Error(`MemOS monthly digest ${existing.id} disappeared before update.`);
-          return;
+  /** Export before retiring the old authority. The archive is migration data, never a retrieval fallback. */
+  private async migrateLegacyDiaries(): Promise<void> {
+    const today = agentMemoryDiaryDate(
+      this.options.diary.now?.() ?? new Date().toISOString(),
+      this.options.diary.config().TimeZone,
+    );
+    for (const tag of [AgentMemOSTags.dailyDigest, AgentMemOSTags.monthlyDigest]) {
+      const nodes = await this.listSemanticNodes([AgentMemOSTags.semantic, tag]);
+      for (const node of nodes) {
+        const metadata = readAgentMemOSSemanticMetadata(node);
+        if (metadata?.senera_scope !== "period") throw new Error(`Legacy period has no validated metadata: ${node.id}`);
+        const provenance = metadata.senera_source_uris ?? [];
+        if (
+          provenance.some((uri) => this.deletedReferences.has(uri)) ||
+          (!provenance.length && this.deletedReferences.size > 0)
+        ) {
+          await this.options.memos.forget(node.id);
+          continue;
         }
-        await this.options.memos.store(summary, {
-          type: "context",
-          summary,
-          source: "agent_inferred",
-          namespace: this.options.namespace,
-          tags,
-        });
-      },
-    );
-  }
-
-  private async summarizeEntries(
-    period: "day" | "month",
-    periodKey: string,
-    entries: readonly AgentMemOSDigestEntry[],
-    config: AgentMemOSSemanticLearningConfig = this.options.config(),
-    model: ResolvedAgentModelProviderConfig = this.options.modelProvider(),
-  ): Promise<string> {
-    const identity = this.options.identityDisplayValues?.();
-    const projectedEntries = entries.map((entry) => ({
-      ...entry,
-      summary: projectAgentMemOSSemanticIdentityText(entry.summary, identity),
-    }));
-    const chunks = splitByTokenBudget(projectedEntries, config.digestInputTokenBudget, model.Model);
-    const summaries: AgentMemOSDigestEntry[] = [];
-    for (let offset = 0; offset < chunks.length; offset += this.options.policy().maxJobsPerDrain) {
-      const batch = chunks.slice(offset, offset + this.options.policy().maxJobsPerDrain);
-      const results = await Promise.all(
-        batch.map((chunk, index) =>
-          this.withLearningSlot(() =>
-            this.runWithRetry(
-              {
-                operationKey: `memos:${period}:batch:${periodKey}:${offset + index}`,
-                board: "semantic_memory",
-                stage: `${period}_digest_batch`,
-                entityUri: `senera://memos/${period}/${periodKey}/batch/${offset + index}`,
-                sourceRevision: digestSourceRevision(chunk, {
-                  inputTokenBudget: config.digestInputTokenBudget,
-                  summaryTokenLimit: config.digestSummaryTokenLimit,
-                  providerId: model.Id,
-                  model: model.Model,
-                }),
-                providerId: model.Id,
-                model: model.Model,
-              },
-              () =>
-                new AgentMemOSSemanticModelClient(
-                  model,
-                  this.options.cacheScopeKey,
-                  config.digestSummaryTokenLimit,
-                ).summarizePeriod(
-                  { period, periodKey, entries: chunk },
-                  `memos:${period}:batch:${periodKey}:${offset + index}`,
-                  this.shutdown.signal,
-                ),
-            ),
-          ),
-        ),
-      );
-      summaries.push(
-        ...results.map((result, index) => ({
-          summary: projectAgentMemOSSemanticIdentityText(result.summary, identity),
-          type: "context" as const,
-          occurredAt: firstEntry(batch, index).occurredAt,
-        })),
-      );
+        const key = metadata.senera_period_key!;
+        this.options.diary.store.archiveLegacy(key, node.id, node.content);
+        const closed = metadata.senera_period_granularity === "day" ? key < today : key < today.slice(0, 7);
+        if (closed && !this.options.diary.store.read(key))
+          this.options.diary.store.write(
+            key,
+            { title: key, body: node.content },
+            {
+              revision: `legacy:${node.id}`,
+              episodeUris: [],
+              sourceUris: metadata.senera_source_uris ?? [],
+              importedFrom: node.id,
+            },
+          );
+        await this.options.memos.forget(node.id);
+      }
     }
-    if (summaries.length === 1) return summaries[0]!.summary;
-    const consolidated = await this.withLearningSlot(() =>
-      this.runWithRetry(
-        {
-          operationKey: `memos:${period}:final:${periodKey}`,
-          board: "semantic_memory",
-          stage: `${period}_digest_final`,
-          entityUri: `senera://memos/${period}/${periodKey}`,
-          sourceRevision: digestSourceRevision(summaries, {
-            inputTokenBudget: config.digestInputTokenBudget,
-            summaryTokenLimit: config.digestSummaryTokenLimit,
-            providerId: model.Id,
-            model: model.Model,
-          }),
-          providerId: model.Id,
-          model: model.Model,
-        },
-        () =>
-          new AgentMemOSSemanticModelClient(
-            model,
-            this.options.cacheScopeKey,
-            config.digestSummaryTokenLimit,
-          ).summarizePeriod(
-            { period, periodKey, entries: summaries },
-            `memos:${period}:final:${periodKey}`,
-            this.shutdown.signal,
-          ),
-      ),
-    );
-    return projectAgentMemOSSemanticIdentityText(consolidated.summary, identity);
   }
 
   private async listSemanticNodes(tags: readonly string[]): Promise<MemoryNode[]> {
@@ -783,10 +874,14 @@ export class AgentMemOSSemanticLearningRuntime {
     return results.map((result) => result.node);
   }
 
-  private async findByTags(tags: readonly string[]): Promise<MemoryNode | undefined> {
+  private async findByMetadata(
+    tags: readonly string[],
+    metadata: Readonly<Record<string, unknown>>,
+  ): Promise<MemoryNode | undefined> {
     const results = await this.options.memos.search({
       namespace: this.options.namespace,
       tags: [...tags],
+      metadata: { ...metadata },
       limit: 1,
       sortBy: "updatedAt",
       sortOrder: "desc",
@@ -794,8 +889,69 @@ export class AgentMemOSSemanticLearningRuntime {
     return results[0]?.node;
   }
 
-  private async waitForPeriodTasks(): Promise<void> {
-    while (this.periodTasks.size > 0) await Promise.all([...this.periodTasks.values()]);
+  private isDeletedFragment(node: MemoryNode, deletedReferences: ReadonlySet<string>): boolean {
+    const metadata = readAgentMemOSSemanticMetadata(node);
+    return (
+      metadata !== undefined &&
+      (deletedReferences.has(metadata.senera_episode_uri ?? "") ||
+        (metadata.senera_source_uris ?? []).some((sourceUri) => deletedReferences.has(sourceUri)))
+    );
+  }
+
+  private async removeDeletedKnowledgeContribution(
+    knowledgeId: string,
+    deletedFragmentIds: ReadonlySet<string>,
+  ): Promise<void> {
+    const knowledge = await this.options.memos.retrieve(knowledgeId);
+    if (!knowledge) return;
+    const remainingFragmentIds = (await this.options.memos.getEdges(knowledgeId))
+      .filter((edge) => edge.sourceId === knowledgeId && edge.relation === "derived_from")
+      .map((edge) => edge.targetId)
+      .filter((fragmentId) => !deletedFragmentIds.has(fragmentId));
+    const fragments = (
+      await Promise.all(remainingFragmentIds.map((fragmentId) => this.options.memos.retrieve(fragmentId)))
+    ).filter((fragment): fragment is MemoryNode => fragment !== undefined);
+    if (fragments.length === 0) {
+      await this.options.memos.forget(knowledgeId);
+      this.options.learningLedger?.forget(knowledgeId);
+      return;
+    }
+    const provenance = fragments
+      .map(readAgentMemOSSemanticMetadata)
+      .filter((value): value is NonNullable<typeof value> => value !== undefined);
+    if (provenance.length === 0) {
+      await this.options.memos.forget(knowledgeId);
+      this.options.learningLedger?.forget(knowledgeId);
+      return;
+    }
+    const latestFragment = [...fragments].sort(
+      (left, right) =>
+        (right.validFrom ?? right.createdAt) - (left.validFrom ?? left.createdAt) || right.id.localeCompare(left.id),
+    )[0]!;
+    if (!isAgentMemOSLearningMemoryType(latestFragment.type)) {
+      throw new Error(`MemOS fragment ${latestFragment.id} has an unsupported semantic type.`);
+    }
+    const representative = provenance[0]!;
+    const metadata = {
+      ...knowledge.metadata,
+      senera_schema: representative.senera_schema,
+      senera_domain: representative.senera_domain,
+      senera_scope: knowledge.type === "context" ? "session" : "workspace",
+      senera_operation_key: representative.senera_operation_key,
+      senera_episode_uri: representative.senera_episode_uri,
+      senera_source_uris: unique(provenance.flatMap((value) => value.senera_source_uris ?? [])),
+      senera_source_session_ids: unique(provenance.flatMap((value) => value.senera_source_session_ids ?? [])),
+      senera_source_request_ids: unique(provenance.flatMap((value) => value.senera_source_request_ids ?? [])),
+      senera_retention: agentMemoryRetention(latestFragment, this.options.retentionPolicy()),
+    };
+    const updated = await this.options.memos.update(knowledgeId, {
+      content: latestFragment.content,
+      summary: AgentMemOSSummarySchema.parse(latestFragment.summary),
+      type: latestFragment.type,
+      validFrom: latestFragment.validFrom,
+      metadata,
+    });
+    if (!updated) throw new Error(`MemOS knowledge node ${knowledgeId} disappeared during provenance reconciliation.`);
   }
 
   private semanticNodeScanLimit(): number {
@@ -830,22 +986,33 @@ export class AgentMemOSSemanticLearningRuntime {
     return task;
   }
 
+  private scheduleScoreSync(): void {
+    void this.enqueue("knowledge-scores", () => this.synchronizeScores());
+  }
+
+  private synchronizeScores(): Promise<void> {
+    return this.schedulePeriod("knowledge-scores", async () => {
+      const ledger = this.options.learningLedger;
+      if (!ledger) return;
+      const failures: unknown[] = [];
+      for (const update of ledger.pendingScoreUpdates()) {
+        try {
+          const node = await this.options.memos.retrieve(update.nodeId);
+          // Missing nodes are not recreated; source erasure owns their lifecycle.
+          if (node && node.trustScore !== AgentMemoryRetrievalTrust)
+            await this.options.memos.setTrust(update.nodeId, AgentMemoryRetrievalTrust);
+          ledger.acknowledgeScoreUpdate(update.nodeId, update.revision);
+        } catch (error) {
+          failures.push(error);
+        }
+      }
+      if (failures.length) throw new AggregateError(failures, "Memory score synchronization failed.");
+    });
+  }
+
   private isCurrentEpisode(episode: AgentMemoryEpisodeRecord, sourceRevision: string): boolean {
     const current = this.options.sourceRepository.findEpisodesByUris([episode.uri])[0];
     return current !== undefined && fragmentSourceRevision(current) === sourceRevision;
-  }
-
-  private hasCompletedLearning(stage: string, entityUri: string, sourceRevision: string): boolean {
-    return (
-      this.options.learningRequests.list({
-        board: "semantic_memory",
-        stage,
-        entityUri,
-        status: "completed",
-        sourceRevision,
-        limit: 1,
-      }).length > 0
-    );
   }
 
   private enqueue(key: string, operation: () => Promise<void>): Promise<void> {
@@ -859,7 +1026,10 @@ export class AgentMemOSSemanticLearningRuntime {
         }
         if (this.stopped && error === this.shutdown.signal.reason) return;
         this.failures.set(key, error);
-        this.options.logger?.warn("memory.memos.semantic_learning.failed", { message: errorMessage(error) });
+        this.options.logger?.warn("memory.memos.semantic_learning.failed", {
+          operationKey: key,
+          message: errorMessage(error),
+        });
       },
     );
     return tracked;
@@ -869,7 +1039,15 @@ export class AgentMemOSSemanticLearningRuntime {
     const key = fragmentTaskKey(recordedTurn.episode);
     const existing = this.fragmentTasks.get(key);
     if (existing) return existing;
-    const task = this.track(this.fragmentTail.then(() => this.learnFragment(recordedTurn, force)));
+    const task = this.track(
+      this.fragmentTail.then(async () => {
+        try {
+          await this.learnFragment(recordedTurn, force);
+        } finally {
+          this.scheduleScoreSync();
+        }
+      }),
+    );
     this.fragmentTail = task.catch(() => {});
     this.fragmentTasks.set(key, task);
     void task.then(
@@ -930,9 +1108,7 @@ export class AgentMemOSSemanticLearningRuntime {
 
   private scheduleNextBoundary(): void {
     if (this.stopped) return;
-    const now = Temporal.Now.zonedDateTimeISO(DefaultAgentTimeZone);
-    const next = now.add({ days: 1 }).startOfDay();
-    const delay = Math.min(Math.max(0, Number(next.epochMilliseconds) - Date.now()), MaximumTimerDelayMs);
+    const delay = Math.min(Math.max(0, this.diaries.nextBoundaryDelay()), MaximumTimerDelayMs);
     this.timer = setTimeout(() => {
       void this.enqueue("period-boundary", async () => {
         try {

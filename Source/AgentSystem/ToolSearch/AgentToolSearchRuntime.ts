@@ -7,23 +7,20 @@ import type { AgentHostToolContext, AgentHostToolHandler } from "../ToolRuntime/
 import { AgentToolSearchMemory } from "./AgentToolSearchMemory.js";
 import {
   AgentToolSearchCurrentSetPolicies,
-  AgentToolMetaToolNames,
   type AgentToolSearchCurrentSetPolicy,
   type LoadedToolsState,
 } from "./AgentToolSearchRuntimeTypes.js";
 import type { ToolExecutionTarget } from "../Types/AgentToolContractTypes.js";
 import {
-  createAgentToolCatalogMutationResult,
-  createAgentToolDescriptionResult,
   AgentToolCatalogStatuses,
-  invalidToolMetaArgumentsResult,
-  okToolMetaResult,
-  ToolDescribeArgumentsSchema,
-  ToolLoadArgumentsSchema,
-  ToolSearchArgumentsSchema,
-  ToolUnloadArgumentsSchema,
-  type ResolvedToolSearchArguments,
+  AgentToolDescriptionProtocol,
+  AgentToolDiscoveryProtocol,
+  type ToolCatalogMutationArguments,
+  type ToolDescribeArguments,
+  type ToolSearchArguments,
 } from "./AgentToolMetaToolProtocol.js";
+import { toolProcessSuccessResult } from "../ToolRuntime/AgentToolProcessEnvelope.js";
+import { systemToolArguments } from "../SystemTools/AgentSystemToolDefinition.js";
 import {
   buildToolSearchResultProjection,
   createAgentToolSearchOutput,
@@ -58,13 +55,13 @@ import type { AgentCapabilityEmbeddingClient } from "./AgentCapabilitySearchInde
 import type { AgentCapabilityEmbeddingCacheStore } from "./AgentCapabilityEmbeddingCache.js";
 import { AgentSkillSelector, type AgentSkillSelectionResult } from "../Skills/AgentSkillSelector.js";
 import type { AgentToolResourceDiscoveryReader } from "../ToolRuntime/AgentToolResourceDiscovery.js";
-import { projectToolDescription } from "./AgentToolMetaToolProjector.js";
 import {
   AgentToolCapabilitySessionCache,
   type AgentToolCapabilityCacheEntry,
 } from "./AgentToolCapabilitySessionCache.js";
 import { projectCurrentLoadedTools } from "./AgentToolSearchRuntimeCatalog.js";
 import { AgentToolSearchCatalog } from "./AgentToolSearchCatalog.js";
+import type { AgentToolSearchCatalogScope } from "./AgentToolSearchIndex.js";
 import { AgentToolSearchCapabilityReuse } from "./AgentToolSearchCapabilityReuse.js";
 import type { AgentStateCardRuntime } from "../StateCard/AgentStateCardRuntime.js";
 import type { AgentStateCard } from "../StateCard/AgentStateCardTypes.js";
@@ -73,6 +70,11 @@ import type { AgentMcpServiceDiscoveryEntry } from "../McpPackages/AgentMcpPacka
 import { resolveAgentToolGrantNames, type AgentToolAccessGrant } from "../ToolRuntime/AgentToolAccessGrant.js";
 import { isAgentToolExecutable } from "../ToolRuntime/AgentToolAvailability.js";
 import { AgentToolExposureState } from "../ToolRuntime/AgentToolExposureState.js";
+import {
+  createAgentToolContractDelivery,
+  retainDeliveredToolContractReceipts,
+  type AgentToolContractReceipt,
+} from "./AgentToolContractDelivery.js";
 
 export type { LoadedToolsState } from "./AgentToolSearchRuntimeTypes.js";
 export { AgentToolMetaToolNames } from "./AgentToolSearchRuntimeTypes.js";
@@ -159,6 +161,7 @@ export class AgentToolSearchRuntime {
         toolAccessGrant: context.toolAccessGrant,
         interaction: context.interaction,
         reusableCapabilities: context.reusableCapabilities,
+        toolExposure: context.toolExposure,
         signal: context.signal,
       });
       return run;
@@ -172,20 +175,18 @@ export class AgentToolSearchRuntime {
   createDescribeHostHandler(): AgentHostToolHandler {
     return async (args, context) => {
       throwIfAborted(context.signal);
-      const parsed = ToolDescribeArgumentsSchema.safeParse(args);
-      if (!parsed.success) return invalidToolMetaArgumentsResult(AgentToolMetaToolNames.Describe, parsed.error.issues);
+      const input = systemToolArguments<ToolDescribeArguments>(args);
 
-      await this.prepareRequestedTools(parsed.data.tools, context);
+      await this.prepareRequestedTools(input.tools, context);
 
       const catalogRevision = this.catalog.catalogRevision();
       const requested = this.catalog.resolveAuthorizedDynamicTools(
-        parsed.data.tools,
+        input.tools,
         this.authorizedNames(context.toolAccessGrant, context.authorizedToolNames),
         context.interaction,
       );
       for (const tool of requested.tools) {
         if (!isAgentToolExecutable(tool)) continue;
-        context.toolExposure?.confirmContract(tool.name, tool.contract?.digest);
         this.capabilitySessionCache.rememberContract({
           sessionId: context.sessionId,
           logicalCacheScope: context.logicalCacheScope,
@@ -194,9 +195,14 @@ export class AgentToolSearchRuntime {
           contractDigest: tool.contract?.digest,
         });
       }
-      return okToolMetaResult(
-        createAgentToolDescriptionResult({
-          tools: requested.tools.map((tool) => projectToolDescription(tool, this.options.availableExecutionTargets())),
+      const deliveries = requested.tools.map((tool) => ({
+        tool,
+        ...createAgentToolContractDelivery(tool, this.options.availableExecutionTargets()),
+      }));
+      return {
+        ...toolProcessSuccessResult({
+          type: AgentToolDescriptionProtocol.type,
+          tools: deliveries.map((item) => item.description),
           availability: Object.fromEntries(
             requested.tools
               .filter((tool) => !isAgentToolExecutable(tool))
@@ -205,20 +211,20 @@ export class AgentToolSearchRuntime {
           ...(requested.directToolNames.length > 0 ? { direct: requested.directToolNames } : {}),
           ...(requested.rejectedToolNames.length > 0 ? { rejected: requested.rejectedToolNames } : {}),
         }),
-      );
+        toolContractReceipts: deliveries.filter((item) => isAgentToolExecutable(item.tool)).map((item) => item.receipt),
+      };
     };
   }
 
   createLoadHostHandler(): AgentHostToolHandler {
     return async (args, context) => {
       throwIfAborted(context.signal);
-      const parsed = ToolLoadArgumentsSchema.safeParse(args);
-      if (!parsed.success) return invalidToolMetaArgumentsResult(AgentToolMetaToolNames.Load, parsed.error.issues);
+      const input = systemToolArguments<ToolCatalogMutationArguments>(args);
 
-      await this.prepareRequestedTools(parsed.data.tools, context);
+      await this.prepareRequestedTools(input.tools, context);
 
       const requested = this.catalog.resolveAuthorizedDynamicTools(
-        parsed.data.tools,
+        input.tools,
         this.authorizedNames(context.toolAccessGrant, context.authorizedToolNames),
         context.interaction,
       );
@@ -226,65 +232,47 @@ export class AgentToolSearchRuntime {
       // A hot reload between an early revision check and resolution must not
       // let an old discovery card expose the replacement catalog.
       const catalogRevision = this.catalog.catalogRevision();
-      if (parsed.data.catalogRevision && parsed.data.catalogRevision !== catalogRevision) {
-        return this.catalogMutationStaleResult(
-          parsed.data.tools,
-          parsed.data.catalogRevision,
-          catalogRevision,
-          context,
-        );
+      if (input.catalogRevision && input.catalogRevision !== catalogRevision) {
+        return this.catalogMutationStaleResult(input.tools, input.catalogRevision, catalogRevision, context);
       }
       const delta = context.toolExposure
         ? context.toolExposure.expose(requested.tools.filter(isAgentToolExecutable).map((tool) => tool.name))
         : undefined;
-      // BAML receives a loaded tool's full provider schema. Record that same
-      // contract evidence so an execution bridge cannot distinguish a loaded
-      // schema from a separately described one.
-      for (const tool of requested.tools.filter(isAgentToolExecutable))
-        context.toolExposure?.confirmContract(tool.name, tool.contract?.digest);
-      return okToolMetaResult(
-        createAgentToolCatalogMutationResult({
-          catalogStatus: AgentToolCatalogStatuses.Current,
-          catalogRevision,
-          generation: delta?.snapshot.generation ?? context.toolExposure?.snapshot().generation ?? 0,
-          added: { item: delta?.addedToolNames ?? [] },
-          availability: Object.fromEntries(
-            requested.tools
-              .filter((tool) => !isAgentToolExecutable(tool))
-              .map((tool) => [tool.name, tool.availability]),
-          ),
-          loaded: { item: delta?.snapshot.exposedToolNames ?? context.visibleToolNames ?? [] },
-          rejected: {
-            item: uniqueToolNames([
-              ...requested.rejectedToolNames,
-              ...requested.directToolNames,
-              ...(delta?.rejectedToolNames ?? requested.tools.map((tool) => tool.name)),
-            ]),
-          },
-        }),
-      );
+      // Confirmation follows the actual next provider schema, after loading.
+      return toolProcessSuccessResult({
+        type: AgentToolDiscoveryProtocol.type,
+        catalogStatus: AgentToolCatalogStatuses.Current,
+        catalogRevision,
+        generation: delta?.snapshot.generation ?? context.toolExposure?.snapshot().generation ?? 0,
+        added: { item: delta?.addedToolNames ?? [] },
+        availability: Object.fromEntries(
+          requested.tools.filter((tool) => !isAgentToolExecutable(tool)).map((tool) => [tool.name, tool.availability]),
+        ),
+        loaded: { item: delta?.snapshot.exposedToolNames ?? context.visibleToolNames ?? [] },
+        rejected: {
+          item: uniqueToolNames([
+            ...requested.rejectedToolNames,
+            ...requested.directToolNames,
+            ...(delta?.rejectedToolNames ?? requested.tools.map((tool) => tool.name)),
+          ]),
+        },
+      });
     };
   }
 
   createUnloadHostHandler(): AgentHostToolHandler {
     return async (args, context) => {
       throwIfAborted(context.signal);
-      const parsed = ToolUnloadArgumentsSchema.safeParse(args);
-      if (!parsed.success) return invalidToolMetaArgumentsResult(AgentToolMetaToolNames.Unload, parsed.error.issues);
+      const input = systemToolArguments<ToolCatalogMutationArguments>(args);
 
       const requested = this.catalog.resolveAuthorizedDynamicTools(
-        parsed.data.tools,
+        input.tools,
         this.authorizedNames(context.toolAccessGrant, context.authorizedToolNames),
         context.interaction,
       );
       const catalogRevision = this.catalog.catalogRevision();
-      if (parsed.data.catalogRevision && parsed.data.catalogRevision !== catalogRevision) {
-        return this.catalogMutationStaleResult(
-          parsed.data.tools,
-          parsed.data.catalogRevision,
-          catalogRevision,
-          context,
-        );
+      if (input.catalogRevision && input.catalogRevision !== catalogRevision) {
+        return this.catalogMutationStaleResult(input.tools, input.catalogRevision, catalogRevision, context);
       }
       const delta = context.toolExposure?.revoke(
         requested.tools.map((tool) => tool.name),
@@ -292,23 +280,22 @@ export class AgentToolSearchRuntime {
           protectedToolNames: this.catalog.directToolNames(context.interaction),
         },
       );
-      return okToolMetaResult(
-        createAgentToolCatalogMutationResult({
-          catalogStatus: AgentToolCatalogStatuses.Current,
-          catalogRevision,
-          generation: delta?.snapshot.generation ?? context.toolExposure?.snapshot().generation ?? 0,
-          removed: { item: delta?.removedToolNames ?? [] },
-          protected: { item: uniqueToolNames([...(delta?.protectedToolNames ?? []), ...requested.directToolNames]) },
-          loaded: { item: delta?.snapshot.exposedToolNames ?? context.visibleToolNames ?? [] },
-          rejected: {
-            item: uniqueToolNames([
-              ...requested.rejectedToolNames,
-              ...requested.directToolNames,
-              ...(delta?.rejectedToolNames ?? requested.tools.map((tool) => tool.name)),
-            ]),
-          },
-        }),
-      );
+      return toolProcessSuccessResult({
+        type: AgentToolDiscoveryProtocol.type,
+        catalogStatus: AgentToolCatalogStatuses.Current,
+        catalogRevision,
+        generation: delta?.snapshot.generation ?? context.toolExposure?.snapshot().generation ?? 0,
+        removed: { item: delta?.removedToolNames ?? [] },
+        protected: { item: uniqueToolNames([...(delta?.protectedToolNames ?? []), ...requested.directToolNames]) },
+        loaded: { item: delta?.snapshot.exposedToolNames ?? context.visibleToolNames ?? [] },
+        rejected: {
+          item: uniqueToolNames([
+            ...requested.rejectedToolNames,
+            ...requested.directToolNames,
+            ...(delta?.rejectedToolNames ?? requested.tools.map((tool) => tool.name)),
+          ]),
+        },
+      });
     };
   }
 
@@ -318,17 +305,16 @@ export class AgentToolSearchRuntime {
     catalogRevision: string,
     context: AgentHostToolContext,
   ): AgentToolProcessRunResult {
-    return okToolMetaResult(
-      createAgentToolCatalogMutationResult({
-        catalogStatus: AgentToolCatalogStatuses.Stale,
-        catalogRevision,
-        reason: AgentToolSearchEmptyReasons.CatalogChanged,
-        requestedCatalogRevision,
-        generation: context.toolExposure?.snapshot().generation ?? 0,
-        requested: { item: tools },
-        loaded: { item: context.toolExposure?.snapshot().exposedToolNames ?? context.visibleToolNames ?? [] },
-      }),
-    );
+    return toolProcessSuccessResult({
+      type: AgentToolDiscoveryProtocol.type,
+      catalogStatus: AgentToolCatalogStatuses.Stale,
+      catalogRevision,
+      reason: AgentToolSearchEmptyReasons.CatalogChanged,
+      requestedCatalogRevision,
+      generation: context.toolExposure?.snapshot().generation ?? 0,
+      requested: { item: tools },
+      loaded: { item: context.toolExposure?.snapshot().exposedToolNames ?? context.visibleToolNames ?? [] },
+    });
   }
 
   async resolveInitialLoadedTools(
@@ -389,11 +375,13 @@ export class AgentToolSearchRuntime {
   /** Resolves the StateCard before prompt rendering so liveContext sees this turn's card. */
   resolveStateCard(request: {
     requestId?: string;
+    conversationRequestId?: string;
     currentRequest: string;
     turnIndex?: number;
     sessionId?: string;
     logicalCacheScope?: string;
     activeSkills?: readonly AgentActivatedSkill[];
+    interaction?: AgentInteractionContext;
     signal?: AbortSignal;
   }): Promise<AgentStateCard> {
     if (!this.options.stateCardRuntime) {
@@ -401,10 +389,12 @@ export class AgentToolSearchRuntime {
     }
     return this.options.stateCardRuntime.resolve({
       requestId: request.requestId,
+      conversationRequestId: request.conversationRequestId,
       currentRequest: request.currentRequest,
       turnIndex: request.turnIndex,
       sessionId: request.sessionId,
       logicalCacheScope: request.logicalCacheScope,
+      interaction: request.interaction,
       ...(request.activeSkills ? { activeSkills: request.activeSkills.map((skill) => skill.name) } : {}),
       ...(request.signal ? { signal: request.signal } : {}),
     });
@@ -481,6 +471,16 @@ export class AgentToolSearchRuntime {
     return this.discoverInternal(options, true);
   }
 
+  /** Reuse retrieval without loading or changing the caller's frozen tool catalog. */
+  async discoverAvailable(options: {
+    query: string;
+    authorizedToolNames: readonly string[];
+    interaction?: AgentInteractionContext;
+    signal?: AbortSignal;
+  }): Promise<AgentToolSearchDiscovery> {
+    return this.discoverInternal({ ...options, catalogScope: "callable" }, false);
+  }
+
   private async discoverInternal(
     options: {
       query: string;
@@ -490,17 +490,18 @@ export class AgentToolSearchRuntime {
       authorizedToolNames?: readonly string[];
       toolAccessGrant?: AgentToolAccessGrant;
       signal?: AbortSignal;
+      catalogScope?: AgentToolSearchCatalogScope;
     },
     prepareDeferredDiscovery: boolean,
     preparedSelection?: PreparedMcpDiscovery,
   ): Promise<AgentToolSearchDiscovery> {
-    const { signal, toolAccessGrant, ...searchOptions } = options;
+    const { signal, toolAccessGrant, catalogScope, ...searchOptions } = options;
     const selection = prepareDeferredDiscovery
       ? await this.prepareCatalog(options.query, toolAccessGrant, signal, options.authorizedToolNames)
       : preparedSelection;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       throwIfAborted(signal);
-      const snapshot = this.catalog.searchSnapshot();
+      const snapshot = this.catalog.searchSnapshot(catalogScope);
       const scenarios = await this.prepareScenarioMatches(options.query, signal);
       const memoryEvidence = this.memory.rank(scenarios, this.projectId);
       const discovery = await snapshot.index.discoverHybrid(
@@ -657,16 +658,14 @@ export class AgentToolSearchRuntime {
       authorizedToolNames?: readonly string[];
       toolAccessGrant?: AgentToolAccessGrant;
       reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[];
+      toolExposure?: AgentToolExposureState;
       signal?: AbortSignal;
     },
   ): Promise<AgentToolProcessRunResult> {
-    const parsed = ToolSearchArgumentsSchema.safeParse(args);
-    if (!parsed.success) {
-      return invalidToolMetaArgumentsResult(AgentToolMetaToolNames.Search, parsed.error.issues);
-    }
+    const input = systemToolArguments<ToolSearchArguments>(args);
 
     const resolved = await this.buildToolSearchResult(
-      parsed.data,
+      input,
       context.visibleToolNames ?? [],
       context.authorizedToolNames,
       context.sessionId,
@@ -675,13 +674,14 @@ export class AgentToolSearchRuntime {
       context.reusableCapabilities,
       context.signal,
       context.toolAccessGrant,
+      context.toolExposure,
     );
     if (!resolved.searchPerformed) {
       this.logger?.info("routing.tool_search.reused", {
         requestId: context.requestId,
         sessionId: context.sessionId,
         logicalCacheScope: context.logicalCacheScope,
-        query: parsed.data.query,
+        query: input.query,
         reuseHit: true,
         searchPerformed: false,
         tools: resolved.reusedToolNames,
@@ -689,19 +689,19 @@ export class AgentToolSearchRuntime {
     }
     if (context.requestId && resolved.searchPerformed) {
       this.usageMemory.rememberSearch(context.requestId, {
-        query: parsed.data.query,
-        queryTokens: this.tokenize(parsed.data.query),
+        query: input.query,
+        queryTokens: this.tokenize(input.query),
         plannerTags: [],
         candidates: readToolNamesFromSearchResult(resolved.result),
         timestamp: Date.now(),
       });
     }
 
-    return okToolMetaResult(resolved.result);
+    return { ...toolProcessSuccessResult(resolved.result), toolContractReceipts: resolved.toolContractReceipts };
   }
 
   private async buildToolSearchResult(
-    args: ResolvedToolSearchArguments,
+    args: ToolSearchArguments,
     loadedToolNames: readonly string[],
     authorizedToolNames: readonly string[] | undefined,
     sessionId?: string,
@@ -710,10 +710,12 @@ export class AgentToolSearchRuntime {
     reusableCapabilities?: readonly AgentToolCapabilityCacheEntry[],
     signal?: AbortSignal,
     toolAccessGrant?: AgentToolAccessGrant,
+    toolExposure?: AgentToolExposureState,
   ): Promise<{
     result: unknown;
     searchPerformed: boolean;
     reusedToolNames: readonly string[];
+    toolContractReceipts: readonly AgentToolContractReceipt[];
   }> {
     const catalogRevisionBeforePreparation = this.catalog.catalogRevision();
     // Deferred MCP discovery must run before capability reuse. Otherwise a
@@ -791,7 +793,12 @@ export class AgentToolSearchRuntime {
           ...result,
           state: {
             exposure: visible.has(result.toolName) ? ("visible" as const) : ("discoverable" as const),
-            contract: state.contract,
+            contract:
+              toolExposure && tool
+                ? toolExposure.hasConfirmedContract(tool.name, tool.contract?.digest)
+                  ? ("confirmed" as const)
+                  : ("unconfirmed" as const)
+                : state.contract,
             reuse: automaticReuse ? state.reuse : ("none" as const),
             ...(automaticReuse && state.reusableArguments ? { reusableArguments: state.reusableArguments } : {}),
           },
@@ -809,12 +816,25 @@ export class AgentToolSearchRuntime {
       ...(discovery.catalogRevision ? { catalogRevision: discovery.catalogRevision } : {}),
     } satisfies AgentToolSearchDiscovery;
 
+    const deliveries = withStateDiscovery.match.flatMap((candidate) => {
+      const tool = this.registry.getTool(candidate.toolName);
+      return tool && isAgentToolExecutable(tool)
+        ? [createAgentToolContractDelivery(tool, this.options.availableExecutionTargets())]
+        : [];
+    });
+    const descriptions = new Map(deliveries.map((item) => [item.description[0], item.description]));
+    const result = createAgentToolSearchOutput(
+      buildToolSearchResultProjection(withStateDiscovery, {
+        model: this.model.Model,
+        tokenBudget: this.config.Disclosure.TokenBudget,
+        describeTool: (toolName) => descriptions.get(toolName),
+      }),
+    );
     return {
-      result: createAgentToolSearchOutput(
-        buildToolSearchResultProjection(withStateDiscovery, {
-          model: this.model.Model,
-          tokenBudget: this.config.Disclosure.TokenBudget,
-        }),
+      result,
+      toolContractReceipts: retainDeliveredToolContractReceipts(
+        deliveries.map((item) => item.receipt),
+        result,
       ),
       searchPerformed,
       reusedToolNames,

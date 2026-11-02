@@ -1,0 +1,202 @@
+{
+  "name": "ChannelWaitMessage",
+  "loading": "Bootstrap",
+  "description": "Durably suspend inference until matching activity or wakeAt. Call alone in its batch. If new matching events arrived, needs_review returns an inbox instead of registering a wait; reconsider with that context. Select only events in the host channel_capabilities.inboundEvents; platforms expose different native events.",
+  "presentation": {
+    "category": "channel-message",
+    "icon": "clock",
+    "activity": {
+      "action": {
+        "zh-CN": "等待渠道消息",
+        "en-US": "Wait for channel activity"
+      },
+      "argumentPath": "/events/*",
+      "detailPaths": ["/wakeAt"]
+    },
+    "preview": {
+      "body": {
+        "pointer": "/status",
+        "from": "result"
+      }
+    }
+  },
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "taskId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Durable task ID from conversation_tasks or ChannelUpdateConversation; scope review/wait to its verified participants."
+      },
+      "events": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": ["message", "mention", "reply", "poke", "recall", "membership"]
+        },
+        "uniqueItems": true,
+        "description": "Events that should wake you. Use an empty list for a time-only wake."
+      },
+      "senderIds": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "minItems": 1,
+        "uniqueItems": true,
+        "description": "Restrict ordinary messages, recall and membership events to these verified senders. Selected mention/reply/poke events still wake you when anyone addresses you directly."
+      },
+      "wakeAt": {
+        "type": "string",
+        "format": "date-time",
+        "description": "Optional absolute wake time with a UTC offset. Choose a time only when you have a reason to return proactively."
+      }
+    },
+    "required": ["events"],
+    "additionalProperties": false,
+    "anyOf": [
+      {
+        "properties": {
+          "events": {
+            "type": "array",
+            "minItems": 1
+          }
+        }
+      },
+      {
+        "required": ["wakeAt"]
+      }
+    ]
+  },
+  "outputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "waiting": {
+            "const": true
+          },
+          "waitId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "afterSequence": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "conditions": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "control": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "SuspendRun"
+              },
+              "reason": {
+                "const": "channel-wait"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": ["kind", "reason", "id"],
+            "additionalProperties": false
+          },
+          "status": {
+            "const": "waiting"
+          }
+        },
+        "required": ["waiting", "waitId", "afterSequence", "conditions", "control", "status"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "status": {
+            "const": "needs_review"
+          },
+          "inbox": {
+            "type": "object",
+            "properties": {
+              "afterSequence": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "throughSequence": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "hasMore": {
+                "type": "boolean"
+              },
+              "entries": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            },
+            "required": ["afterSequence", "throughSequence", "hasMore", "entries"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["status", "inbox"],
+        "additionalProperties": false
+      }
+    ]
+  },
+  "permissions": ["channel:wait"],
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
+  "runtime": {
+    "Composition": "model-only",
+    "Lifecycle": "Immediate",
+    "ResultAssessment": "ProcessExit",
+    "DeadlinePolicy": "ModelAware",
+    "Scheduling": "SelfManaged",
+    "Capabilities": {
+      "Cancellation": true
+    }
+  },
+  "resources": [],
+  "sources": [],
+  "surfaces": ["channel"],
+  "platforms": ["onebot11", "qq", "onebot"],
+  "search": {
+    "Summary": "安静等待群聊或私聊中的指定消息、@、回复、戳一戳或撤回事件，也可约定主动回来的时间；等待不占用推理回合。",
+    "Tags": ["QQ", "等待", "消息"],
+    "Capabilities": [
+      {
+        "Id": "channel.wait",
+        "Title": "Wait for current-channel message",
+        "Description": "Persist an event or time-based continuation, ending the current inference turn without blocking the model.",
+        "Facets": {
+          "Actions": ["wait"],
+          "Targets": ["next-inbound-channel-message"],
+          "Inputs": ["events", "sender-ids", "wake-time"],
+          "Outputs": ["durable-wait-receipt"],
+          "Effects": ["session-wait"]
+        },
+        "Aliases": ["等待 QQ 回复", "wait for channel message"],
+        "Risk": {
+          "SideEffect": "session-wait",
+          "Permission": "channel-wait"
+        }
+      }
+    ],
+    "UseCases": ["需要在外部对话中等用户补充信息"],
+    "Examples": ["等待用户在当前渠道回复"],
+    "Avoid": ["不要轮询、用短周期时间等待刷屏，或在尚未完成发送的并行批次里等待"]
+  },
+  "evidenceCapabilities": []
+}

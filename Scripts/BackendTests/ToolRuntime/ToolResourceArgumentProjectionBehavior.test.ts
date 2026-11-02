@@ -261,7 +261,7 @@ function createDirectoryLink(target: string, linkPath: string): void {
 }
 
 function workspaceCapabilities(
-  executionEnv: Pick<SeneraExecutionEnv, "resolveResourcePath">,
+  executionEnv: Pick<SeneraExecutionEnv, "resolveResourcePath" | "inspectResourcePath">,
 ): AgentToolResourceCapabilityRegistry {
   return new AgentToolResourceCapabilityRegistry().register(new AgentToolWorkspacePathResourceCapability(executionEnv));
 }

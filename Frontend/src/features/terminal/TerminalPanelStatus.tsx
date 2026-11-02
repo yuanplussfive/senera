@@ -6,35 +6,43 @@ import { TerminalSurfaceStyle } from "./terminalTheme";
 export interface TerminalPanelStatusProps {
   status: "loading" | "error";
   onRetry?: () => void;
+  panelActions?: ReactNode;
 }
 
 export function TerminalPanelStatus(props: TerminalPanelStatusProps): JSX.Element {
   const failed = props.status === "error";
   return (
-    <div
-      className="grid h-full min-h-0 place-items-center bg-[var(--terminal-canvas)] px-6 text-center"
-      style={TerminalSurfaceStyle}
-      role={failed ? "alert" : "status"}
-    >
-      <div className="flex max-w-sm flex-col items-center gap-3">
-        <div className="grid h-10 w-10 place-items-center rounded-md border border-[var(--terminal-border)] bg-[var(--terminal-elevated)] text-[var(--terminal-accent)]">
-          {failed ? <AppIcon icon="warning" size={16} aria-hidden="true" /> : <Spinner size="md" />}
+    <div className="flex h-full min-h-0 flex-col" style={TerminalSurfaceStyle}>
+      {props.panelActions ? (
+        <div className="flex h-[34px] shrink-0 items-center justify-between bg-[var(--terminal-chrome)] px-1 pl-3">
+          <span className="text-[12px] text-[var(--terminal-muted)]">{frontendMessage("terminal.panel.title")}</span>
+          {props.panelActions}
         </div>
-        <div>
-          <h2 className="text-[13px] font-medium text-[var(--terminal-foreground)]">
-            {frontendMessage(failed ? "terminal.error.title" : "terminal.loading.title")}
-          </h2>
-          <p className="mt-1 text-[12px] leading-5 text-[var(--terminal-muted)]">
-            {frontendMessage(failed ? "terminal.error.description" : "terminal.loading.description")}
-          </p>
+      ) : null}
+      <div
+        className="grid min-h-0 flex-1 place-items-center bg-[var(--terminal-canvas)] px-6 text-center"
+        role={failed ? "alert" : "status"}
+      >
+        <div className="flex max-w-sm flex-col items-center gap-3">
+          <div className="grid h-10 w-10 place-items-center rounded-md border border-[var(--terminal-border)] bg-[var(--terminal-elevated)] text-[var(--terminal-accent)]">
+            {failed ? <AppIcon icon="warning" size={16} aria-hidden="true" /> : <Spinner size="md" />}
+          </div>
+          <div>
+            <h2 className="text-[13px] font-medium text-[var(--terminal-foreground)]">
+              {frontendMessage(failed ? "terminal.error.title" : "terminal.loading.title")}
+            </h2>
+            <p className="mt-1 text-[12px] leading-5 text-[var(--terminal-muted)]">
+              {frontendMessage(failed ? "terminal.error.description" : "terminal.loading.description")}
+            </p>
+          </div>
+          {failed && props.onRetry ? (
+            <RetryButton
+              onRetry={props.onRetry}
+              label={frontendMessage("terminal.error.retry")}
+              className="mt-1 border-[var(--terminal-border)] bg-[var(--terminal-elevated)] text-[var(--terminal-foreground)] hover:bg-[var(--terminal-hover)]"
+            />
+          ) : null}
         </div>
-        {failed && props.onRetry ? (
-          <RetryButton
-            onRetry={props.onRetry}
-            label={frontendMessage("terminal.error.retry")}
-            className="mt-1 border-[var(--terminal-border)] bg-[var(--terminal-elevated)] text-[var(--terminal-foreground)] hover:bg-white/[0.08]"
-          />
-        ) : null}
       </div>
     </div>
   );
@@ -44,6 +52,7 @@ export function TerminalRuntimeBoundary(props: {
   children: ReactNode;
   onRetry: () => void;
   resetKey: unknown;
+  panelActions?: ReactNode;
 }): JSX.Element {
   return (
     <ErrorBoundary
@@ -51,6 +60,7 @@ export function TerminalRuntimeBoundary(props: {
       fallback={(_error, reset) => (
         <TerminalPanelStatus
           status="error"
+          panelActions={props.panelActions}
           onRetry={() => {
             props.onRetry();
             reset();

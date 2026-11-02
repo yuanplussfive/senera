@@ -2,12 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import type { ScheduledTask } from "@amaster.ai/pi-task-scheduler";
+import type { ScheduledTask } from "../../../Source/AgentSystem/Orchestration/AgentScheduleDefinition.js";
 import { AgentOrchestrationDatabase } from "../../../Source/AgentSystem/Orchestration/AgentOrchestrationDatabase.js";
 import { AgentScheduleRuntime } from "../../../Source/AgentSystem/Orchestration/AgentScheduleRuntime.js";
 import { AgentOrchestrationEventRelay } from "../../../Source/AgentSystem/Orchestration/AgentOrchestrationEventRelay.js";
 import { AgentSqliteScheduledTaskStore } from "../../../Source/AgentSystem/Orchestration/AgentSqliteScheduledTaskStore.js";
-import { AgentRunContextModes } from "../../../Source/AgentSystem/Orchestration/AgentRunDispatchPort.js";
 import { AgentScheduledTaskToolPolicyProtocol } from "../../../Source/AgentSystem/Orchestration/AgentOrchestrationProtocols.js";
 
 const roots: string[] = [];
@@ -113,7 +112,7 @@ describe("scheduled task SQLite persistence", () => {
     }
   });
 
-  test("reconciles overdue work at runtime startup and delivers the terminal result", async () => {
+  test("reconciles overdue work and records instruction admission without running a hidden fork", async () => {
     const database = openDatabase();
     try {
       const store = new AgentSqliteScheduledTaskStore(database);
@@ -125,7 +124,7 @@ describe("scheduled task SQLite persistence", () => {
         intervalSeconds: 1,
         nextRunAt: "2026-08-05T00:00:00.000Z",
       };
-      await store.create(task);
+      await store.createAuthorized(task, ["WorkspaceRead"]);
       const dispatch = vi.fn(async () => ({
         sessionId: "scheduled-session",
         requestId: "scheduled-request",
@@ -156,28 +155,20 @@ describe("scheduled task SQLite persistence", () => {
         now: () => new Date("2026-08-05T00:02:00.000Z"),
       });
 
+      const admit = vi.fn(async () => "accepted" as const);
+      runtime.bindInstructions({ admit });
       await runtime.start();
-      await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce());
-      await vi.waitFor(() => expect(deliver).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(admit).toHaveBeenCalledOnce());
+      await vi.waitFor(async () => expect((await store.get(task.id))?.lastStatus).toBe("success"));
       await runtime.stop();
-
-      expect(dispatch).toHaveBeenCalledWith(
-        expect.objectContaining({
-          input: task.prompt,
-          contextMode: AgentRunContextModes.Fork,
-          parent: { sessionId: task.sessionId, requestId: "owner-request" },
-          sessionOwnership: { type: "scheduled_run", taskId: task.id },
-        }),
+      expect(admit).toHaveBeenCalledWith(
+        expect.objectContaining({ id: task.id }),
+        expect.objectContaining({ attempt: 1 }),
+        ["WorkspaceRead"],
       );
-      expect(deliver).toHaveBeenCalledWith(
-        expect.objectContaining({
-          taskId: task.id,
-          sessionId: task.sessionId,
-          content: "Reminder delivered after recovery.",
-        }),
-      );
-      expect(dispose).toHaveBeenCalledOnce();
-      expect(dispose).toHaveBeenCalledWith(expect.stringMatching(/^scheduled_session_/));
+      expect(dispatch).not.toHaveBeenCalled();
+      expect(deliver).not.toHaveBeenCalled();
+      expect(dispose).not.toHaveBeenCalled();
       expect(await store.get(task.id)).toMatchObject({
         enabled: false,
         runCount: 1,
@@ -235,7 +226,7 @@ describe("scheduled task SQLite persistence", () => {
     }
   });
 
-  test("cancels an active execution when its schedule is deleted", async () => {
+  test("deletes future scheduling without cancelling admitted conversation work", async () => {
     const database = openDatabase();
     try {
       const store = new AgentSqliteScheduledTaskStore(database);
@@ -247,15 +238,8 @@ describe("scheduled task SQLite persistence", () => {
         intervalSeconds: 1,
         nextRunAt: "2026-08-05T00:00:00.000Z",
       };
-      await store.create(task);
-      let rejectDispatch!: (error: unknown) => void;
-      const dispatch = vi.fn(
-        async (request: { signal?: AbortSignal }) =>
-          new Promise<never>((_resolve, reject) => {
-            rejectDispatch = reject;
-            request.signal?.addEventListener("abort", () => reject(request.signal?.reason), { once: true });
-          }),
-      );
+      await store.createAuthorized(task, []);
+      const dispatch = vi.fn();
       const cancel = vi.fn(async () => true);
       const runtime = new AgentScheduleRuntime({
         workspaceRoot: "E:/workspace",
@@ -279,11 +263,13 @@ describe("scheduled task SQLite persistence", () => {
         now: () => new Date("2026-08-05T00:00:00.000Z"),
       });
 
+      const admit = vi.fn(async () => "accepted" as const);
+      runtime.bindInstructions({ admit });
       await runtime.start();
-      await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(admit).toHaveBeenCalledOnce());
       expect(await runtime.delete(task.id, task.sessionId)).toBe(true);
-      expect(cancel).toHaveBeenCalledOnce();
-      expect(rejectDispatch).toBeDefined();
+      expect(cancel).not.toHaveBeenCalled();
+      expect(dispatch).not.toHaveBeenCalled();
       await expect(store.get(task.id)).resolves.toBeUndefined();
       await runtime.stop();
     } finally {

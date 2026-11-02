@@ -4,10 +4,15 @@ import type {
   ModelThinkingLevel,
   ModelThinkingProfileConfig,
   ModelToolPlanningMode,
+  ModelsDevPricing,
   ProviderModelEndpointInput,
   ProviderModelInfo,
 } from "../../api/eventTypes";
-import type { ModelProviderRuleMatchKind } from "./ModelProviderIcon";
+import type { ModelProviderRuleMatchKind } from "../../shared/models/ModelProviderIcon";
+import type {
+  AgentModelCapabilityFlags,
+  AgentImageGenerationConfiguration,
+} from "../../api/generatedModelCapabilityContract";
 
 export interface ProviderEndpointDraft {
   Id: string;
@@ -22,6 +27,8 @@ export interface ProviderEndpointDraft {
 }
 
 export interface ModelProviderDraft {
+  ImageGeneration?: AgentImageGenerationConfiguration;
+  Pricing?: ModelsDevPricing;
   Id: string;
   ProviderId: string;
   Icon?: string;
@@ -48,15 +55,21 @@ export interface ModelProviderDraft {
   MaxSseEvents?: number;
 }
 
-export interface ModelCapabilitiesDraft {
-  Chat?: boolean;
-  Vision?: boolean;
-  ImageOutput?: boolean;
-  Reasoning?: boolean;
-  DeveloperRole?: boolean;
-  StreamingUsage?: boolean;
-  ToolCalling?: boolean;
+export interface ModelCapabilitiesDraft extends AgentModelCapabilityFlags {
+  VisionInput?: ModelVisionInputDraft;
 }
+
+export interface ModelVisionInputDraft {
+  SupportedMimeTypes?: string[];
+  SupportedAnimatedMimeTypes?: string[];
+  MaxBytes?: number;
+  MaxPixels?: number;
+}
+
+export type ResolvedModelCapabilitiesDraft = Required<Omit<ModelCapabilitiesDraft, "VisionInput">> &
+  Pick<ModelCapabilitiesDraft, "VisionInput">;
+
+export type ModelBooleanCapabilityKey = Exclude<keyof ModelCapabilitiesDraft, "VisionInput">;
 
 export interface ModelGroupDraft {
   Id: string;

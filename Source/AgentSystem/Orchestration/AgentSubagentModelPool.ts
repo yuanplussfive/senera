@@ -3,11 +3,18 @@ import { AgentLocalizedError } from "../I18n/AgentLocalizedError.js";
 import type { AgentSystemConfig, ResolvedAgentModelProviderConfig } from "../Types/AgentConfigTypes.js";
 import { AgentChildRunModelSelectionSources, type AgentChildRunModelSelectionSource } from "./AgentChildRunTypes.js";
 import { resolveAgentDelegationConfiguration } from "./AgentOrchestrationConfig.js";
+import { AgentModelPlanningRequirements, agentModelMeetsRequirements } from "../Core/AgentModelCapabilityContract.js";
+import {
+  assertAgentModelRequirements,
+  readAgentModelInvocationCapabilities,
+} from "../ModelEndpoints/AgentModelRequirements.js";
 
 export interface AgentSubagentConfiguredModelPool {
   readonly inheritParent: boolean;
+  readonly includeConfiguredModels: boolean;
   readonly explicitModelProviderIds: readonly string[];
   readonly explicitProviders: readonly ResolvedAgentModelProviderConfig[];
+  readonly discoveredProviders: readonly ResolvedAgentModelProviderConfig[];
 }
 
 export interface AgentSubagentResolvedModelPool extends AgentSubagentConfiguredModelPool {
@@ -24,15 +31,31 @@ export interface AgentSubagentRequestedModelSelection {
 }
 
 export function resolveAgentSubagentConfiguredModelPool(config: AgentSystemConfig): AgentSubagentConfiguredModelPool {
-  const catalog = resolveModelProviderCatalog(config);
+  return resolveConfiguredPool(config, resolveModelProviderCatalog(config));
+}
+
+function resolveConfiguredPool(
+  config: AgentSystemConfig,
+  catalog: ReturnType<typeof resolveModelProviderCatalog>,
+): AgentSubagentConfiguredModelPool {
   const policy = resolveAgentDelegationConfiguration(config).modelPool;
   const explicitProviders = policy.modelProviderIds.map((modelProviderId) =>
     resolveEligibleModel(catalog, modelProviderId),
   );
+  const configuredProviders = policy.includeConfiguredModels
+    ? catalog.providers.filter((provider) =>
+        agentModelMeetsRequirements(
+          readAgentModelInvocationCapabilities(provider),
+          AgentModelPlanningRequirements[provider.ToolPlanningMode],
+        ),
+      )
+    : [];
   return {
     inheritParent: policy.inheritParent,
+    includeConfiguredModels: policy.includeConfiguredModels,
     explicitModelProviderIds: explicitProviders.map((provider) => provider.Id),
     explicitProviders,
+    discoveredProviders: configuredProviders,
   };
 }
 
@@ -41,13 +64,14 @@ export function resolveAgentSubagentModelPool(
   parentModelProviderId: string | undefined,
 ): AgentSubagentResolvedModelPool {
   const catalog = resolveModelProviderCatalog(config);
-  const configured = resolveAgentSubagentConfiguredModelPool(config);
+  const configured = resolveConfiguredPool(config, catalog);
   const inheritedProvider = configured.inheritParent
     ? resolveEligibleModel(catalog, parentModelProviderId ?? catalog.defaultId)
     : undefined;
   const providers = uniqueProviders([
     ...(inheritedProvider ? [inheritedProvider] : []),
     ...configured.explicitProviders,
+    ...configured.discoveredProviders,
   ]);
   const fallback = providers[0];
   if (!fallback) {
@@ -94,9 +118,7 @@ function resolveEligibleModel(
   } catch (cause) {
     throw new AgentLocalizedError("orchestration.modelNotFound", { modelProviderId }, { cause });
   }
-  if (provider.Capabilities?.Chat !== true) {
-    throw new AgentLocalizedError("orchestration.modelChatCapabilityRequired", { modelProviderId: provider.Id });
-  }
+  assertAgentModelRequirements(provider, AgentModelPlanningRequirements[provider.ToolPlanningMode]);
   return provider;
 }
 

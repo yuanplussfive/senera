@@ -1700,7 +1700,6 @@ function createTool(options: {
     handler: { kind: "HostCapability", capability: options.name },
     runtime: {
       Lifecycle: "Immediate",
-      ProtocolVersion: 2,
       ResultAssessment: "ProcessExit",
       Capabilities: { Cancellation: true },
     },
@@ -1746,9 +1745,6 @@ function createToolSearchConfig(): ResolvedAgentToolSearchConfig {
     Memory: {
       MaxEpisodes: 100,
       HalfLifeDays: 30,
-    },
-    Tokenize: {
-      Stopwords: [],
     },
     Ranking: {
       RrfK: 60,

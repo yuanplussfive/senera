@@ -43,14 +43,13 @@ try {
   );
   assert.equal(
     workflowSkills.some((skill) => skill.name === "agent-orchestration"),
-    true,
+    false,
   );
-  assert.deepEqual(runtime.services.promptContext.recommendedSkillToolRouting(workflowSkills), {
-    directToolNames: ["AgentSpawn", "AgentList", "AgentWait", "AgentInput", "AgentStop", "AgentResume"],
-    dynamicToolNames: [],
-    nativeToolNames: [],
-    requiredToolNames: [],
-  });
+  const workflowRouting = runtime.services.promptContext.recommendedSkillToolRouting(workflowSkills);
+  for (const toolName of ["AgentSpawn", "AgentList", "AgentWait", "AgentInput", "AgentStop", "AgentResume"]) {
+    assert.equal(workflowRouting.directToolNames.includes(toolName), false);
+    assert.equal(runtime.registry.getTool(toolName), undefined);
+  }
   const investigationSkills = await runtime.services.promptContext.activateSkills({
     input: "现在的 shell 工具怎么实现的，读取 SeneraShellPlatform 的片段并分析",
   });

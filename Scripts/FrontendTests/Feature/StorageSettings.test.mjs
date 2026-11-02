@@ -108,18 +108,18 @@ describe("StorageSettings", () => {
       ),
     );
 
-    expect(await screen.findByText("83MB")).toBeVisible();
+    expect(await screen.findByText("83 MiB")).toBeVisible();
     expect(screen.getByText("当前")).toBeVisible();
     expect(screen.getAllByText("根目录")).toHaveLength(2);
     expect(screen.getByText("状态目录")).toBeVisible();
     expect(screen.getByText("配置文件")).toBeVisible();
-    expect(screen.getByText("2.1GB")).toBeVisible();
-    expect(screen.getByText("4.7GB")).toBeVisible();
+    expect(screen.getByText("2.1 GiB")).toBeVisible();
+    expect(screen.getByText("4.7 GiB")).toBeVisible();
     expect(screen.getByText("合计")).toBeVisible();
-    expect(screen.getByText("2.3GB")).toBeVisible();
+    expect(screen.getByText("2.3 GiB")).toBeVisible();
     expect(screen.getByText("部分统计：3 项内容无法读取")).toBeVisible();
     expect(screen.getByText("备份目录")).toBeVisible();
-    expect(screen.getAllByText("78MB")).toHaveLength(2);
+    expect(screen.getAllByText("78 MiB")).toHaveLength(2);
     expect(screen.getByRole("button", { name: "清理" })).toBeEnabled();
     expect(screen.queryByText("工作区目录")).not.toBeInTheDocument();
 

@@ -1,70 +1,10 @@
-import React from "react";
-import { cleanup, screen } from "@testing-library/react";
-import { afterEach, beforeEach, expect, test } from "vitest";
-import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
+import { expect, test } from "vitest";
 import { EventKinds, EventSpecs } from "../../../Frontend/src/api/generatedEventCatalog.ts";
-import { RuntimeDiagnosticPanel } from "../../../Frontend/src/features/observability/RuntimeDiagnosticPanel.tsx";
 import {
   projectRuntimeConversationSpans,
   projectRuntimeDiagnosticFromRun,
 } from "../../../Frontend/src/features/observability/runtimeDiagnosticProjection.ts";
 import { rebuildRunFromHistory } from "../../../Frontend/src/store/session/historyRunProjection.ts";
-import { useEventJournalStore } from "../../../Frontend/src/features/observability/eventJournalStore.ts";
-
-beforeEach(() => {
-  useEventJournalStore.setState({
-    records: [],
-    totalBytes: 0,
-    recording: true,
-    wireCapture: false,
-    viewPausedAt: undefined,
-    selectedId: undefined,
-  });
-});
-
-afterEach(() => cleanup());
-
-test("renders a linear Vinyasa event stream with one tool card per call", async () => {
-  useEventJournalStore.setState({
-    records: [
-      projected(EventKinds.RunActivityChanged, 1, {
-        activityId: "activity-1",
-        activity: "running_agent_turn",
-        state: "completed",
-        startedAt: "2026-08-04T00:00:00.000Z",
-        durationMs: 1200,
-      }),
-      projected(EventKinds.ToolCallStarted, 2, {
-        index: 0,
-        toolName: "search",
-        callId: "call-1",
-        startedAt: "2026-08-04T00:00:00.200Z",
-      }),
-      projected(EventKinds.ToolCallCompleted, 3, {
-        index: 0,
-        toolName: "search",
-        callId: "call-1",
-        startedAt: "2026-08-04T00:00:00.200Z",
-        durationMs: 400,
-      }),
-    ],
-    totalBytes: 384,
-  });
-
-  renderWithFrontendProviders(React.createElement(RuntimeDiagnosticPanel));
-
-  expect(screen.getByRole("region", { name: "运行控制台" })).toBeVisible();
-  expect(screen.getByRole("log")).toBeVisible();
-  expect(screen.getByRole("button", { name: /search/ })).toBeVisible();
-  expect(screen.getByRole("region", { name: "运行记录" })).toBeVisible();
-  expect(document.querySelectorAll("[data-runtime-tool-call]")).toHaveLength(1);
-  expect(document.querySelectorAll("[data-runtime-span-detail]")).toHaveLength(0);
-  expect(document.querySelectorAll("[data-node-id]")).toHaveLength(0);
-
-  const toolCard = screen.getByRole("button", { name: /search/ });
-  expect(toolCard).toBeDisabled();
-  expect(toolCard).not.toHaveAttribute("aria-expanded");
-});
 
 test("rebuilds a completed historical run from the durable run projection", () => {
   const model = projectRuntimeDiagnosticFromRun(

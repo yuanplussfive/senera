@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import { EventKinds } from "../../../Frontend/src/api/eventTypes.ts";
 import { applyEvent } from "../../../Frontend/src/store/session/sessionProjector.ts";
 import { projectEntryToMessage } from "../../../Frontend/src/store/session/historyRunProjection.ts";
+import { readRunInputLabel } from "../../../Frontend/src/store/session/runInputLabel.ts";
 import {
   createEvent,
   createTestState,
@@ -9,6 +10,280 @@ import {
   TestSessionId,
   TestTimestamp,
 } from "./sessionProjectorTestUtils.mjs";
+
+test.each(["completed", "failed", "cancelled"])(
+  "history thinking survives refresh without reviving a %s run",
+  (status) => {
+    const state = createTestState();
+    const thinking = [0, 1].map((contentIndex) =>
+      createEvent(
+        EventKinds.ModelThinkingCompleted,
+        {
+          messageIndex: 0,
+          contentIndex,
+          content: `思考内容 ${contentIndex}`,
+          status: contentIndex === 0 ? "complete" : "interrupted",
+        },
+        { step: 1, sequence: contentIndex + 1 },
+      ),
+    );
+    for (let refresh = 0; refresh < 2; refresh += 1) {
+      applyEvent(state, createEvent(EventKinds.SessionHistoryStarted, { sessionId: TestSessionId, totalEntries: 0 }));
+      applyEvent(
+        state,
+        createEvent(EventKinds.SessionHistorySteps, {
+          sessionId: TestSessionId,
+          runs: [
+            {
+              requestId: TestRequestId,
+              input: "检查",
+              startedAt: TestTimestamp,
+              status,
+              traces: [{ step: 1, seq: 0, kind: "tool", status: "done", toolName: "WorkspaceRead" }],
+            },
+          ],
+        }),
+      );
+      applyEvent(state, createEvent(EventKinds.SessionRunHistoryChunk, { sessionId: TestSessionId, events: thinking }));
+      applyEvent(state, createEvent(EventKinds.SessionHistoryCompleted, { sessionId: TestSessionId }));
+      const session = state.sessions[TestSessionId];
+      expect(session.activeRequestId).toBeUndefined();
+      expect(session.runs).toHaveLength(1);
+      expect(session.runs[0].status).toBe(status);
+      expect(session.runs[0].thinkingBlocks.map(({ content, status }) => ({ content, status }))).toEqual([
+        { content: "思考内容 0", status: "complete" },
+        { content: "思考内容 1", status: "interrupted" },
+      ]);
+      expect(session.runs[0].steps.filter((step) => step.kind === "tool")).toHaveLength(1);
+    }
+    applyEvent(
+      state,
+      createEvent(EventKinds.SessionRunHistoryDetail, {
+        sessionId: TestSessionId,
+        requestId: TestRequestId,
+        events: thinking,
+        complete: true,
+      }),
+    );
+    expect(state.sessions[TestSessionId].runs[0].thinkingBlocks).toHaveLength(2);
+  },
+);
+
+test("refresh combines earlier durable thinking with the current live thinking block", () => {
+  const state = createTestState();
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "继续检查" }));
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ModelThinkingDelta,
+      {
+        messageIndex: 1,
+        contentIndex: 0,
+        delta: "正在检查",
+      },
+      { step: 1, sequence: 10 },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(EventKinds.SessionHistoryStarted, { sessionId: TestSessionId, totalEntries: 0, refresh: true }),
+  );
+  applyEvent(
+    state,
+    createEvent(EventKinds.SessionHistorySteps, {
+      sessionId: TestSessionId,
+      runs: [{ requestId: TestRequestId, input: "继续检查", startedAt: TestTimestamp, status: "running", traces: [] }],
+    }),
+  );
+  applyEvent(
+    state,
+    createEvent(EventKinds.SessionRunHistoryChunk, {
+      sessionId: TestSessionId,
+      events: [
+        createEvent(
+          EventKinds.ModelThinkingCompleted,
+          {
+            messageIndex: 0,
+            contentIndex: 0,
+            content: "上一阶段的思考",
+            status: "complete",
+          },
+          { step: 1, sequence: 2 },
+        ),
+      ],
+    }),
+  );
+  applyEvent(state, createEvent(EventKinds.SessionHistoryCompleted, { sessionId: TestSessionId, refresh: true }));
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.ModelThinkingDelta,
+      {
+        messageIndex: 1,
+        contentIndex: 0,
+        delta: "，继续分析",
+      },
+      { step: 1, sequence: 11 },
+    ),
+  );
+  const run = state.sessions[TestSessionId].runs[0];
+  expect(run.status).toBe("running");
+  expect(run.thinkingBlocks.map(({ content, status }) => ({ content, status }))).toEqual([
+    { content: "上一阶段的思考", status: "complete" },
+    { content: "正在检查，继续分析", status: "streaming" },
+  ]);
+});
+
+test("history snapshots recover attachment-only input labels from the stored user message", () => {
+  const state = createTestState();
+  const attachment = {
+    resourceUri: "senera://resource/AbCd12",
+    name: "image.png",
+    mime: "image/png",
+    size: 42,
+    status: "uploaded",
+  };
+  applyEvent(
+    state,
+    createEvent(EventKinds.SessionHistoryStarted, { sessionId: TestSessionId, totalEntries: 1, messageCount: 1 }),
+  );
+  applyEvent(
+    state,
+    createEvent(EventKinds.SessionHistoryChunk, {
+      sessionId: TestSessionId,
+      entries: [
+        {
+          entry: {
+            id: "user-image",
+            requestId: TestRequestId,
+            timestamp: TestTimestamp,
+            kind: "user.message",
+            content: "",
+            attachments: [attachment],
+          },
+        },
+      ],
+    }),
+  );
+  applyEvent(
+    state,
+    createEvent(EventKinds.SessionHistorySteps, {
+      sessionId: TestSessionId,
+      runs: [
+        {
+          requestId: TestRequestId,
+          input: "",
+          startedAt: TestTimestamp,
+          status: "completed",
+          traces: [],
+        },
+      ],
+    }),
+  );
+  applyEvent(state, createEvent(EventKinds.SessionHistoryCompleted, { sessionId: TestSessionId }));
+  const run = state.sessions[TestSessionId].runs[0];
+  expect(run.input).toBe("");
+  expect(run.inputAttachments).toEqual([attachment]);
+  expect(readRunInputLabel(run)).toBe("1 张图片");
+});
+
+test("native channel events retain identical metadata in live and historical messages", () => {
+  const state = createTestState();
+  const metadata = {
+    channel: { platform: "onebot11", chatType: "group", chatId: "group-1" },
+    channelEvent: {
+      id: "poke-1",
+      type: "poke",
+      actorId: "user-1",
+      actorName: "用户",
+      targetId: "agent-1",
+      targetName: "玉米",
+      sentAt: TestTimestamp,
+    },
+  };
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "", metadata }, { scope: { channel: "onebot11" } }));
+  const live = state.sessions[TestSessionId].messages[0];
+  expect(live).toMatchObject({ content: "", metadata });
+  expect(state.sessions[TestSessionId].title).toBe("新对话");
+  const historical = projectEntryToMessage({
+    id: `${TestRequestId}:user`,
+    requestId: TestRequestId,
+    timestamp: TestTimestamp,
+    kind: "user.message",
+    content: "",
+    metadata,
+  });
+  expect(historical).toEqual(live);
+});
+
+test("catalog, live channel starts and snapshots retain the authoritative nonblank title", () => {
+  const state = createTestState();
+  const title = "测试群 · 10/25 12:23";
+  applyEvent(state, createEvent(EventKinds.RunStarted, { input: "", title }, { scope: { channel: "onebot11" } }));
+  expect(state.sessions[TestSessionId].title).toBe(title);
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionSnapshot,
+      {
+        sessionId: TestSessionId,
+        title,
+        status: "idle",
+        entryCount: 1,
+        messageCount: 1,
+      },
+      { sequence: 2 },
+    ),
+  );
+  expect(state.sessions[TestSessionId].title).toBe(title);
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionSnapshot,
+      {
+        sessionId: TestSessionId,
+        title: " ",
+        status: "idle",
+        entryCount: 1,
+        messageCount: 1,
+      },
+      { sequence: 3 },
+    ),
+  );
+  expect(state.sessions[TestSessionId].title).toBe(title);
+});
+
+test("replaying an old run never overwrites the current session title", () => {
+  const state = createTestState();
+  applyEvent(
+    state,
+    createEvent(EventKinds.SessionSnapshot, {
+      sessionId: TestSessionId,
+      title: "用户重新命名",
+      status: "idle",
+      entryCount: 0,
+      messageCount: 0,
+    }),
+  );
+  applyEvent(state, createEvent(EventKinds.SessionHistoryStarted, { totalEntries: 0, messageCount: 0 }));
+  applyEvent(
+    state,
+    createEvent(EventKinds.SessionRunHistoryChunk, {
+      sessionId: TestSessionId,
+      events: [
+        createEvent(
+          EventKinds.RunStarted,
+          { input: "", title: "旧群名 · 10/24 12:00" },
+          { scope: { channel: "onebot11" } },
+        ),
+        createEvent(EventKinds.RunCompleted, {}, { sequence: 2 }),
+      ],
+    }),
+  );
+  applyEvent(state, createEvent(EventKinds.SessionHistoryCompleted, { sessionId: TestSessionId }));
+  expect(state.sessions[TestSessionId].title).toBe("用户重新命名");
+  expect(state.sessions[TestSessionId].runs[0]?.status).toBe("completed");
+});
 
 test("history projection preserves a tool preface as a non-terminal assistant message", () => {
   const message = projectEntryToMessage(
@@ -48,7 +323,7 @@ test("history projection preserves ordinary user messages with metadata", () => 
   expect(message).toMatchObject({ role: "user", content: "继续这个任务" });
 });
 
-test("history projection hides internal background-task wake inputs", () => {
+test("history projection hides legacy internal background-task inputs", () => {
   const message = projectEntryToMessage({
     id: "background-child-1:user",
     requestId: "background-child-1-1",
@@ -61,7 +336,7 @@ test("history projection hides internal background-task wake inputs", () => {
   expect(message).toBeNull();
 });
 
-test("history projection keeps the assistant reply for a background-task wake visible", () => {
+test("history projection keeps the assistant reply from a legacy background-task input visible", () => {
   const message = projectEntryToMessage(
     {
       id: "background-child-1:assistant",
@@ -833,6 +1108,87 @@ test("history traces restore raw tool results omitted from durable event replay"
   const step = state.sessions[TestSessionId]?.runs[0]?.steps.find((item) => item.callId === toolCallId);
   expect(step?.toolArgs).toEqual({ task: "question" });
   expect(step?.toolResult).toEqual({ answer: "界面分析结果" });
+});
+
+test("failed history attaches a tool result when run.started is absent", () => {
+  const state = createTestState();
+  const toolCallId = "call_failed_read";
+
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionHistoryStarted,
+      { sessionId: TestSessionId, totalEntries: 0, messageCount: 0 },
+      { sessionId: TestSessionId },
+    ),
+  );
+  // An interrupted writer can persist the tool lifecycle after the initial
+  // run-start record was lost. The useful result must still survive replay.
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionRunHistoryChunk,
+      {
+        sessionId: TestSessionId,
+        events: [
+          createEvent(EventKinds.ToolCallStarted, {
+            index: 0,
+            toolName: "WorkspaceRead",
+            callId: toolCallId,
+            arguments: { path: "missing.yaml" },
+          }),
+          createEvent(EventKinds.ToolCallResultDetail, {
+            detailId: "detail_failed_read",
+            index: 0,
+            toolName: "WorkspaceRead",
+            callId: toolCallId,
+            value: { path: "missing.yaml", exists: false },
+          }),
+          createEvent(EventKinds.ToolCallFailed, {
+            index: 0,
+            toolName: "WorkspaceRead",
+            callId: toolCallId,
+            message: "找不到文件 missing.yaml。",
+          }),
+        ],
+      },
+      { sessionId: TestSessionId },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(
+      EventKinds.SessionHistorySteps,
+      {
+        sessionId: TestSessionId,
+        runs: [
+          {
+            requestId: TestRequestId,
+            input: "读取配置",
+            startedAt: "2026-07-09T00:00:01.000Z",
+            endedAt: "2026-07-09T00:00:02.000Z",
+            status: "failed",
+            traces: [],
+          },
+        ],
+      },
+      { sessionId: TestSessionId },
+    ),
+  );
+  applyEvent(
+    state,
+    createEvent(EventKinds.SessionHistoryCompleted, { sessionId: TestSessionId }, { sessionId: TestSessionId }),
+  );
+
+  const run = state.sessions[TestSessionId]?.runs.find((candidate) => candidate.requestId === TestRequestId);
+  const step = run?.steps.find((candidate) => candidate.callId === toolCallId);
+  expect(run?.status).toBe("failed");
+  expect(step).toMatchObject({
+    status: "failed",
+    toolArgs: { path: "missing.yaml" },
+    toolResult: { path: "missing.yaml", exists: false },
+    toolErrorMessage: "找不到文件 missing.yaml。",
+  });
 });
 
 test("appends repeated history step chunks before completing replay", () => {

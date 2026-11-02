@@ -72,6 +72,7 @@ function readToolEventTitle(record: Pick<EventJournalRecord, "kind" | "summary" 
     toolName,
     origin: readToolOrigin(readJsonPointer(record.projection, "/data/origin")),
     arguments: readJsonPointer(record.projection, "/data/arguments"),
+    rawResult: readJsonPointer(record.projection, "/data/result"),
     status,
   });
 }

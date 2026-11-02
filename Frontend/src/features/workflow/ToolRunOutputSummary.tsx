@@ -1,11 +1,21 @@
 import type { RunRecord } from "../../store/sessionStore";
 import { ToolArtifactPreview } from "./ToolArtifactPreview";
-import { collectToolResources, collectToolWorkspaceChanges } from "./toolResourceProjection";
+import {
+  collectToolResources,
+  collectToolWorkspaceChanges,
+  collectToolWorkspaceObservation,
+  findReversibleWorkspaceCheckpoints,
+} from "./toolResourceProjection";
 import { isWorkspaceFileChange } from "./workspaceChangeActivity";
 
-/** Shows the durable output of a run in the conversation without duplicating
- * tool arguments or execution diagnostics from the workflow dock. */
-export function ToolRunOutputSummary({ run }: { readonly run: RunRecord }): JSX.Element | null {
+/** Shows the same contract at conversation-summary or dock-inspection density. */
+export function ToolRunOutputSummary({
+  mode = "summary",
+  run,
+}: {
+  readonly mode?: "summary" | "detail";
+  readonly run: RunRecord;
+}): JSX.Element | null {
   const resources = collectToolResources(run.steps);
   const changes = collectToolWorkspaceChanges(run.steps);
   const fileChanges = changes.filter(isWorkspaceFileChange);
@@ -13,7 +23,14 @@ export function ToolRunOutputSummary({ run }: { readonly run: RunRecord }): JSX.
 
   return (
     <div className="mt-4 min-w-0 border-t border-line-subtle/70 pt-3" data-tool-run-output-summary>
-      <ToolArtifactPreview resources={resources} changes={fileChanges} />
+      <ToolArtifactPreview
+        resources={resources}
+        changes={fileChanges}
+        checkpoints={findReversibleWorkspaceCheckpoints(run.steps, changes)}
+        observation={collectToolWorkspaceObservation(run.steps)}
+        mode={mode}
+        enableHoverPreview={mode === "detail"}
+      />
     </div>
   );
 }

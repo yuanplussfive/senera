@@ -22,7 +22,6 @@ import {
   mergeScheduledScroll,
   resolveVirtuosoFollowOutput,
   shouldAutoscrollForListHeightChange,
-  shouldRequestDynamicHeightAutoscroll,
 } from "../../../Frontend/src/features/chat/useVirtuosoAutoStickToBottom.ts";
 
 test("chat scroll scheduling preserves the requested manual-scroll behavior", () => {
@@ -30,9 +29,6 @@ test("chat scroll scheduling preserves the requested manual-scroll behavior", ()
   expect(mergeScheduledScroll({ behavior: "auto" }, { behavior: "smooth" })).toEqual({ behavior: "smooth" });
   expect(resolveVirtuosoFollowOutput(true)).toBe("auto");
   expect(resolveVirtuosoFollowOutput(false)).toBe(false);
-  expect(shouldRequestDynamicHeightAutoscroll({ shouldStickToBottom: true, hasPendingRequest: false })).toBe(true);
-  expect(shouldRequestDynamicHeightAutoscroll({ shouldStickToBottom: true, hasPendingRequest: true })).toBe(false);
-  expect(shouldRequestDynamicHeightAutoscroll({ shouldStickToBottom: false, hasPendingRequest: false })).toBe(false);
   expect(shouldAutoscrollForListHeightChange(null, 320)).toBe(true);
   expect(shouldAutoscrollForListHeightChange(320, 321)).toBe(true);
   expect(shouldAutoscrollForListHeightChange(321, 320)).toBe(false);

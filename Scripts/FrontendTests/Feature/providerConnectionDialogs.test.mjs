@@ -67,7 +67,7 @@ test("changing the protocol does not invent a provider name", async () => {
   expect(nameInput).toHaveValue("");
 });
 
-test("hides the API key reveal button until a key is entered", () => {
+test("reserves the API key reveal control and enables it after a key is entered", () => {
   render(
     React.createElement(AddProviderDialog, {
       open: true,
@@ -77,13 +77,13 @@ test("hides the API key reveal button until a key is entered", () => {
     }),
   );
 
-  expect(screen.queryByRole("button", { name: frontendMessage("config.provider.showApiKey") })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: frontendMessage("config.provider.showApiKey") })).toBeDisabled();
 
   fireEvent.change(screen.getByPlaceholderText(frontendMessage("settings.provider.apiKeyPlaceholder")), {
     target: { value: "sk-test" },
   });
 
-  expect(screen.getByRole("button", { name: frontendMessage("config.provider.showApiKey") })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: frontendMessage("config.provider.showApiKey") })).toBeEnabled();
 });
 
 test("provider editing saves headers and the default endpoint from the shared form", async () => {

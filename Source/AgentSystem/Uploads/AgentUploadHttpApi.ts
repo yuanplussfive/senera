@@ -1,13 +1,15 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { pipeline, Transform, type Readable, type TransformCallback } from "node:stream";
+import { PassThrough, pipeline, Transform, type TransformCallback } from "node:stream";
 import busboy from "busboy";
+import { isText } from "istextorbinary";
+import { isAgentInlinePreviewMime } from "./AgentUploadMime.js";
 import { applyCredentialedCors, writeCorsPreflight } from "../Auth/AgentCredentialedCors.js";
 import { projectAgentErrorMessage, projectAgentMessage } from "../I18n/AgentMessageProjection.js";
 import { AgentResourceHttpRoutes } from "../Resources/AgentResourceContract.js";
 import { createAgentResourceUri, normalizeResourceId } from "../Resources/AgentResourceUri.js";
-import { isAgentInlinePreviewMime } from "./AgentUploadMime.js";
+import { agentResourceContentHeaders } from "../Resources/AgentResourceContentHeaders.js";
 import { AgentUploadError, AgentUploadFailureKinds, type AgentUploadStore } from "./AgentUploadStore.js";
 import type { AgentUploadAttachment } from "./AgentUploadTypes.js";
 import { isMissingFileError } from "../Core/AgentFs.js";
@@ -182,9 +184,6 @@ export class AgentUploadHttpApi {
       return;
     }
 
-    const detectedMime = resolved.mime;
-    const inline = isAgentInlinePreviewMime(detectedMime);
-
     let contentLength: number;
     try {
       const stats = await fsp.stat(resolved.filePath);
@@ -202,16 +201,14 @@ export class AgentUploadHttpApi {
     }
 
     const etag = formatUploadContentEtag(resolved.sha256);
+    if (new URL(request.url ?? "/", "http://senera.local").searchParams.get("view") === "metadata") {
+      await this.sendContentMetadata(request, response, resolved, contentLength, etag);
+      return;
+    }
     const headers = {
-      "Cache-Control": "private, max-age=0, must-revalidate",
+      ...agentResourceContentHeaders(resolved),
       "Content-Length": contentLength,
-      "Content-Security-Policy": "default-src 'none'; sandbox",
-      "Content-Disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(
-        resolved.name,
-      )}`,
-      "Content-Type": inline ? detectedMime : "application/octet-stream",
       ETag: etag,
-      "X-Content-Type-Options": "nosniff",
     } as const;
 
     if (matchesIfNoneMatch(request.headers["if-none-match"], etag)) {
@@ -231,6 +228,50 @@ export class AgentUploadHttpApi {
     });
   }
 
+  private async sendContentMetadata(
+    request: IncomingMessage,
+    response: ServerResponse,
+    resource: NonNullable<Awaited<ReturnType<AgentResourceResolverLike["resolve"]>>>,
+    size: number,
+    etag: string,
+  ): Promise<void> {
+    if (request.method === "HEAD") {
+      response.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      response.end();
+      return;
+    }
+    const handle = await fsp.open(resource.filePath, "r");
+    try {
+      const sample = Buffer.alloc(Math.min(size, 8192));
+      await handle.read(sample, 0, sample.length, 0);
+      const kind =
+        isAgentInlinePreviewMime(resource.mime) && resource.mime.startsWith("image/")
+          ? "image"
+          : isText(resource.name, sample)
+            ? "text"
+            : "binary";
+      const content =
+        kind === "text" && size <= this.options.store.maxFileBytes
+          ? await handle.readFile({ encoding: "utf8" })
+          : undefined;
+      this.sendJson(response, 200, {
+        ok: true,
+        resource: {
+          path: resource.resourceUri,
+          name: resource.name,
+          mime: resource.mime,
+          size,
+          kind,
+          editable: false,
+          etag,
+          ...(content === undefined ? {} : { content }),
+        },
+      });
+    } finally {
+      await handle.close();
+    }
+  }
+
   private async resolveContentResource(resourceId: string) {
     try {
       return await this.resourceResolver.resolve(createAgentResourceUri(resourceId));
@@ -242,7 +283,7 @@ export class AgentUploadHttpApi {
 
   private collectUploads(request: IncomingMessage): Promise<AgentUploadAttachment[]> {
     return new Promise((resolve, reject) => {
-      const uploads: Array<Promise<AgentUploadAttachment>> = [];
+      const uploads: Array<Promise<PromiseSettledResult<AgentUploadAttachment>>> = [];
       const store = this.options.store;
       let collectionError: unknown;
       let completed = false;
@@ -250,31 +291,43 @@ export class AgentUploadHttpApi {
         headers: request.headers,
         defParamCharset: "utf8",
         limits: {
-          fileSize: store.maxFileBytes,
           files: store.maxFilesPerRequest,
         },
       });
       const requestLimiter = new UploadRequestByteLimiter(store.maxRequestBytes);
 
       parser.on("file", (_fieldName, file, info) => {
+        file.on("error", (error: Error) => {
+          collectionError ??= error;
+        });
         if (collectionError) {
           file.resume();
           return;
         }
-        file.on("limit", () => {
-          file.destroy(AgentUploadError.from(AgentUploadFailureKinds.FileTooLarge));
+        // The store owns this stream; a rejected save must leave the multipart parser able to drain.
+        const stream = new PassThrough();
+        stream.on("error", (error: Error) => {
+          collectionError ??= error;
         });
+        file.on("error", (error: Error) => stream.destroy(error));
+        file.pipe(stream);
         uploads.push(
           store
             .save({
-              stream: file as Readable,
+              stream,
               originalName: info.filename,
               declaredMime: info.mimeType,
             })
-            .catch((error: unknown) => {
-              file.resume();
-              throw error;
-            }),
+            .then(
+              (value) => ({ status: "fulfilled", value }) as const,
+              (reason: unknown) => {
+                collectionError ??= reason;
+                file.unpipe(stream);
+                stream.destroy();
+                file.resume();
+                return { status: "rejected", reason } as const;
+              },
+            ),
         );
       });
       parser.on("filesLimit", () => {
@@ -352,7 +405,9 @@ export class AgentUploadHttpApi {
 
     const contentPrefix = `${AgentResourceHttpRoutes.Collection}/`;
     if (!url.pathname.startsWith(contentPrefix)) return undefined;
-    if (url.search) return { kind: "invalid" };
+    if (url.search && (url.searchParams.size !== 1 || url.searchParams.get("view") !== "metadata")) {
+      return { kind: "invalid" };
+    }
 
     const segments = url.pathname.slice(contentPrefix.length).split("/");
     if (segments.length !== 1) {
@@ -400,13 +455,13 @@ function matchesIfNoneMatch(value: string | string[] | undefined, etag: string):
 }
 
 interface SettleUploadCollectionOptions {
-  uploads: readonly Promise<AgentUploadAttachment>[];
+  uploads: readonly Promise<PromiseSettledResult<AgentUploadAttachment>>[];
   store: AgentUploadStore;
   error?: unknown;
 }
 
 async function settleUploadCollection(options: SettleUploadCollectionOptions): Promise<AgentUploadAttachment[]> {
-  const results = await Promise.allSettled(options.uploads);
+  const results = await Promise.all(options.uploads);
   const uploads = results.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
   const rejected = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
   const error = options.error ?? rejected?.reason;

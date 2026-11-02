@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="background_settings_title">后台与悬浮窗</string>
+    <string name="background_heading">保持连接，随时返回</string>
+    <string name="background_mode_enabled">后台模式已开启</string>
+    <string name="background_mode_disabled">后台模式已关闭</string>
+    <string name="background_permissions">系统权限</string>
+    <string name="background_notifications">通知</string>
+    <string name="background_notifications_hint">查看后台状态，随时停止服务</string>
+    <string name="background_battery">电池使用</string>
+    <string name="background_battery_hint">减少待机时的网络限制</string>
+    <string name="background_allowed">已允许</string>
+    <string name="background_not_allowed">未允许</string>
+    <string name="background_battery_unrestricted">不受限制</string>
+    <string name="background_battery_optimized">系统优化</string>
+    <string name="background_floating_requires_connection">先开启后台连接，即可使用悬浮入口。</string>
+    <string name="background_startup_hint">按手机系统要求，管理自启动与后台活动</string>
+    <string name="background_enable">后台连接</string>
+    <string name="background_enable_hint">切换应用时尽量保留 Senera，通过常驻通知随时查看或停止。</string>
+    <string name="background_notification_permission">请允许通知，以便查看或停止后台连接。</string>
+    <string name="background_floating">悬浮入口</string>
+    <string name="background_floating_hint">在其他应用上方显示快捷入口。拖动调整位置，轻触回到 Senera。</string>
+    <string name="background_overlay_denied">尚未允许悬浮窗权限，悬浮入口保持关闭。</string>
+    <string name="background_application_settings">应用与启动设置</string>
+    <string name="background_system_hint">后台模式会增加耗电。系统仍可能暂停应用；电脑任务继续运行，回来后同步结果。</string>
+    <string name="background_channel">已配对电脑连接</string>
+    <string name="background_notification_title">Senera 后台连接</string>
+    <string name="background_notification_body">正在保留客户端进程，点击返回电脑会话。</string>
+    <string name="background_network_lost">当前网络不可用，请返回 Senera 检查连接。</string>
+    <string name="background_stop">停止后台连接</string>
+    <string name="background_return">返回 Senera</string>
+    <string name="background_start_failed">无法开启后台连接：%1$s</string>
+    <string name="background_floating_failed">无法显示悬浮入口：%1$s</string>
+</resources>

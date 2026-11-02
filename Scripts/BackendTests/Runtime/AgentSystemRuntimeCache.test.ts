@@ -4,8 +4,41 @@ import {
   type AgentSystemRuntimeCacheRuntime,
 } from "../../../Source/AgentSystem/Runtime/AgentSystemRuntimeCache.js";
 import type { AgentSystemConfig } from "../../../Source/AgentSystem/Types/AgentConfigTypes.js";
+import { createTestAgentDirectory } from "../Support/AgentDirectoryTestFixture.js";
 
 describe("AgentSystemRuntimeCache", () => {
+  test("Agent retirement waits for evicted runtimes and rejects stale Agent acquisitions", async () => {
+    const agent = createTestAgentDirectory().get();
+    const closing = createDeferred();
+    let closeCount = 0;
+    const cache = new AgentSystemRuntimeCache({
+      workspaceRoot: "runtime-cache-test",
+      configPath: "runtime-cache-test.json",
+      snapshot: () => ({ version: 1, config: {} as AgentSystemConfig }),
+      identityDisplayValues: () => ({ user: "User", assistant: agent.name }),
+      runtimeFactory: () => ({
+        close: () => {
+          closeCount += 1;
+          return closing.promise;
+        },
+      }),
+    });
+    const lease = cache.acquire(undefined, agent);
+    await expect(cache.retireAgent(agent.id)).rejects.toThrow("finished stopping");
+    lease.release();
+    cache.setObserved(false);
+    let retired = false;
+    const retiring = cache.retireAgent(agent.id).then(() => {
+      retired = true;
+    });
+    await Promise.resolve();
+    expect(retired).toBe(false);
+    expect(closeCount).toBe(1);
+    closing.resolve();
+    await retiring;
+    expect(() => cache.acquire(undefined, agent)).toThrow("retired");
+    await cache.clear();
+  });
   test("a hidden workspace releases idle instances while preserving active task leases", () => {
     const fixture = createCache();
     const active = fixture.cache.acquire("active-model");

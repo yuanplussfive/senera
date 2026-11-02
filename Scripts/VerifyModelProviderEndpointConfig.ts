@@ -31,8 +31,7 @@ const config: AgentSystemConfig = {
     },
   ],
   ActionPlanner: {
-    PlanningClient: {
-      ModelProviderId: "chat-main",
+    Client: {
       Temperature: 0.1,
       MaxTokens: 2048,
     },
@@ -49,9 +48,8 @@ const planner = resolveActionPlannerConfig(config);
 assert.equal(planner.Client.ModelProvider.Endpoint, "ChatCompletions");
 assert.equal(planner.Client.BaseUrl, "https://provider.test/v1");
 assert.equal(planner.Client.ApiKey, "provider-key");
-assert.equal(planner.PlanningClient.ModelProvider.Endpoint, "ChatCompletions");
-assert.equal(planner.PlanningClient.Model, "mistral-large-latest");
-assert.equal(planner.PlanningClient.MaxTokens, 2048);
+assert.equal(planner.Client.Model, "mistral-large-latest");
+assert.equal(planner.Client.MaxTokens, 2048);
 
 assert.throws(
   () =>
@@ -157,9 +155,6 @@ const disabledProviderConfig: AgentSystemConfig = {
       Model: "enabled-model",
     },
   ],
-  ActionPlanner: {
-    Client: { ModelProviderId: "openai-generic" },
-  },
 };
 
 const activeCatalog = resolveModelProviderCatalog(disabledProviderConfig);

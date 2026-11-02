@@ -19,7 +19,8 @@ export const AgentPiToolObservationContractRevision = [
   AgentPiToolObservationProtocol.type,
   AgentPiToolObservationSourceViewProtocol.type,
   "source-artifacts-v2",
-  "budgeted-compression-v1",
+  "budgeted-compression-v2",
+  "artifact-field-selections-v2",
 ].join("|");
 
 const AgentPiToolObservationEvidenceSchema = z

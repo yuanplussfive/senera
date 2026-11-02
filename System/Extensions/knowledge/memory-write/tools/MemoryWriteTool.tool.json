@@ -4,8 +4,19 @@
   "presentation": {
     "category": "memory-write",
     "icon": "brain",
-    "activity": { "action": { "zh-CN": "保存", "en-US": "Save" }, "argumentPath": "/summary" },
-    "preview": { "body": { "pointer": "/records/item", "from": "result" } }
+    "activity": {
+      "action": {
+        "zh-CN": "保存",
+        "en-US": "Save"
+      },
+      "argumentPath": "/summary"
+    },
+    "preview": {
+      "body": {
+        "pointer": "/records/item",
+        "from": "result"
+      }
+    }
   },
   "description": "接收用户明确要求记住的信息，在本轮正常完成后交给 MemOS 学习。",
   "inputSchema": {
@@ -15,6 +26,7 @@
       "summary": {
         "type": "string",
         "minLength": 1,
+        "pattern": "\\S",
         "description": "The explicit information the user asked Senera to remember."
       }
     },
@@ -22,21 +34,26 @@
     "additionalProperties": false
   },
   "permissions": ["memory:write"],
-  "execution": { "Targets": ["Local"], "Network": "Deny", "Workspace": "ReadOnly" },
+  "execution": {
+    "Targets": ["Local"],
+    "Network": "Deny",
+    "Workspace": "ReadOnly"
+  },
   "runtime": {
     "Lifecycle": "Immediate",
-    "ProtocolVersion": 2,
     "ResultAssessment": "ProcessExit",
     "Scheduling": "Parallel",
     "MaxConcurrency": 1,
-    "Capabilities": { "Cancellation": true }
+    "Capabilities": {
+      "Cancellation": true
+    }
   },
   "resources": [],
   "sources": [
     {
       "Id": "continuity",
       "Title": "MemOS",
-      "Description": "Semantic knowledge, immutable turn fragments, and daily/monthly summaries."
+      "Description": "Semantic knowledge and its original source provenance. Diary documents are read through senera CLI."
     }
   ],
   "search": {
@@ -56,7 +73,10 @@
           "Effects": ["persistent-write"]
         },
         "Aliases": ["记住这个", "记录偏好", "以后都这样", "写入长期记忆"],
-        "Risk": { "SideEffect": "persistent-write", "Permission": "memory-write" }
+        "Risk": {
+          "SideEffect": "persistent-write",
+          "Permission": "memory-write"
+        }
       }
     ],
     "UseCases": ["用户明确要求记住事实、偏好或关系。"],
@@ -69,16 +89,25 @@
       {
         "Kind": "continuity_write",
         "Records": "$.records.item[*]",
-        "Slots": { "summary": "$.summary" },
-        "Identity": { "Parts": ["summary"] },
+        "Slots": {
+          "summary": "$.summary"
+        },
+        "Identity": {
+          "Parts": ["summary"]
+        },
         "Presentation": {
           "Locator": "{{ summary }}",
           "Display": "{{ summary }}",
           "Label": "{{ summary }}",
           "Source": "continuity"
         },
-        "ModelProjection": { "Slots": ["summary"] },
-        "PlannerMemory": { "Facts": ["summary"], "ArtifactRefs": ["projection", "evidence"] },
+        "ModelProjection": {
+          "Slots": ["summary"]
+        },
+        "PlannerMemory": {
+          "Facts": ["summary"],
+          "ArtifactRefs": ["projection", "evidence"]
+        },
         "Projection": {
           "SummaryTemplate": "{% for e in evidence %}{{ e.slots.summary }}\n{% endfor %}",
           "ArtifactTemplate": "{% for e in evidence %}{{ e.slots.summary }}\n{% endfor %}"
@@ -93,9 +122,15 @@
   },
   "outputSchema": {
     "$schema": "http://json-schema.org/draft-07/schema#",
+    "x-senera-model-output": {
+      "omit": ["/records"]
+    },
     "type": "object",
     "properties": {
-      "status": { "type": "string", "const": "accepted_for_learning" },
+      "status": {
+        "type": "string",
+        "const": "accepted_for_learning"
+      },
       "records": {
         "type": "object",
         "properties": {
@@ -103,7 +138,11 @@
             "type": "array",
             "items": {
               "type": "object",
-              "properties": { "summary": { "type": "string" } },
+              "properties": {
+                "summary": {
+                  "type": "string"
+                }
+              },
               "required": ["summary"],
               "additionalProperties": false
             }

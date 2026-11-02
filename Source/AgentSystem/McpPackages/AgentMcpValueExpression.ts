@@ -19,6 +19,10 @@ export class AgentMcpInputsRequiredError extends AgentBaseError {
 }
 
 export interface AgentMcpExpressionRuntimeValues {
+  readonly resolveModelConnection?: (
+    modelId: string,
+    capability: NonNullable<AgentMcpInputDefinition["modelSelection"]>["capability"],
+  ) => string;
   readonly packageRoot: string;
   readonly workspaceRoot?: string;
 }
@@ -55,7 +59,16 @@ function resolveSegment(
   const definition = inputId ? definitions.get(inputId) : undefined;
   const resolution = resolver.resolve(serverId, segment.binding);
   const value = resolution?.value ?? segment.defaultValue ?? definition?.defaultValue;
-  if (value !== undefined) return stringifyAgentExtensionInputValue(value);
+  if (value !== undefined) {
+    if (definition?.modelSelection?.valueKind === "model-connection") {
+      if (typeof value !== "string" || !runtime.resolveModelConnection) {
+        missing.add(definition.id);
+        return "";
+      }
+      return runtime.resolveModelConnection(value, definition.modelSelection.capability);
+    }
+    return stringifyAgentExtensionInputValue(value);
+  }
   const missingId = inputId ?? ("name" in segment.binding ? segment.binding.name : undefined);
   if (missingId) missing.add(missingId);
   return "";
