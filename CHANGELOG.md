@@ -2,6 +2,13 @@
 
 这里记录 Senera 每个正式版本中的新增功能、问题修复和兼容性变化。
 
+## [1.21.1](https://github.com/yuanplussfive/senera/compare/v1.21.0...v1.21.1) (2026-11-02)
+
+
+### 问题修复
+
+* **desktop:** remove package startup smoke and normalize upgrade paths ([#157](https://github.com/yuanplussfive/senera/issues/157)) ([c7f4f86](https://github.com/yuanplussfive/senera/commit/c7f4f86e315f305ad2b77f9f47b56e2817ac47a6))
+
 ## [1.21.0](https://github.com/yuanplussfive/senera/compare/v1.20.0...v1.21.0) (2026-11-02)
 
 
