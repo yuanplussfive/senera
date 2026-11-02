@@ -28,7 +28,7 @@ export function inspectSecurityScanWorkflow(workflow: string): string[] {
   const violations = inspectTextIncludes(workflow, SecurityScanWorkflowLabel, [
     "name: Security Scan",
     "pull_request:",
-    "group: security-scan-${{ github.event.pull_request.number || github.ref }}",
+    "group: security-scan-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}",
     "cancel-in-progress: true",
     "github/codeql-action/init@v4",
     "queries: security-extended,security-and-quality",

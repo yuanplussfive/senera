@@ -272,12 +272,11 @@ export function readRegularTextFileSnapshotSync(
   subject = "File",
   previous?: AgentRegularTextFileSnapshot,
 ): AgentRegularTextFileSnapshot {
-  const entry = fs.lstatSync(filePath);
   const noFollow = typeof fs.constants.O_NOFOLLOW === "number" ? fs.constants.O_NOFOLLOW : 0;
-  const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | noFollow);
+  const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | noFollow | (fs.constants.O_NONBLOCK ?? 0));
   try {
     const stat = fs.fstatSync(descriptor);
-    assertRegularFileIdentity(entry, stat, filePath, subject);
+    assertRegularFileIdentity(fs.lstatSync(filePath), stat, filePath, subject);
     if (
       previous &&
       previous.mtimeMs === stat.mtimeMs &&
@@ -306,12 +305,11 @@ export function readRegularFileSync(
   subject = "File",
   options: { readonly maxBytes?: number } = {},
 ): Buffer {
-  const entry = fs.lstatSync(filePath);
   const noFollow = typeof fs.constants.O_NOFOLLOW === "number" ? fs.constants.O_NOFOLLOW : 0;
-  const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | noFollow);
+  const descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | noFollow | (fs.constants.O_NONBLOCK ?? 0));
   try {
     const stat = fs.fstatSync(descriptor);
-    assertRegularFileIdentity(entry, stat, filePath, subject);
+    assertRegularFileIdentity(fs.lstatSync(filePath), stat, filePath, subject);
     if (options.maxBytes !== undefined && stat.size > options.maxBytes) {
       throw new Error(`${subject} exceeds the ${options.maxBytes} byte limit: ${filePath}`);
     }
@@ -327,12 +325,11 @@ export async function readRegularFile(
   subject = "File",
   options: { readonly maxBytes?: number } = {},
 ): Promise<Buffer> {
-  const entry = await fs.promises.lstat(filePath);
   const noFollow = typeof fs.constants.O_NOFOLLOW === "number" ? fs.constants.O_NOFOLLOW : 0;
-  const handle = await fs.promises.open(filePath, fs.constants.O_RDONLY | noFollow);
+  const handle = await fs.promises.open(filePath, fs.constants.O_RDONLY | noFollow | (fs.constants.O_NONBLOCK ?? 0));
   try {
     const stat = await handle.stat();
-    assertRegularFileIdentity(entry, stat, filePath, subject);
+    assertRegularFileIdentity(await fs.promises.lstat(filePath), stat, filePath, subject);
     const assertSize = (size: number) => {
       if (options.maxBytes !== undefined && size > options.maxBytes) {
         throw new Error(`${subject} exceeds the ${options.maxBytes} byte limit: ${filePath}`);

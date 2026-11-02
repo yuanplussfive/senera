@@ -458,9 +458,13 @@ async function createCdpClient(url: string): Promise<{
   function send(method: string, params: Record<string, unknown>): Promise<unknown> {
     const id = nextId;
     nextId += 1;
-    ws.send(JSON.stringify({ id, method, params }));
     return new Promise((resolve, reject) => {
       pending.set(id, { resolve, reject });
+      ws.send(JSON.stringify({ id, method, params }), (error) => {
+        if (!error) return;
+        pending.delete(id);
+        reject(error);
+      });
     });
   }
 
@@ -468,23 +472,32 @@ async function createCdpClient(url: string): Promise<{
     fn: (...args: TArgs) => T | Promise<T>,
     ...args: TArgs
   ): Promise<Awaited<T>> {
-    const result = (await send("Runtime.evaluate", {
-      expression: `(async () => { const __name = (target) => target; return JSON.stringify(await (${fn.toString()})(...${JSON.stringify(args)})); })()`,
-      awaitPromise: true,
-      returnByValue: true,
-    })) as {
-      result?: { value?: string };
-      exceptionDetails?: { text?: string; exception?: { description?: string } };
+    const context = (await send("Runtime.evaluate", { expression: "globalThis" })) as {
+      result?: { objectId?: string };
     };
-    if (result.exceptionDetails) {
-      throw new Error(
-        result.exceptionDetails.exception?.description ?? result.exceptionDetails.text ?? "CDP evaluation failed",
-      );
+    const objectId = context.result?.objectId;
+    if (!objectId) throw new Error("CDP did not provide a page execution context.");
+    try {
+      const result = (await send("Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration: `async function (...args) { const __name = (target) => target; return await (${fn.toString()})(...args); }`,
+        arguments: args.map((value) => ({ value })),
+        awaitPromise: true,
+        returnByValue: true,
+      })) as {
+        result?: { value?: Awaited<T> };
+        exceptionDetails?: { text?: string; exception?: { description?: string } };
+      };
+      if (result.exceptionDetails) {
+        throw new Error(
+          result.exceptionDetails.exception?.description ?? result.exceptionDetails.text ?? "CDP evaluation failed",
+        );
+      }
+      if (!result.result) throw new Error("CDP evaluation returned no result.");
+      return result.result.value as Awaited<T>;
+    } finally {
+      await send("Runtime.releaseObject", { objectId });
     }
-    if (typeof result.result?.value !== "string") {
-      throw new Error("CDP evaluation returned no JSON value.");
-    }
-    return JSON.parse(result.result.value) as Awaited<T>;
   }
 
   return {

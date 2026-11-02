@@ -13,11 +13,22 @@ export function applyCredentialedCors(
   if (typeof origin !== "string") {
     return true;
   }
+  // Credentialed CORS requires a serialized HTTP origin, never an opaque
+  // origin ("null") or a URL containing credentials, a path, or a fragment.
+  let parsedOrigin: URL;
+  try {
+    parsedOrigin = new URL(origin);
+  } catch {
+    return false;
+  }
+  if ((parsedOrigin.protocol !== "http:" && parsedOrigin.protocol !== "https:") || parsedOrigin.origin !== origin) {
+    return false;
+  }
   if (!options.isOriginAllowed(origin, request)) {
     return false;
   }
 
-  response.setHeader("Access-Control-Allow-Origin", origin);
+  response.setHeader("Access-Control-Allow-Origin", parsedOrigin.origin);
   response.setHeader("Access-Control-Allow-Credentials", "true");
   response.setHeader("Access-Control-Allow-Methods", options.allowedMethods.join(", "));
   response.setHeader(

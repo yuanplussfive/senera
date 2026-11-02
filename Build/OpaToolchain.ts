@@ -2,17 +2,20 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { sha256Hex } from "../Source/AgentSystem/Core/AgentHash.js";
+import { writeFileAtomicSync } from "../Source/AgentSystem/Core/AgentFs.js";
+
+const ArtifactPathSegmentSchema = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/u);
 
 const OpaArtifactSchema = z
   .object({
-    FileName: z.string().min(1),
+    FileName: ArtifactPathSegmentSchema,
     Sha256: z.string().regex(/^[a-f0-9]{64}$/u),
   })
   .strict();
 
 const OpaToolchainSchema = z
   .object({
-    Version: z.string().min(1),
+    Version: ArtifactPathSegmentSchema,
     Artifacts: z.record(z.string().min(1), OpaArtifactSchema),
   })
   .strict();
@@ -38,6 +41,7 @@ export async function resolveOpaCompilerBinary(workspaceRoot: string, toolchain:
     return configuredBinary;
   }
 
+  toolchain = OpaToolchainSchema.parse(toolchain);
   const artifact = resolvePlatformArtifact(toolchain);
   const targetPath = path.join(workspaceRoot, ...OpaCacheDirectory, toolchain.Version, artifact.FileName);
   if (isVerifiedArtifact(targetPath, artifact.Sha256)) {
@@ -58,14 +62,7 @@ export async function resolveOpaCompilerBinary(workspaceRoot: string, toolchain:
     throw new Error(`Pinned OPA ${toolchain.Version} failed SHA-256 verification.`);
   }
 
-  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-  const temporaryPath = `${targetPath}.${process.pid}.download`;
-  try {
-    fs.writeFileSync(temporaryPath, binary, { mode: 0o755 });
-    fs.renameSync(temporaryPath, targetPath);
-  } finally {
-    fs.rmSync(temporaryPath, { force: true });
-  }
+  writeFileAtomicSync(targetPath, binary, { mode: 0o755 });
   return targetPath;
 }
 
