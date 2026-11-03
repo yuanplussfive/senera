@@ -1,12 +1,11 @@
-import { lazy, memo, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { UploadAttachmentData } from "../../api/eventTypes";
+import type { SandboxStatusSnapshotData, UploadAttachmentData } from "../../api/eventTypes";
 import type {
   AgentActivationCatalogSnapshot,
   ExplicitActivationReference,
   ExplicitActivationSet,
 } from "../../api/eventTypes";
-import { WorkspaceMenu } from "../../shared/workspace/WorkspaceMenu";
 import { useWorkspaceResourceController } from "../../shared/workspace/WorkspaceResourceProvider";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -31,6 +30,7 @@ import {
   BrandIcon,
 } from "../../shared/ui";
 import { DesktopHostMenuItems } from "./DesktopHostMenuItems";
+import { ExecutionContextChip } from "./ExecutionContextChip";
 import { ChatModelSelector } from "./ChatModelSelector";
 import { composerControlClassName, composerIconControlClassName } from "./composerControls";
 import { AgentMenu } from "../agents/AgentMenu";
@@ -53,8 +53,6 @@ import {
   readActivationTokens,
   stepActivationIndex,
 } from "./ChatActivationPalette";
-
-const ApprovalModeControl = lazy(() => import("./ApprovalModeControl"));
 
 const DESKTOP_TEXTAREA_MAX_HEIGHT = 240;
 const TOUCH_TEXTAREA_MAX_HEIGHT = 160;
@@ -96,6 +94,7 @@ export interface ChatComposerProps {
     socketStatus: string;
     uploadUrl: string;
     uploadCsrfToken?: string;
+    sandboxStatus?: SandboxStatusSnapshotData | null;
   };
   runtimeUsage?: RuntimeUsageSnapshot;
   onSend: (
@@ -107,6 +106,8 @@ export interface ChatComposerProps {
   onCancel: () => void;
   onOpenSettings?: (section: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
   onOpenLocalClient?: () => void;
+  /** Where the boundary explanation lives; the chip links to it when it needs attention. */
+  onOpenExecutionPanel?: () => void;
   activationCatalog?: AgentActivationCatalogSnapshot | null;
 }
 
@@ -126,6 +127,7 @@ export const ChatComposer = memo(function ChatComposer({
   onCancel,
   onOpenSettings,
   onOpenLocalClient,
+  onOpenExecutionPanel,
   activationCatalog,
 }: ChatComposerProps): JSX.Element {
   const locale = useFrontendLocale();
@@ -541,7 +543,6 @@ export const ChatComposer = memo(function ChatComposer({
                       pendingAgentManagementRef.current = true;
                     }}
                   />
-                  <WorkspaceMenu onClose={() => setToolkitOpen(false)} />
                   <DesktopHostMenuItems />
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -583,29 +584,16 @@ export const ChatComposer = memo(function ChatComposer({
                   ) : null}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Suspense
-                fallback={
-                  <span
-                    className={cn(
-                      "inline-flex w-24 shrink-0 items-center justify-center text-content-muted",
-                      composerControlClassName(prefersCompactControls),
-                      prefersCompactControls && "w-11",
-                    )}
-                    role="status"
-                    aria-busy="true"
-                    aria-label={frontendMessage("ui.loading")}
-                  >
-                    <Spinner size="xs" />
-                  </span>
-                }
-              >
-                <ApprovalModeControl
-                  disabled={disabled || running || cancelling}
-                  mode={approvalConfig.mode}
-                  onSelect={approvalConfig.onSelectMode}
-                  prefersCompactControls={prefersCompactControls}
-                />
-              </Suspense>
+              <ExecutionContextChip
+                sandboxStatus={runtime.sandboxStatus}
+                approval={{
+                  disabled: disabled || running || cancelling,
+                  mode: approvalConfig.mode,
+                  onSelect: approvalConfig.onSelectMode,
+                }}
+                prefersCompactControls={prefersCompactControls}
+                onOpenExecutionPanel={onOpenExecutionPanel}
+              />
             </div>
 
             <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1" data-composer-trailing-controls>
@@ -618,8 +606,6 @@ export const ChatComposer = memo(function ChatComposer({
                 selectedThinkingLevel={modelConfig.selectedThinkingLevel}
                 onSelect={modelConfig.onSelectModelProvider}
                 onSelectThinkingLevel={modelConfig.onSelectThinkingLevel}
-                onUseDefault={modelConfig.onApplyDefaultModel}
-                onAddModel={modelConfig.onAddModel}
                 prefersCompactControls={prefersCompactControls}
               />
               {composerAction === "cancelling" ? (

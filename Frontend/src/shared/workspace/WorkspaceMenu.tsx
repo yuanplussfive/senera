@@ -1,5 +1,6 @@
 import { Tooltip } from "../ui/Tooltip";
-import { createContext, lazy, Suspense, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { WorkspaceMenuContext } from "./workspaceMenuContext";
 import { z } from "zod/mini";
 import { toast } from "sonner";
 import type { WorkspaceControllerHandle } from "../../app/useWorkspaceController";
@@ -44,14 +45,6 @@ const DirectoryFailureSchema = z.object({ error: z.object({ message: z.string() 
 const WorkspaceFileTree = lazy(() =>
   import("./WorkspaceFileTree").then((module) => ({ default: module.WorkspaceFileTree })),
 );
-const WorkspaceMenuContext = createContext<{
-  workspace: WorkspaceControllerHandle;
-  select: (root: string) => void;
-  forgetWorkspace: (workspaceId: AgentWorkspaceId) => Promise<void>;
-  openFolder: () => Promise<void>;
-  openPanel: () => void;
-  error?: string;
-} | null>(null);
 
 /** Keep folder selection and dirty-edit dialogs alive after the command menu closes. */
 export function WorkspaceMenuProvider({
@@ -227,7 +220,7 @@ export function WorkspaceMenuProvider({
           </form>
           <ScrollArea className="mt-2 min-h-0 flex-1" viewportClassName="overflow-x-hidden">
             {workspace.error || error ? (
-              <p role="alert" className="px-2 py-3 text-xs text-danger">
+              <p role="alert" className="px-2 py-3 text-xs text-brick-600">
                 {workspace.error?.message ?? error}
               </p>
             ) : null}
@@ -448,7 +441,7 @@ function WorkspaceMenuPanel({ onClose }: { onClose: () => void }): JSX.Element |
             </p>
           ) : null}
           {error ? (
-            <p role="alert" className="px-3 py-2 text-xs text-danger">
+            <p role="alert" className="px-3 py-2 text-xs text-brick-600">
               {error}
             </p>
           ) : null}

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { ModelProviderListItem, ModelThinkingLevel } from "../../api/eventTypes";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
-import { AppIcon, Button, InlineError, MenuSelect, Tooltip } from "../../shared/ui";
+import { AppIcon, InlineError, MenuSelect } from "../../shared/ui";
 import {
   AgentModelPlanningRequirements,
   readAgentModelRequirementIssues,
@@ -19,8 +19,6 @@ export function ChatModelSelector({
   selectedThinkingLevel,
   onSelect,
   onSelectThinkingLevel,
-  onUseDefault,
-  onAddModel,
   prefersCompactControls,
 }: {
   disabled: boolean;
@@ -30,8 +28,6 @@ export function ChatModelSelector({
   selectedThinkingLevel: ModelThinkingLevel | null;
   onSelect: (id: string) => void;
   onSelectThinkingLevel: (level: ModelThinkingLevel) => void;
-  onUseDefault?: () => void;
-  onAddModel?: () => void;
   prefersCompactControls: boolean;
 }): JSX.Element {
   const chatModels = useMemo(() => readChatModelProviders(models), [models]);
@@ -71,7 +67,7 @@ export function ChatModelSelector({
       <ModelSelect
         showSelectedIcon={false}
         value={selected?.id ?? ""}
-        disabled={disabled || (!options.length && !onAddModel)}
+        disabled={disabled || !options.length}
         ariaLabel={frontendMessage("chat.composer.selectModel")}
         placeholder={frontendMessage("chat.model.search")}
         side="top"
@@ -88,7 +84,7 @@ export function ChatModelSelector({
           composerControlClassName(prefersCompactControls),
           prefersCompactControls && "max-w-[176px]",
         )}
-        footer={(close) => (
+        footer={() => (
           <>
             {incompatibility ? <InlineError className="px-2 py-2">{incompatibility}</InlineError> : null}
             {levels.length > 1 ? (
@@ -109,39 +105,6 @@ export function ChatModelSelector({
                   }}
                   triggerClassName="w-auto min-w-24 border-0 bg-surface-subtle"
                 />
-              </div>
-            ) : null}
-            {onAddModel || (defaultModel && onUseDefault && selected?.id !== defaultModel.id) ? (
-              <div className="flex flex-wrap items-center justify-between gap-1 border-t border-line-subtle pt-1">
-                {defaultModel && onUseDefault && selected?.id !== defaultModel.id ? (
-                  <Tooltip content={defaultModel.model}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        close();
-                        onUseDefault();
-                      }}
-                    >
-                      {frontendMessage("chat.model.useDefault")}
-                    </Button>
-                  </Tooltip>
-                ) : (
-                  <span />
-                )}
-                {onAddModel ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      close();
-                      onAddModel();
-                    }}
-                  >
-                    <AppIcon icon="plus" size={14} />
-                    {frontendMessage("config.model.addModel")}
-                  </Button>
-                ) : null}
               </div>
             ) : null}
           </>

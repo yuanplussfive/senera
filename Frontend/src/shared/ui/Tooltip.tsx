@@ -42,14 +42,15 @@ export const Tooltip = forwardRef<HTMLButtonElement, TooltipProps>(
             collisionPadding={12}
             style={{ zIndex: layer }}
             className={cn(
-              "theme-tooltip inline-flex max-w-[min(24rem,calc(100vw-2rem))] items-center gap-2 whitespace-pre-line break-words rounded-md px-2.5 py-1.5 text-[11.5px] leading-5",
+              "theme-tooltip inline-flex max-w-[min(24rem,calc(100vw-2rem))] items-center gap-2 whitespace-pre-line break-words rounded-lg px-2.5 py-1.5 text-[12px] leading-4",
               "data-[state=delayed-open]:animate-fade-in",
               className,
             )}
           >
             {content}
-            {shortcut ? <span className="font-mono text-[10px] opacity-70">{shortcut}</span> : null}
-            <TooltipPrimitive.Arrow className="theme-tooltip__arrow" width={8} height={4} />
+            {shortcut ? (
+              <span className="ml-1 shrink-0 font-mono text-[10.5px] tracking-tight text-content-muted">{shortcut}</span>
+            ) : null}
           </TooltipPrimitive.Content>
         </TooltipPrimitive.Portal>
       </TooltipPrimitive.Root>

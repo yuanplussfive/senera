@@ -190,7 +190,7 @@ function QueuedMessageStatus({ message }: { message: ChatMessage }): JSX.Element
   if (admission?.status === "rejected") {
     return (
       <div
-        className="mt-1 flex max-w-full items-center justify-end gap-1.5 px-1 text-[10.5px] leading-4 text-danger"
+        className="mt-1 flex max-w-full items-center justify-end gap-1.5 px-1 text-[10.5px] leading-4 text-brick-600"
         role="status"
       >
         <AppIcon icon="alert-circle" size={12} aria-hidden />

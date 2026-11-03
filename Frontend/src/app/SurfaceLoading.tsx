@@ -1,4 +1,5 @@
-import { ChatLoadingHeader, ChatLoadingComposer, ChatLoadingRows } from "../shared/chat/ChatLoadingChrome";
+import { ChatLoadingHeader, ChatLoadingComposer } from "../shared/chat/ChatLoadingChrome";
+import { ConversationSkeleton } from "../features/chat/ConversationSkeleton";
 import { useRef } from "react";
 import { frontendMessage } from "../i18n/frontendMessageCatalog";
 import { cn } from "../lib/util";
@@ -45,8 +46,12 @@ export function ApplicationSurfaceLoading(): JSX.Element {
         <ChatLoadingHeader />
 
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-hidden" aria-hidden="true" data-application-loading-content>
-            <ChatLoadingRows />
+          <div
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+            aria-hidden="true"
+            data-application-loading-content
+          >
+            <ConversationSkeleton />
           </div>
 
           <ChatLoadingComposer data-application-loading-composer />

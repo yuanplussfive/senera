@@ -4,7 +4,7 @@ import { type ReactNode, forwardRef } from "react";
 import { cn } from "../../lib/util";
 import { useResponsiveMode } from "../responsive";
 import { metaLabelClassName } from "./MetaLabel";
-import { MenuItemContent, menuItemClassName, menuSeparatorClassName, menuSurfaceClassName } from "./MenuShared";
+import { MenuItemContent, menuItemClassName, menuSeparatorClassName, overlaySurfaceClassName } from "./MenuShared";
 
 export const ContextMenu = ContextMenuPrimitive.Root;
 export const ContextMenuTrigger = ContextMenuPrimitive.Trigger;
@@ -22,7 +22,7 @@ export const ContextMenuContent = forwardRef<HTMLDivElement, ContentProps>(
         <ContextMenuPrimitive.Content
           ref={ref}
           collisionPadding={collisionPadding}
-          className={cn(menuSurfaceClassName, "context-menu-surface", className)}
+          className={cn(overlaySurfaceClassName, "context-menu-surface", className)}
           style={{ ...style, zIndex: layer }}
           {...props}
         >

@@ -52,7 +52,7 @@ export function AgentMenu({ disabled, onManage }: { disabled: boolean; onManage:
         </DropdownMenuSubContent>
       </DropdownMenuSub>
       {controller?.error ? (
-        <p role="alert" className="px-2 py-1 text-xs text-danger">
+        <p role="alert" className="px-2 py-1 text-xs text-brick-600">
           {controller.error}
         </p>
       ) : null}

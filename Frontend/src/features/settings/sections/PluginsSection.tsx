@@ -161,7 +161,7 @@ export function PluginsSection({
             onChange={setFilter}
           />
           <div className="mb-1 flex min-w-0 basis-full sm:basis-auto">
-            <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-content-muted transition-colors focus-within:bg-surface-subtle focus-within:ring-2 focus-within:ring-accent-focus sm:w-52">
+            <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-content-muted transition-colors focus-within:bg-surface-subtle sm:w-52">
               <AppIcon icon="search" size={15} aria-hidden="true" />
               <input
                 value={search}

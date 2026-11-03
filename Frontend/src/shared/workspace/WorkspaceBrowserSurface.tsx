@@ -171,7 +171,7 @@ function WorkspaceAddressBar({
         </IconButton>
       </div>
       {invalid ? (
-        <p role="alert" className="px-3 pb-1.5 text-xs text-danger">
+        <p role="alert" className="px-3 pb-1.5 text-xs text-brick-600">
           {frontendMessage("workspace.browser.invalidAddress")}
         </p>
       ) : null}

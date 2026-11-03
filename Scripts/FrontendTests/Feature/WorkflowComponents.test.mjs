@@ -312,13 +312,12 @@ test("chat header leaves execution environment details to settings", () => {
   expect(screen.queryByRole("button", { name: frontendMessage("terminal.panel.open") })).not.toBeInTheDocument();
 });
 
-test("chat header keeps live run status as a flat activity line", () => {
-  renderWithFrontendProviders(React.createElement(ChatHeader, { title: "Focused conversation", runStatus: "running" }));
+test("chat header keeps the conversation title without live run status", () => {
+  renderWithFrontendProviders(React.createElement(ChatHeader, { title: "Focused conversation" }));
 
-  const status = document.querySelector("[data-chat-run-status='running']");
-  expect(status).toBeInTheDocument();
-  expect(status).not.toHaveClass("rounded-full", "border", "bg-moss-50");
-  expect(status?.querySelector("[data-execution-status-icon='running']")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Focused conversation" })).toBeVisible();
+  expect(document.querySelector("[data-chat-run-status]")).not.toBeInTheDocument();
+  expect(document.querySelector("[data-execution-status-icon]")).not.toBeInTheDocument();
 });
 
 test("persistent workflow panel owns its tool header and only collapse control", async () => {

@@ -68,6 +68,6 @@ export const TerminalSurfaceStyle = {
 /** Portals inherit application colors and share terminal semantic aliases. */
 export const TerminalOverlayStyle = {
   ...TerminalSurfaceStyle,
-  "--menu-surface-radius": "8px",
+  "--overlay-surface-radius": "8px",
   "--menu-item-radius": "4px",
 } as CSSProperties;

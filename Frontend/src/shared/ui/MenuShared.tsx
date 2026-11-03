@@ -1,8 +1,8 @@
 import { type ReactNode } from "react";
 import { cn } from "../../lib/util";
 
-export const menuSurfaceClassName =
-  "menu-surface min-w-[min(200px,var(--radix-popper-available-width))] max-w-[min(calc(100vw-16px),var(--radix-popper-available-width))] max-h-[var(--radix-popper-available-height)] overflow-y-auto overscroll-contain rounded-[var(--menu-surface-radius)] border border-line-subtle bg-surface-panel p-2 shadow-[var(--menu-surface-shadow)]";
+export const overlaySurfaceClassName =
+  "menu-surface min-w-[min(200px,var(--radix-popper-available-width))] max-w-[min(calc(100vw-16px),var(--radix-popper-available-width))] max-h-[var(--radix-popper-available-height)] overflow-y-auto overscroll-contain rounded-[var(--overlay-surface-radius)] border border-line-subtle bg-surface-panel p-2 shadow-[var(--overlay-surface-shadow)]";
 
 export function menuItemClassName({
   className,

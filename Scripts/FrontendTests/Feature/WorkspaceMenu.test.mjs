@@ -3,6 +3,7 @@ import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
+import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
 import { WorkspaceMenu, WorkspaceMenuProvider } from "../../../Frontend/src/shared/workspace/WorkspaceMenu.tsx";
 import {
   Button,
@@ -133,7 +134,7 @@ test("dirty workspace changes require confirmation before switching", async () =
   await user.click(screen.getByRole("tab", { name: "切换" }));
   await user.click(screen.getByRole("button", { name: /demo.*E:\/demo/ }));
   expect(workspace.switchWorkspace).not.toHaveBeenCalled();
-  const confirm = await screen.findByRole("button", { name: "放弃修改并打开" });
+  const confirm = await screen.findByRole("button", { name: frontendMessage("workspace.discardAndOpen") });
   await user.click(confirm);
   expect(workspace.switchWorkspace).toHaveBeenCalledWith("E:/demo");
 });

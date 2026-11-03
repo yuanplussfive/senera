@@ -65,7 +65,7 @@ export function AvatarCropDialog({
       >
         {crop ? <AvatarCropper crop={crop} image={image} onCropChange={setCrop} /> : null}
         {error ? (
-          <p role="alert" className="mt-4 text-xs text-danger">
+          <p role="alert" className="mt-4 text-xs text-brick-600">
             {error}
           </p>
         ) : null}

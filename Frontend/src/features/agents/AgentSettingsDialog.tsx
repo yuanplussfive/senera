@@ -274,7 +274,7 @@ function AgentForm({
         />
         <FormHint>{t("agents.presetHint")}</FormHint>
         {presetError ? (
-          <p role="alert" className="text-xs text-danger">
+          <p role="alert" className="text-xs text-brick-600">
             {presetError}
           </p>
         ) : null}
@@ -299,7 +299,7 @@ function AgentForm({
       </div>
       <FormHint>{t("agents.sessionHint")}</FormHint>
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-xs text-brick-600">
           {error}
         </p>
       ) : null}
@@ -308,7 +308,7 @@ function AgentForm({
           <Button
             variant="ghost"
             size="sm"
-            className="mr-auto text-danger"
+            className="mr-auto text-brick-600"
             disabled={busy}
             onClick={() => setConfirmDelete(true)}
           >
@@ -389,7 +389,7 @@ function AgentForm({
         >
           <p className="text-sm leading-6 text-content-secondary">{t("agents.deleteRisk")}</p>
           {error ? (
-            <p role="alert" className="mt-3 text-xs text-danger">
+            <p role="alert" className="mt-3 text-xs text-brick-600">
               {error}
             </p>
           ) : null}

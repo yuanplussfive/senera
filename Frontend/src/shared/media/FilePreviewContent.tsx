@@ -3,6 +3,7 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import type { FilePreviewDescriptor } from "../../lib/filePreview";
 import { cn } from "../../lib/util";
 import { AppIcon, Spinner } from "../ui";
+import { OpenWithDefaultAppButton } from "./OpenWithDefaultAppButton";
 
 const TextPreviewLimitBytes = 128 * 1024;
 const TextPreviewLimitCharacters = 16_000;
@@ -50,6 +51,7 @@ export function FilePreviewContent({
       <p className="max-w-md text-[11px] leading-5 text-content-muted">
         {frontendMessage("resource.downloadDescription")}
       </p>
+      <OpenWithDefaultAppButton name={name} source={source} variant="labeled" className="mt-1" />
     </div>
   );
 }

@@ -66,8 +66,9 @@ export function ChatPanel({
       socketStatus: runtime.socketStatus,
       uploadUrl: runtime.uploadUrl,
       uploadCsrfToken: runtime.uploadCsrfToken,
+      sandboxStatus: runtime.sandboxStatus,
     }),
-    [draftKey, runtime.socketStatus, runtime.uploadUrl, runtime.uploadCsrfToken],
+    [draftKey, runtime.socketStatus, runtime.uploadUrl, runtime.uploadCsrfToken, runtime.sandboxStatus],
   );
   const isRunning = currentRun?.status === "running";
   const isSettling = isRunning && (currentRun.outputState === "available" || currentRun.outputState === "committed");
@@ -87,10 +88,6 @@ export function ChatPanel({
       <main className="relative flex h-full min-w-0 flex-1 flex-col bg-transparent" data-agent-workspace>
         <ChatHeader
           title={session?.title ?? DEFAULT_SESSION_TITLE}
-          runStatus={currentRun?.status}
-          waitingForApproval={currentRun?.activeFlags?.includes("waiting_for_approval") === true}
-          waitingForInput={currentRun?.activeFlags?.includes("waiting_for_input") === true}
-          sandboxStatus={runtime.sandboxStatus}
           onOpenSessionPanel={navigationActions?.onOpenSessionPanel}
           onOpenWorkflowPanel={navigationActions?.onOpenWorkflowPanel}
         />
@@ -179,6 +176,7 @@ export function ChatPanel({
           onCancel={messageActions.onCancel}
           onOpenSettings={navigationActions?.onOpenSettings}
           onOpenLocalClient={navigationActions?.onOpenLocalClient}
+          onOpenExecutionPanel={navigationActions?.onOpenWorkflowPanel}
         />
       </main>
     </UploadPreviewProvider>

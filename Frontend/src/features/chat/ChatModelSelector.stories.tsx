@@ -70,7 +70,6 @@ function ModelSelectorExample({
         selectedThinkingLevel={level}
         onSelect={setSelectedId}
         onSelectThinkingLevel={setLevel}
-        onUseDefault={() => setSelectedId(availableModels[0].id)}
         disabled={false}
         prefersCompactControls={prefersCompactControls}
       />
@@ -93,6 +92,6 @@ export const IncompatibleSelection: Story = () => (
       },
     ]}
     initialModelId="local:changed-capabilities"
-    description="保留已选模型并展示不兼容原因。展开菜单后可以选择兼容模型或恢复为默认，不会自动替换当前选择。"
+    description="保留已选模型并展示不兼容原因。展开菜单后可以选择兼容模型，不会自动替换当前选择。"
   />
 );

@@ -190,7 +190,7 @@ export function ModelOptionsDialog({
       size="sm"
       variant="ghost"
       disabled={disabled || !isSaved}
-      className="gap-1.5 text-status-danger hover:text-status-danger"
+      className="gap-1.5 text-brick-600"
       onClick={() => {
         if (modelIndex !== null) onRemove(modelIndex);
       }}

@@ -1,0 +1,35 @@
+/* Conversation skeleton rows animate in without pulling a motion runtime into the
+   bootstrap chunk: the stagger is expressed with animation-delay set inline. */
+@keyframes senera-conversation-skeleton-row-in {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--skeleton-row-shift, 0px), 3px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes senera-conversation-skeleton-row-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+[data-skeleton-row][data-skeleton-motion="full"] {
+  animation: senera-conversation-skeleton-row-in var(--skeleton-row-duration, 160ms) ease-out both;
+}
+
+[data-skeleton-row][data-skeleton-motion="reduced"] {
+  animation: senera-conversation-skeleton-row-fade var(--skeleton-row-duration, 160ms) ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-skeleton-row] {
+    animation: none !important;
+  }
+}

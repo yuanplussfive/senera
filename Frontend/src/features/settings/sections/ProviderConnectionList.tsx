@@ -74,7 +74,7 @@ export function ProviderConnectionList({
                 ref={providerHover.getItemRef(index)}
                 key={provider.Id}
                 className={cn(
-                  "relative z-10 min-w-0 select-none rounded-md px-2 py-1.5 transition-colors",
+                  "relative z-10 grid min-w-0 select-none grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-md px-2 py-1.5 transition-colors",
                   disabled ? "cursor-default" : "cursor-pointer",
                   active
                     ? "text-ink-900"
@@ -83,6 +83,7 @@ export function ProviderConnectionList({
                         disableMotion ? "hover:bg-surface-hover" : "hover:bg-transparent",
                       ),
                 )}
+                onClick={disabled ? undefined : () => onSelect(provider)}
               >
                 {active ? (
                   <motion.span
@@ -97,7 +98,7 @@ export function ProviderConnectionList({
                   type="button"
                   disabled={disabled}
                   className={cn(
-                    "relative z-[1] grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-left disabled:pointer-events-none disabled:opacity-60",
+                    "relative z-[1] grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 text-left disabled:pointer-events-none disabled:opacity-60",
                     !enabled && "opacity-50",
                   )}
                   aria-label={frontendMessage("settings.provider.rowAria", {
@@ -106,7 +107,6 @@ export function ProviderConnectionList({
                     selected: active ? frontendMessage("settings.provider.selectedSuffix") : "",
                   })}
                   aria-pressed={active}
-                  onClick={() => onSelect(provider)}
                 >
                   <span
                     className={cn(
@@ -127,19 +127,20 @@ export function ProviderConnectionList({
                       </span>
                     </Tooltip>
                   </span>
-                  {disableReason ? (
-                    <DefaultModelProviderTag reason={disableReason} focusable={false} />
-                  ) : (
-                    <span className="flex h-8 w-5 shrink-0 items-center justify-center" aria-hidden="true">
-                      <span
-                        className={cn(
-                          "h-1.5 w-1.5 rounded-full",
-                          enabled ? "bg-content-secondary" : "bg-content-disabled",
-                        )}
-                      />
-                    </span>
-                  )}
                 </button>
+                {disableReason ? (
+                  <DefaultModelProviderTag reason={disableReason} focusable={false} />
+                ) : (
+                  <span className="flex h-8 w-5 shrink-0 items-center justify-center" aria-hidden="true">
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 rounded-full",
+                        // Availability is a fixed signal color: it must read the same under every accent theme.
+                        enabled ? "bg-[#72A0E9]" : "bg-content-disabled",
+                      )}
+                    />
+                  </span>
+                )}
               </div>
             );
           })}
