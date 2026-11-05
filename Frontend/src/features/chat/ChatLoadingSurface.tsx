@@ -1,4 +1,4 @@
-import { ChatLoadingComposer, ChatLoadingRows } from "../../shared/chat/ChatLoadingChrome";
+import { ChatLoadingComposer } from "../../shared/chat/ChatLoadingChrome";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { Skeleton } from "../../shared/ui";
 import { ConversationSkeleton } from "./ConversationSkeleton";

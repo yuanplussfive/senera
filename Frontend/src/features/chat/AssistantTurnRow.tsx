@@ -14,7 +14,7 @@ import { InteractionInputStrip } from "./InteractionInputStrip";
 import { MessageActions } from "./MessageActions";
 import { MessageFeedbackControl } from "./MessageFeedbackControl";
 import { MessageMetrics } from "./MessageMetrics";
-import { AssistantMessageAvatar, MessageFooter, MessageMeta } from "./MessageChrome";
+import { AssistantMessageAvatar, MessageMeta } from "./MessageChrome";
 import {
   MotionList,
   MotionListItem,
