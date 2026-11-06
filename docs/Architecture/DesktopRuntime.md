@@ -16,6 +16,16 @@ Electron 主进程负责窗口、托盘、IPC 和更新；工作区服务运行�
 
 窗口保留 `contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`。外链使用统一的外部 URL 策略，设置窗口保留现有就绪握手和未保存修改确认。
 
+### 用默认应用打开资源（`senera:file.open-external`）
+
+浏览器里预览不了的文件（docx、xlsx、压缩包等）只能靠系统默认应用打开，桌面端为此提供一条固定边界的通道：
+
+- renderer 用自己已认证的会话 `fetch` 取回资源字节，再把 `{ name, bytes }` 交给 main（`Frontend/src/app/desktopBridge.ts` 的 `openFileWithDefaultApp`）；
+- main 只做两件事：把字节写进 `%TEMP%\senera-opened-files\<安全文件名>`，然后 `shell.openPath`（`Apps/Desktop/DesktopExternalOpen.ts`，上限 64 MiB，`readDesktopExternalOpenRequest` 拒绝空载荷与非字节载荷）；
+- 文件名按 `path.basename` 收敛、过滤控制字符与 `<>:"/\|?*`、限长 100 字符并保留扩展名、避开 Windows 保留设备名，因此资源名无法把文件写到临时目录之外；同名资源每次重写同一个文件，不累积副本。
+
+main 不替 renderer 发网络请求、也不接收工作区路径，所以这条通道既不能变成请求伪造，也不暴露宿主文件系统。web 端没有该 bridge 时按钮不渲染，下载仍是唯一出口。
+
 ## 恢复与诊断
 
 - 渲染进程意外退出后原地恢复，保留 URL 中的工作区和设置位置；正常退出不触发恢复。
