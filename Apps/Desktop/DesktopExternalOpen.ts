@@ -1,4 +1,6 @@
 import path from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import type { IpcMainInvokeEvent } from "electron";
 
 /**
  * "Open with the default application" for a rendered resource.
@@ -86,4 +88,27 @@ export async function openDesktopExternalFile(
     return { ok: false, code: "open-failed" };
   }
   return { ok: true };
+}
+
+/**
+ * The IPC entry point. Kept here so `Main.ts` only names the channel and the
+ * payload rules stay next to the file-name rules they depend on.
+ */
+export async function openDesktopExternalFileFromRenderer(
+  event: IpcMainInvokeEvent,
+  payload: unknown,
+  resolveWindow: (event: IpcMainInvokeEvent) => unknown,
+  host: { readonly tempRoot: string; readonly openPath: (filePath: string) => Promise<string> },
+): Promise<DesktopExternalOpenResult> {
+  if (!resolveWindow(event)) return { ok: false, code: "blocked" };
+  const request = readDesktopExternalOpenRequest(payload);
+  if (!request) return { ok: false, code: "invalid-payload" };
+  return openDesktopExternalFile(request, {
+    tempRoot: host.tempRoot,
+    writeFile: async (filePath, bytes) => {
+      await mkdir(path.dirname(filePath), { recursive: true });
+      await writeFile(filePath, bytes);
+    },
+    openPath: host.openPath,
+  });
 }

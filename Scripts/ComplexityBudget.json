@@ -1,6 +1,17 @@
 {
-  "sourceRoots": ["Apps", "Build", "Frontend/src", "Scripts", "Source"],
-  "fileExtensions": [".ts", ".tsx", ".js", ".mjs"],
+  "sourceRoots": [
+    "Apps",
+    "Build",
+    "Frontend/src",
+    "Scripts",
+    "Source"
+  ],
+  "fileExtensions": [
+    ".ts",
+    ".tsx",
+    ".js",
+    ".mjs"
+  ],
   "ignoredGlobs": [
     "Dist/**",
     "node_modules/**",
@@ -114,7 +125,7 @@
     },
     {
       "path": "Scripts/FrontendTests/Feature/ChatCoreComponents.test.mjs",
-      "baselineLines": 1456,
+      "baselineLines": 1439,
       "owner": "frontend-platform",
       "splitTarget": "Split composer, panel, message list, and interaction ownership scenarios."
     },
@@ -162,7 +173,7 @@
     },
     {
       "path": "Frontend/src/shared/workspace/WorkspaceResourceWorkbench.tsx",
-      "baselineLines": 957,
+      "baselineLines": 951,
       "owner": "frontend-platform",
       "splitTarget": "Extract resource tree, editor state, and preview projection into focused workspace modules."
     },
@@ -215,14 +226,8 @@
       "splitTarget": "Extract window recovery, channel client windows, and desktop IPC registration into desktop lifecycle modules."
     },
     {
-      "path": "Frontend/src/App.tsx",
-      "baselineLines": 802,
-      "owner": "frontend-platform",
-      "splitTarget": "Extract lazy panel composition and terminal lifecycle hooks from application session wiring."
-    },
-    {
       "path": "Frontend/src/features/chat/ChatComposer.tsx",
-      "baselineLines": 926,
+      "baselineLines": 909,
       "owner": "frontend-platform",
       "splitTarget": "Extract context usage presentation and composer keyboard interaction into focused chat modules."
     },

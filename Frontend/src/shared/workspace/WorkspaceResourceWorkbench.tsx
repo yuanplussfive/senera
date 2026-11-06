@@ -16,7 +16,7 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { motionDurations } from "../../shared/motion";
 import { ImageCanvasViewer } from "../media/ImageCanvasViewer";
-import { OpenWithDefaultAppButton } from "../media/OpenWithDefaultAppButton";
+import { WorkspaceUnpreviewableResource } from "./WorkspaceUnpreviewableResource";
 import {
   AppIcon,
   Button,
@@ -835,25 +835,12 @@ function ResourceBody({
     );
   }
   return (
-    <div className="grid h-full place-items-center px-6 text-center">
-      <div className="max-w-md">
-        <AppIcon icon="file-text" size={28} className="mx-auto text-content-muted" />
-        <h3 className="mt-3 text-[14px] font-medium text-content-strong">
-          {resource.kind === "text"
-            ? frontendMessage("resource.textTooLarge")
-            : frontendMessage("resource.binaryTitle")}
-        </h3>
-        <p className="mt-1 text-[12px] leading-5 text-content-muted">
-          {frontendMessage("resource.downloadDescription")}
-        </p>
-        <OpenWithDefaultAppButton
-          name={resource.name}
-          source={buildWorkspaceResourceUrl(httpBaseUrl, locator.path, true)}
-          variant="labeled"
-          className="mt-3"
-        />
-      </div>
-    </div>
+    <WorkspaceUnpreviewableResource
+      httpBaseUrl={httpBaseUrl}
+      path={locator.path}
+      name={resource.name}
+      kind={resource.kind === "text" ? "text" : "binary"}
+    />
   );
 }
 
