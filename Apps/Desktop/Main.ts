@@ -1,4 +1,5 @@
 import path from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import {
   app,
@@ -54,6 +55,7 @@ import {
 import { DesktopUpdateService } from "./DesktopUpdateService.js";
 import type { DesktopUpdateSnapshot } from "./DesktopUpdateProtocol.js";
 import { DesktopHostIntegrationService, spawnDesktopProcessDetached } from "./DesktopHostIntegrationService.js";
+import { openDesktopExternalFile, readDesktopExternalOpenRequest } from "./DesktopExternalOpen.js";
 import { desktopHostIntegrationFailure } from "./DesktopHostIntegrationProtocol.js";
 import { readAgentProductMetadata } from "../../Source/AgentSystem/Core/AgentProductMetadata.js";
 import { resolveAgentWorkspaceConfigPath } from "../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
@@ -327,6 +329,19 @@ function registerDesktopIpc(): void {
   ipcMain.handle("senera:external-url.open", async (_event, input: string) => {
     const external = resolveAgentExternalUrl(input, DesktopExternalUrlPolicy);
     await shell.openExternal(external.url, { activate: true });
+  });
+  ipcMain.handle("senera:file.open-external", async (event, payload: unknown) => {
+    if (!resolveManagedWindow(event)) return { ok: false, code: "blocked" } as const;
+    const request = readDesktopExternalOpenRequest(payload);
+    if (!request) return { ok: false, code: "invalid-payload" } as const;
+    return openDesktopExternalFile(request, {
+      tempRoot: path.join(app.getPath("temp"), "senera-opened-files"),
+      writeFile: async (filePath, bytes) => {
+        await mkdir(path.dirname(filePath), { recursive: true });
+        await writeFile(filePath, bytes);
+      },
+      openPath: (filePath) => shell.openPath(filePath),
+    });
   });
   ipcMain.handle("senera:workspace.choose-folder", async (event) => {
     if (!resolveManagedWindow(event)) return null;

@@ -9,6 +9,7 @@ import { resolveFilePreview, type FilePreviewRenderKind } from "../../lib/filePr
 import { cn, formatFileSize } from "../../lib/util";
 import { useWorkspaceResourceController } from "../../shared/workspace/WorkspaceResourceProvider";
 import { AppIcon, IconButton, MetaLabel, Spinner } from "../../shared/ui";
+import { OpenWithDefaultAppButton } from "../../shared/media/OpenWithDefaultAppButton";
 import { Popover, PopoverAnchor, PopoverContent } from "../../shared/ui/Popover";
 import { FilePreviewRowIcon } from "../chat/FilePreviewIcon";
 import { PierreFilePreview, PierrePatchPreview } from "../../shared/code/PierreCodeView";
@@ -174,6 +175,14 @@ export function ToolResourceItem({
               >
                 <AppIcon icon="download" size={14} />
               </IconButton>
+            ) : null}
+            {source && kind === "file" ? (
+              <OpenWithDefaultAppButton
+                name={resource.name}
+                source={source}
+                size="sm"
+                className="h-7 w-7 shrink-0 rounded-md text-content-muted hover:bg-surface-hover hover:text-content-primary"
+              />
             ) : null}
           </header>
         </article>

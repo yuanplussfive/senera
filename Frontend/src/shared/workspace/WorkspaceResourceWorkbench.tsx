@@ -16,6 +16,7 @@ import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import { motionDurations } from "../../shared/motion";
 import { ImageCanvasViewer } from "../media/ImageCanvasViewer";
+import { OpenWithDefaultAppButton } from "../media/OpenWithDefaultAppButton";
 import {
   AppIcon,
   Button,
@@ -845,6 +846,12 @@ function ResourceBody({
         <p className="mt-1 text-[12px] leading-5 text-content-muted">
           {frontendMessage("resource.downloadDescription")}
         </p>
+        <OpenWithDefaultAppButton
+          name={resource.name}
+          source={buildWorkspaceResourceUrl(httpBaseUrl, locator.path, true)}
+          variant="labeled"
+          className="mt-3"
+        />
       </div>
     </div>
   );
