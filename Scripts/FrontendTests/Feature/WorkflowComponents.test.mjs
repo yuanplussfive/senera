@@ -63,7 +63,7 @@ test("completed run summary keeps disclosure semantics when motion is disabled",
   const trigger = document.querySelector("[data-ui-chrome] button[aria-expanded]");
   expect(trigger).toBeInstanceOf(HTMLButtonElement);
   expect(trigger).toHaveAttribute("aria-expanded", "false");
-  expect(trigger).toHaveAccessibleName("Thinking 2.0s");
+  expect(trigger).toHaveAccessibleName(frontendMessage("chat.metrics.elapsed", { duration: "2.0s" }));
   expect(trigger).not.toHaveTextContent("1 步");
 
   await user.click(trigger);
