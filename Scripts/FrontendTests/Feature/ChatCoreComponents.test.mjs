@@ -497,9 +497,8 @@ test("settling composer queues follow-up messages without exposing run interrupt
   expect(screen.queryByRole("button", { name: "cancel" })).not.toBeInTheDocument();
 });
 
-test("chat model selector keeps the current conversation choice and exposes the current default", async () => {
-  const onApplyDefaultModel = vi.fn();
-  const onAddModel = vi.fn();
+test("chat model selector keeps the current conversation choice", async () => {
+  const onSelectModelProvider = vi.fn();
   const user = userEvent.setup();
   renderWithFrontendProviders(
     withUploadPreviewProvider(
@@ -529,34 +528,23 @@ test("chat model selector keeps the current conversation choice and exposes the 
             ],
             selectedModelProviderId: "openai:gpt-4o",
             defaultModelProviderId: "anthropic:sonnet",
-            onSelectModelProvider: vi.fn(),
-            onApplyDefaultModel,
-            onAddModel,
+            onSelectModelProvider,
           },
         }),
       ),
     ),
   );
 
-  expect(screen.getByRole("combobox", { name: "选择模型" })).not.toHaveClass("focus:ring-2");
   expect(document.querySelector("[data-composer-trailing-controls]")).toContainElement(
     document.querySelector("[data-composer-model-selector]"),
   );
+  const trigger = screen.getByRole("button", { name: "选择模型" });
+  expect(trigger).toHaveTextContent("gpt-4o");
 
-  await user.click(screen.getByRole("combobox", { name: "选择模型" }));
-  expect(screen.getByRole("listbox", { name: "选择模型" })).toBeVisible();
-  expect(screen.getByRole("option", { name: /claude-sonnet.*默认/ })).toBeInTheDocument();
-  const search = screen.getByRole("combobox", { name: "选择模型" });
-  await user.clear(search);
-  await user.type(search, "sonnet");
-  expect(screen.getAllByRole("option")).toHaveLength(1);
-  expect(screen.getByRole("option", { name: /claude-sonnet/ })).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "恢复为默认" }));
-  expect(onApplyDefaultModel).toHaveBeenCalledTimes(1);
-
-  await user.click(screen.getByRole("combobox", { name: "选择模型" }));
-  await user.click(screen.getByRole("button", { name: "添加模型" }));
-  expect(onAddModel).toHaveBeenCalledTimes(1);
+  await user.click(trigger);
+  expect(screen.getByRole("menuitem", { name: "gpt-4o" })).toBeInTheDocument();
+  await user.click(screen.getByRole("menuitem", { name: "claude-sonnet" }));
+  expect(onSelectModelProvider).toHaveBeenCalledWith("anthropic:sonnet");
 });
 
 test("chat model selector keeps reasoning levels in the model menu", async () => {
@@ -592,16 +580,13 @@ test("chat model selector keeps reasoning levels in the model menu", async () =>
   );
 
   expect(document.querySelector("[data-composer-thinking-selector]")).toBeNull();
-  await user.click(screen.getByRole("combobox", { name: "选择模型" }));
-  expect(screen.getByText("推理等级")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "推理等级: low" }));
-  expect(screen.getByRole("menuitemradio", { name: "low" })).toBeChecked();
-  await user.click(screen.getByRole("menuitemradio", { name: "深度" }));
+  await user.click(screen.getByRole("button", { name: "选择模型" }));
+  expect(screen.getByRole("menuitem", { name: /推理等级/ })).toBeInTheDocument();
+  await user.keyboard("{ArrowDown}{ArrowDown}{ArrowRight}{ArrowDown}{ArrowDown}{Enter}");
   expect(onSelectThinkingLevel).toHaveBeenCalledWith("high");
 });
 
-test("chat model selector stays available for adding the first model", async () => {
-  const onAddModel = vi.fn();
+test("chat model selector reports that no model is configured", async () => {
   const user = userEvent.setup();
   renderWithFrontendProviders(
     withUploadPreviewProvider(
@@ -612,17 +597,15 @@ test("chat model selector stays available for adding the first model", async () 
             modelProviders: [],
             selectedModelProviderId: null,
             onSelectModelProvider: vi.fn(),
-            onAddModel,
           },
         }),
       ),
     ),
   );
 
-  await user.click(screen.getByRole("combobox", { name: "选择模型" }));
+  await user.click(screen.getByRole("button", { name: "选择模型" }));
   expect(screen.getByText("还没有添加模型")).toBeVisible();
-  await user.click(screen.getByRole("button", { name: "添加模型" }));
-  expect(onAddModel).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole("menuitem", { name: "添加模型" })).toBeNull();
 });
 
 test("chat panel fills the composer from an empty-state suggestion without sending", async () => {

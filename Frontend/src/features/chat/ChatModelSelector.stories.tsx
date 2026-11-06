@@ -70,7 +70,6 @@ function ModelSelectorExample({
         selectedThinkingLevel={level}
         onSelect={setSelectedId}
         onSelectThinkingLevel={setLevel}
-        onUseDefault={() => setSelectedId(availableModels[0].id)}
         disabled={false}
         prefersCompactControls={prefersCompactControls}
       />

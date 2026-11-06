@@ -1,6 +1,9 @@
 import { createContext } from "react";
 import type { WorkspaceControllerHandle } from "../../app/useWorkspaceController";
-import type { AgentWorkspaceId } from "../../../../Source/AgentSystem/WorkspaceResources/AgentWorkspaceCatalogContract";
+import type {
+  AgentWorkspaceDescriptor,
+  AgentWorkspaceId,
+} from "../../../../Source/AgentSystem/WorkspaceResources/AgentWorkspaceCatalogContract";
 
 /**
  * The workspace surface is provided once by `WorkspaceMenuProvider` and read by
@@ -11,8 +14,8 @@ export interface WorkspaceMenuHandle {
   workspace: WorkspaceControllerHandle;
   select: (root: string) => void;
   forgetWorkspace: (workspaceId: AgentWorkspaceId) => Promise<void>;
+  requestForget: (descriptor: AgentWorkspaceDescriptor) => void;
   openFolder: () => Promise<void>;
-  openPanel: () => void;
   error?: string;
 }
 

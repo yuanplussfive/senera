@@ -7,7 +7,6 @@ import type {
   ExplicitActivationSet,
   SandboxStatusSnapshotData,
 } from "../../api/eventTypes";
-import { WorkspaceMenu } from "../../shared/workspace/WorkspaceMenu";
 import { ExecutionContextChip } from "../../shared/workspace/ExecutionContextChip";
 import { useWorkspaceResourceController } from "../../shared/workspace/WorkspaceResourceProvider";
 import { cn } from "../../lib/util";
@@ -542,7 +541,6 @@ export const ChatComposer = memo(function ChatComposer({
                       pendingAgentManagementRef.current = true;
                     }}
                   />
-                  <WorkspaceMenu onClose={() => setToolkitOpen(false)} />
                   <DesktopHostMenuItems />
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -605,8 +603,6 @@ export const ChatComposer = memo(function ChatComposer({
                 selectedThinkingLevel={modelConfig.selectedThinkingLevel}
                 onSelect={modelConfig.onSelectModelProvider}
                 onSelectThinkingLevel={modelConfig.onSelectThinkingLevel}
-                onUseDefault={modelConfig.onApplyDefaultModel}
-                onAddModel={modelConfig.onAddModel}
                 prefersCompactControls={prefersCompactControls}
               />
               {composerAction === "cancelling" ? (

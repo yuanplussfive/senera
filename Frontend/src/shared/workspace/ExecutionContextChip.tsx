@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useState } from "react";
 import { ExecutionApprovalModes, type ExecutionApprovalMode } from "../../api/executionApprovalMode";
 import type { SandboxStatusSnapshotData } from "../../api/eventTypes";
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
@@ -16,6 +16,7 @@ import {
   type AppIconName,
 } from "../ui";
 import { sandboxStatusDetail } from "../../features/sandbox/sandboxPreparationPresentation";
+import { WorkspaceSwitcher } from "./WorkspaceMenu";
 import { WorkspaceMenuContext } from "./WorkspaceMenuContext";
 
 const ApprovalModePresentation = {
@@ -84,6 +85,7 @@ export function ExecutionContextChip({
   onOpenExecutionPanel,
 }: ExecutionContextChipProps): JSX.Element {
   const menu = useContext(WorkspaceMenuContext);
+  const [contextOpen, setContextOpen] = useState(false);
 
   const snapshot = menu?.workspace.snapshot;
   const active = snapshot?.workspaces.find((entry) => entry.id === snapshot.workspaceId);
@@ -101,27 +103,50 @@ export function ExecutionContextChip({
       data-execution-context
     >
       {menu ? (
-        <button
-          type="button"
-          data-execution-context-part="workspace"
-          aria-label={frontendMessage("execution.context.workspaceAria", { name: workspaceName })}
-          title={snapshot?.workspaceRoot}
-          onClick={() => menu.openPanel()}
-          className={cn(
-            "group inline-flex h-8 min-w-0 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-content-secondary transition-colors hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-            prefersCompactControls && "h-11",
-          )}
-        >
-          <AppIcon icon="folder" size={14} className="shrink-0 text-content-muted" aria-hidden="true" />
-          {switching ? (
-            <Spinner size="xs" />
-          ) : (
-            <>
-              <span className="max-w-[7.5rem] truncate">{workspaceName}</span>
-              <AppIcon icon="chevron-down" size={10} className="shrink-0 text-content-muted" aria-hidden="true" />
-            </>
-          )}
-        </button>
+        <Popover open={contextOpen} onOpenChange={setContextOpen}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              data-execution-context-part="workspace"
+              aria-label={frontendMessage("execution.context.workspaceAria", { name: workspaceName })}
+              className={cn(
+                "group inline-flex h-8 min-w-0 items-center gap-1.5 rounded-md px-2 text-[12px] font-medium text-content-secondary transition-colors hover:bg-surface-hover data-[state=open]:bg-surface-muted focus-visible:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
+                prefersCompactControls && "h-11",
+              )}
+            >
+              <AppIcon icon="folder" size={14} className="shrink-0 text-content-muted" aria-hidden="true" />
+              {switching ? (
+                <Spinner size="xs" />
+              ) : (
+                <>
+                  <span className="max-w-[7.5rem] truncate" title={snapshot?.workspaceRoot}>
+                    {workspaceName}
+                  </span>
+                  <AppIcon
+                    icon="chevron-down"
+                    size={10}
+                    className="shrink-0 text-content-muted transition-transform group-data-[state=open]:rotate-180"
+                    aria-hidden="true"
+                  />
+                </>
+              )}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            side="top"
+            sideOffset={6}
+            className="w-[min(22rem,calc(100vw-2rem))] p-1"
+            // A pointer gesture that starts inside the switcher must not dismiss this
+            // popover: Radix acts on the document `pointerdown` that precedes the click.
+            onInteractOutside={(event) => {
+              const target = event.detail.originalEvent.target;
+              if (target instanceof Element && target.closest("[data-workspace-switcher]")) event.preventDefault();
+            }}
+          >
+            <WorkspaceSwitcher onClose={() => setContextOpen(false)} />
+          </PopoverContent>
+        </Popover>
       ) : null}
 
       {/* Status, not a picker: one icon, a colored label, and the explanation on

@@ -66,12 +66,16 @@ test("chat keeps its selected model clean and nested reasoning choices remain in
       onSelectThinkingLevel: onLevel,
     }),
   );
-  const input = screen.getByRole("combobox");
-  expect(input.parentElement.parentElement.querySelector("img")).toBeNull();
-  await user.click(input);
-  expect(screen.getByRole("option").querySelector("img")).toHaveAttribute("src", "/profile/logo.png");
-  await user.click(screen.getByRole("button", { name: /推理等级/ }));
-  await user.click(screen.getByRole("menuitemradio", { name: "high" }));
+  const trigger = screen.getByRole("button", { name: "选择模型" });
+  expect(trigger.querySelector("img")).toBeNull();
+  expect(trigger).toHaveTextContent("Custom model");
+  await user.click(trigger);
+  expect(screen.getByRole("menuitem", { name: /Custom model/ }).querySelector("img")).toHaveAttribute(
+    "src",
+    "/profile/logo.png",
+  );
+  expect(screen.getByRole("menuitem", { name: /推理等级/ })).toBeInTheDocument();
+  await user.keyboard("{ArrowDown}{ArrowDown}{ArrowRight}{ArrowDown}{ArrowDown}{Enter}");
   expect(onLevel).toHaveBeenCalledWith("high");
 });
 
