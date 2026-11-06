@@ -132,9 +132,11 @@ export function ProviderConnectionList({
                   ) : (
                     <span className="flex h-8 w-5 shrink-0 items-center justify-center" aria-hidden="true">
                       <span
+                        data-provider-availability={provider.Id}
                         className={cn(
                           "h-1.5 w-1.5 rounded-full",
-                          enabled ? "bg-content-secondary" : "bg-content-disabled",
+                          // Availability is a fixed signal color: it must read the same under every accent theme.
+                          enabled ? "bg-[#72A0E9]" : "bg-content-disabled",
                         )}
                       />
                     </span>

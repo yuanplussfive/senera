@@ -56,7 +56,7 @@ export const DropdownMenuContent = forwardRef<HTMLDivElement, ContentProps>(
           align={align}
           sideOffset={sideOffset}
           collisionPadding={collisionPadding}
-          className={cn(menuSurfaceClassName, "dropdown-menu-surface", className)}
+          className={cn(overlaySurfaceClassName, "dropdown-menu-surface", className)}
           style={{ ...style, zIndex: layer }}
           onPointerDown={(event) => {
             onPointerDown?.(event);
@@ -132,7 +132,7 @@ export const DropdownMenuSubContent = forwardRef<HTMLDivElement, SubContentProps
           sideOffset={sideOffset}
           alignOffset={alignOffset}
           collisionPadding={collisionPadding}
-          className={cn(menuSurfaceClassName, "dropdown-menu-surface", className)}
+          className={cn(overlaySurfaceClassName, "dropdown-menu-surface", className)}
           style={{ ...style, zIndex: layer }}
           onPointerDown={(event) => {
             onPointerDown?.(event);

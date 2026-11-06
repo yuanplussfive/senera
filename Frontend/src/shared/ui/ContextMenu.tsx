@@ -22,7 +22,7 @@ export const ContextMenuContent = forwardRef<HTMLDivElement, ContentProps>(
         <ContextMenuPrimitive.Content
           ref={ref}
           collisionPadding={collisionPadding}
-          className={cn(menuSurfaceClassName, "context-menu-surface", className)}
+          className={cn(overlaySurfaceClassName, "context-menu-surface", className)}
           style={{ ...style, zIndex: layer }}
           {...props}
         >
