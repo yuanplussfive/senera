@@ -1,12 +1,14 @@
-import { lazy, memo, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { UploadAttachmentData } from "../../api/eventTypes";
 import type {
   AgentActivationCatalogSnapshot,
   ExplicitActivationReference,
   ExplicitActivationSet,
+  SandboxStatusSnapshotData,
 } from "../../api/eventTypes";
 import { WorkspaceMenu } from "../../shared/workspace/WorkspaceMenu";
+import { ExecutionContextChip } from "../../shared/workspace/ExecutionContextChip";
 import { useWorkspaceResourceController } from "../../shared/workspace/WorkspaceResourceProvider";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -54,8 +56,6 @@ import {
   stepActivationIndex,
 } from "./ChatActivationPalette";
 
-const ApprovalModeControl = lazy(() => import("./ApprovalModeControl"));
-
 const DESKTOP_TEXTAREA_MAX_HEIGHT = 240;
 const TOUCH_TEXTAREA_MAX_HEIGHT = 160;
 const ACTIVE_LAYER_SELECTOR = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]';
@@ -96,6 +96,7 @@ export interface ChatComposerProps {
     socketStatus: string;
     uploadUrl: string;
     uploadCsrfToken?: string;
+    sandboxStatus?: SandboxStatusSnapshotData | null;
   };
   runtimeUsage?: RuntimeUsageSnapshot;
   onSend: (
@@ -583,29 +584,15 @@ export const ChatComposer = memo(function ChatComposer({
                   ) : null}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Suspense
-                fallback={
-                  <span
-                    className={cn(
-                      "inline-flex w-24 shrink-0 items-center justify-center text-content-muted",
-                      composerControlClassName(prefersCompactControls),
-                      prefersCompactControls && "w-11",
-                    )}
-                    role="status"
-                    aria-busy="true"
-                    aria-label={frontendMessage("ui.loading")}
-                  >
-                    <Spinner size="xs" />
-                  </span>
-                }
-              >
-                <ApprovalModeControl
-                  disabled={disabled || running || cancelling}
-                  mode={approvalConfig.mode}
-                  onSelect={approvalConfig.onSelectMode}
-                  prefersCompactControls={prefersCompactControls}
-                />
-              </Suspense>
+              <ExecutionContextChip
+                sandboxStatus={runtime.sandboxStatus}
+                approval={{
+                  mode: approvalConfig.mode,
+                  disabled: disabled || running || cancelling,
+                  onSelect: approvalConfig.onSelectMode,
+                }}
+                prefersCompactControls={prefersCompactControls}
+              />
             </div>
 
             <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1" data-composer-trailing-controls>

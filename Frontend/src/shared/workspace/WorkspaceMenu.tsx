@@ -1,5 +1,5 @@
 import { Tooltip } from "../ui/Tooltip";
-import { createContext, lazy, Suspense, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { z } from "zod/mini";
 import { toast } from "sonner";
 import type { WorkspaceControllerHandle } from "../../app/useWorkspaceController";
@@ -32,6 +32,7 @@ import {
   TabsContent,
 } from "../ui";
 import { useWorkspaceResourceController } from "./WorkspaceResourceProvider";
+import { WorkspaceMenuContext } from "./WorkspaceMenuContext";
 
 const DirectorySchema = z.object({
   path: z.string(),
@@ -44,14 +45,6 @@ const DirectoryFailureSchema = z.object({ error: z.object({ message: z.string() 
 const WorkspaceFileTree = lazy(() =>
   import("./WorkspaceFileTree").then((module) => ({ default: module.WorkspaceFileTree })),
 );
-const WorkspaceMenuContext = createContext<{
-  workspace: WorkspaceControllerHandle;
-  select: (root: string) => void;
-  forgetWorkspace: (workspaceId: AgentWorkspaceId) => Promise<void>;
-  openFolder: () => Promise<void>;
-  openPanel: () => void;
-  error?: string;
-} | null>(null);
 
 /** Keep folder selection and dirty-edit dialogs alive after the command menu closes. */
 export function WorkspaceMenuProvider({

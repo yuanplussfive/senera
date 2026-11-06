@@ -66,8 +66,9 @@ export function ChatPanel({
       socketStatus: runtime.socketStatus,
       uploadUrl: runtime.uploadUrl,
       uploadCsrfToken: runtime.uploadCsrfToken,
+      sandboxStatus: runtime.sandboxStatus,
     }),
-    [draftKey, runtime.socketStatus, runtime.uploadUrl, runtime.uploadCsrfToken],
+    [draftKey, runtime.socketStatus, runtime.uploadUrl, runtime.uploadCsrfToken, runtime.sandboxStatus],
   );
   const isRunning = currentRun?.status === "running";
   const isSettling = isRunning && (currentRun.outputState === "available" || currentRun.outputState === "committed");
