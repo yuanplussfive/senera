@@ -1,11 +1,12 @@
+import { LayoutGroup } from "framer-motion";
+import { useId, useRef, type KeyboardEvent } from "react";
 import { AppIcon, IconButton, ScrollArea, StateView } from "../../shared/ui";
+import { FluidHoverHighlight, MotionList, MotionListItem, useFluidHover, useMotionLevel } from "../../shared/motion";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import type { SessionListEntry } from "../../store/selectors/chatSelectors";
-import { EmptyState } from "./SessionRows";
-import { SessionChannelList } from "./SessionChannelList";
+import { EmptyState, SessionRow } from "./SessionRows";
 import { SessionChannelFilterMenu, type SessionChannelFilter } from "./SessionChrome";
-import type { KeyboardEvent } from "react";
 
 interface SessionPanelBodyProps {
   compactFrame?: boolean;
@@ -60,7 +61,15 @@ export function SessionPanelBody({
   onDeleteSelected,
   onHoverSessionChange,
 }: SessionPanelBodyProps): JSX.Element {
+  const { disableMotion } = useMotionLevel();
+  const listRef = useRef<HTMLDivElement>(null);
+  // The active row already paints an opaque surface; the hover layer must not
+  // animate a second rect underneath it.
+  const sessionHover = useFluidHover(listRef, { axis: "y" });
+  const selectionGroupId = useId();
+  const activeIndex = sessions.findIndex((session) => session.sessionId === activeSessionId);
   const visibleSelectedCount = sessions.filter((session) => selectedSessionIds.has(session.sessionId)).length;
+  const visibleIds = sessions.map((session) => session.sessionId);
 
   const handleListKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     const target = event.target;
@@ -195,22 +204,47 @@ export function SessionPanelBody({
                   description={frontendMessage("session.searchEmpty")}
                 />
               ) : null}
-              <SessionChannelList
-                sessions={sessions}
-                activeSessionId={activeSessionId}
-                revealAll={Boolean(query.trim()) || selectionMode}
-                selectionMode={selectionMode}
-                selectedSessionIds={selectedSessionIds}
-                selectedSessionCount={selectedSessionCount}
-                onSelectSession={onSelectSession}
-                onToggleSessionSelection={onToggleSessionSelection}
-                onEnterSelectionMode={onEnterSelectionMode}
-                onClearSelection={onClearSelection}
-                onDeleteSelected={onDeleteSelected}
-                onRenameSession={onRenameSession}
-                onDeleteSession={onDeleteSession}
-                onHoverSessionChange={onHoverSessionChange}
-              />
+              <div ref={listRef} className="relative" data-session-list {...sessionHover.handlers}>
+                <FluidHoverHighlight
+                  hover={sessionHover}
+                  hidden={disableMotion || sessionHover.activeIndex === activeIndex}
+                  className="rounded-[10px]"
+                  data-session-fluid-hover
+                />
+                <LayoutGroup id={selectionGroupId}>
+                  <MotionList className="flex flex-col gap-1 pt-0">
+                    {sessions.map((session, index) => (
+                      <MotionListItem key={session.sessionId} initial={false}>
+                        <SessionRow
+                          index={index}
+                          registerItem={sessionHover.registerItem}
+                          fluidHoverEnabled={!disableMotion}
+                          active={session.sessionId === activeSessionId}
+                          sessionId={session.sessionId}
+                          title={session.title}
+                          accent={session.accent}
+                          selectionMode={selectionMode}
+                          selected={selectedSessionIds.has(session.sessionId)}
+                          selectionCount={selectedSessionCount}
+                          onClick={() => onSelectSession(session.sessionId)}
+                          onToggleSelected={(shift) =>
+                            onToggleSessionSelection(session.sessionId, { shift, order: visibleIds })
+                          }
+                          onEnterSelectionMode={() => onEnterSelectionMode(session.sessionId)}
+                          onClearSelection={onClearSelection}
+                          onDeleteSelected={onDeleteSelected}
+                          onRename={(returnFocus) => onRenameSession(session, returnFocus)}
+                          onClose={(returnFocus) => onDeleteSession(session, returnFocus)}
+                          onFocus={() => {
+                            sessionHover.setActiveIndex(index);
+                            onHoverSessionChange(session.sessionId);
+                          }}
+                        />
+                      </MotionListItem>
+                    ))}
+                  </MotionList>
+                </LayoutGroup>
+              </div>
             </>
           )}
         </div>

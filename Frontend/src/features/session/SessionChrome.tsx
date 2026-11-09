@@ -1,5 +1,4 @@
-import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { SessionChannelMessageKeys } from "./sessionChannelPresentation";
+import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import { DesktopReleaseChannelBadge } from "../../app/DesktopReleaseChannelBadge";
 import type { EventSourceChannel } from "../../api/eventTypes";
 import { cn } from "../../lib/util";
@@ -17,6 +16,17 @@ import {
 } from "../../shared/ui";
 
 export type SessionChannelFilter = "all" | EventSourceChannel;
+
+/** Labels for every scope the filter can take; `all` is the unscoped list. */
+const SessionChannelMessageKeys = {
+  all: "session.channel.all",
+  console: "session.channel.console",
+  qq: "session.channel.qq",
+  telegram: "session.channel.telegram",
+  discord: "session.channel.discord",
+  onebot11: "session.channel.onebot11",
+  onebot: "session.channel.onebot",
+} as const satisfies Record<"all" | EventSourceChannel, FrontendMessageKey>;
 
 interface SessionHeaderProps {
   collapsed?: boolean;

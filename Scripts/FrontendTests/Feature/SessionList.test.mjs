@@ -116,103 +116,24 @@ test("session panel renders store sessions and selects a row", async () => {
   expect(document.querySelectorAll("[data-session-row]")).toHaveLength(2);
 });
 
-test("channel groups and their conversations follow latest activity, including timezone offsets", () => {
-  const records = {
-    consoleOld: { ...session("consoleOld", "控制台旧对话"), updatedAt: "2026-10-25T12:00:00+08:00" },
-    qqOld: { ...session("qqOld", "QQ 旧对话"), channel: { platform: "onebot11" }, updatedAt: "2026-10-25T03:00:00Z" },
-    qqNew: { ...session("qqNew", "QQ 新对话"), channel: { platform: "onebot11" }, updatedAt: "2026-10-25T05:00:00Z" },
-  };
-  resetSessionStore({ sessions: records, sessionOrder: Object.keys(records), activeSessionId: "consoleOld" });
-  renderWithFrontendProviders(React.createElement(SessionList, createProps()));
-  const channels = () =>
-    Array.from(document.querySelectorAll("[data-session-channel]")).map((node) => node.dataset.sessionChannel);
-  const rows = () => Array.from(document.querySelectorAll("[data-session-row]")).map((node) => node.dataset.sessionRow);
-  expect(channels()).toEqual(["onebot11", "console"]);
-  expect(rows()).toEqual(["qqNew", "qqOld", "consoleOld"]);
-  act(() =>
-    useStore.setState((state) => {
-      state.sessions.consoleOld.updatedAt = "2026-10-25T06:00:00Z";
-    }),
-  );
-  expect(channels()).toEqual(["console", "onebot11"]);
-  expect(rows()).toEqual(["consoleOld", "qqNew", "qqOld"]);
-});
-
-test("channel previews keep the active conversation, expand with the keyboard and reveal all search matches", async () => {
+test("lists every session in catalog order and narrows it by search", async () => {
   const user = userEvent.setup();
   const records = Object.fromEntries(
     Array.from({ length: 8 }, (_, index) => {
       const id = `chat-${index}`;
-      return [
-        id,
-        { ...session(id, `项目讨论 ${index}`), updatedAt: new Date(Date.UTC(2026, 9, 25, 12 - index)).toISOString() },
-      ];
+      return [id, session(id, `Project note ${index}`)];
     }),
   );
   resetSessionStore({ sessions: records, sessionOrder: Object.keys(records), activeSessionId: "chat-7" });
   renderWithFrontendProviders(React.createElement(SessionList, createProps()));
-  const rows = () => document.querySelectorAll("[data-session-row]");
-  expect(rows()).toHaveLength(5);
-  expect(screen.getByRole("button", { name: "打开会话：项目讨论 7" })).toBeVisible();
-  const expand = screen.getByRole("button", { name: "展开其余 3 个对话" });
-  expand.focus();
-  await user.keyboard("{Enter}");
-  expect(rows()).toHaveLength(8);
-  await user.click(screen.getByRole("button", { name: "收起对话" }));
-  expect(rows()).toHaveLength(5);
-  await user.type(screen.getByRole("searchbox"), "项目讨论");
-  expect(rows()).toHaveLength(8);
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.searchClear") }));
-  expect(rows()).toHaveLength(5);
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.startSelection") }));
-  expect(rows()).toHaveLength(8);
-  await user.click(screen.getByRole("checkbox", { name: frontendMessage("session.selectVisible") }));
-  expect(screen.getByText(frontendMessage("session.selectedCount", { count: 8 }))).toBeVisible();
-});
+  const rows = () =>
+    Array.from(document.querySelectorAll("[data-session-row]")).map((node) => node.dataset.sessionRow);
 
-test("channel collapse survives empty search results, bulk selection and background activity", async () => {
-  const user = userEvent.setup();
-  resetSessionStore({
-    sessions: {
-      console: session("console", "项目讨论"),
-      local: { ...session("local", "本地对话"), channel: { platform: "onebot11" } },
-    },
-    sessionOrder: ["console", "local"],
-    activeSessionId: "console",
-  });
-  renderWithFrontendProviders(React.createElement(SessionList, createProps()));
-  const collapse = () => screen.getByRole("button", { name: "收起主控台的对话" });
-  const expand = () => screen.getByRole("button", { name: "展开主控台的对话" });
-  const local = document.querySelector('[data-session-channel="onebot11"]');
-  await user.click(collapse());
-  expect(expand()).toHaveAttribute("aria-expanded", "false");
-  expect(local.querySelector("h3 button")).toHaveAttribute("aria-expanded", "true");
-  const hiddenList = document.getElementById(expand().getAttribute("aria-controls"));
-  expect(hiddenList).toHaveAttribute("inert");
-  expect(hiddenList).toHaveAttribute("aria-hidden", "true");
-
-  await user.type(screen.getByRole("searchbox"), "没有这个标题");
-  expect(screen.queryByRole("button", { name: "打开会话：项目讨论" })).not.toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.searchClear") }));
-  expect(expand()).toHaveAttribute("aria-expanded", "false");
-  await user.type(screen.getByRole("searchbox"), "项目讨论");
-  expect(collapse()).toHaveAttribute("aria-expanded", "true");
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.searchClear") }));
-  expect(expand()).toHaveAttribute("aria-expanded", "false");
-
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.startSelection") }));
-  expect(collapse()).toHaveAttribute("aria-expanded", "true");
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.cancelSelection") }));
-  expect(expand()).toHaveAttribute("aria-expanded", "false");
-  act(() =>
-    useStore.setState((state) => {
-      state.sessions.console.runs = [{ requestId: "background", status: "running" }];
-    }),
-  );
-  expect(expand()).toHaveAttribute("aria-expanded", "false");
-  expand().focus();
-  await user.keyboard("{Enter}");
-  expect(collapse()).toHaveAttribute("aria-expanded", "true");
+  expect(rows()).toEqual(Object.keys(records));
+  await user.type(screen.getByRole("searchbox"), "note 3");
+  expect(screen.getByRole("searchbox")).toHaveValue("note 3");
+  // Removed rows animate out, so the list settles on the next frames.
+  await waitFor(() => expect(rows()).toEqual(["chat-3"]));
 });
 
 test("hides a session after the backend confirms that its history is missing", () => {
