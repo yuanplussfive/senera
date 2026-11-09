@@ -133,17 +133,6 @@ export function SessionPanelBody({
           ) : null}
         </label>
         <SessionChannelFilterMenu value={channelFilter} onChange={onChannelFilterChange} />
-        {totalSessionCount > 0 ? (
-          <IconButton
-            label={frontendMessage(selectionMode ? "session.cancelSelection" : "session.startSelection")}
-            tooltip={frontendMessage(selectionMode ? "session.cancelSelection" : "session.startSelection")}
-            size="md"
-            tone={selectionMode ? "primary" : "muted"}
-            onClick={onToggleSelectionMode}
-          >
-            <AppIcon icon={selectionMode ? "close" : "list-checks"} className="h-4 w-4" />
-          </IconButton>
-        ) : null}
       </div>
 
       {selectionMode ? (
@@ -183,6 +172,15 @@ export function SessionPanelBody({
             onClick={onDeleteSelected}
           >
             <AppIcon icon="trash" className="h-3.5 w-3.5" />
+          </IconButton>
+          <IconButton
+            label={frontendMessage("session.cancelSelection")}
+            tooltip={frontendMessage("session.cancelSelection")}
+            size="sm"
+            tone="muted"
+            onClick={onToggleSelectionMode}
+          >
+            <AppIcon icon="close" className="h-3.5 w-3.5" />
           </IconButton>
         </div>
       ) : null}

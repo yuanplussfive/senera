@@ -6,7 +6,6 @@ import { useResponsiveMode } from "../../shared/responsive";
 import {
   ContextMenu,
   ContextMenuContent,
-  ContextMenuLabel,
   ContextMenuTrigger,
   ActivityStatusIcon,
   AppIcon,
@@ -110,7 +109,7 @@ export function SessionRow({
     }
     actions.push({
       id: "delete",
-      label: frontendMessage("session.deleteHistory"),
+      label: frontendMessage("session.delete"),
       icon: <AppIcon icon="trash" className="h-3.5 w-3.5" />,
       destructive: true,
       onSelect: () => {
@@ -223,7 +222,6 @@ export function SessionRow({
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="min-w-[196px]">
-        <ContextMenuLabel>{frontendMessage("session.actions")}</ContextMenuLabel>
         <ContextSessionMenuItems actions={actions} separateLast />
       </ContextMenuContent>
     </ContextMenu>

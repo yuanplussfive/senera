@@ -209,12 +209,7 @@ test("selects the visible sessions and confirms bulk deletion", async () => {
   });
   renderWithFrontendProviders(React.createElement(SessionList, createProps({ onCloseSessions })));
 
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.startSelection") }));
-  await user.click(
-    screen.getByRole("checkbox", {
-      name: frontendMessage("session.selectConversation", { title: "Frontend refactor" }),
-    }),
-  );
+  await enterSelectionMode(user, "Frontend refactor");
   await user.type(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") }), "provider");
   await waitFor(() => expect(screen.queryByText("Frontend refactor")).not.toBeInTheDocument());
   await user.click(screen.getByRole("checkbox", { name: frontendMessage("session.selectVisible") }));
@@ -272,7 +267,7 @@ test("keeps failed bulk-delete requests selected for retry", async () => {
   });
   renderWithFrontendProviders(React.createElement(SessionList, createProps({ onCloseSessions })));
 
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.startSelection") }));
+  await enterSelectionMode(user, "Queued deletion");
   await user.click(screen.getByRole("checkbox", { name: frontendMessage("session.selectVisible") }));
   await user.click(screen.getByRole("button", { name: frontendMessage("session.deleteSelected") }));
   await user.click(screen.getByRole("button", { name: frontendMessage("session.deleteSelectedConfirm") }));
@@ -331,8 +326,7 @@ test("shift-click extends the selection over the visible order", async () => {
   const checkbox = (title) =>
     screen.getByRole("checkbox", { name: frontendMessage("session.selectConversation", { title }) });
 
-  await user.click(screen.getByRole("button", { name: frontendMessage("session.startSelection") }));
-  await user.click(checkbox("Frontend refactor"));
+  await enterSelectionMode(user, "Frontend refactor");
   await user.keyboard("{Shift>}");
   await user.click(checkbox("Release notes"));
   await user.keyboard("{/Shift}");
@@ -503,6 +497,12 @@ function session(sessionId, title) {
     messages: [],
     runs: [],
   };
+}
+
+/** Selection mode has no toolbar button; it starts from a row's context menu. */
+async function enterSelectionMode(user, title) {
+  fireEvent.contextMenu(screen.getByRole("button", { name: frontendMessage("session.open", { title }) }));
+  await user.click(await screen.findByRole("menuitem", { name: frontendMessage("session.enterSelectionMode") }));
 }
 
 function installDesktopMatchMedia() {
