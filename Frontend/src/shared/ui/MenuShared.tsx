@@ -18,7 +18,9 @@ export function menuItemClassName({
     "transition-[background-color,color,transform] duration-[var(--menu-item-dur)] ease-[var(--menu-item-ease)] active:scale-[0.985] motion-reduce:active:scale-100",
     isCoarsePointer && "min-h-11",
     "text-content-primary data-[highlighted]:bg-surface-hover/60 data-[highlighted]:text-content-primary",
-    destructive && "text-content-secondary data-[highlighted]:bg-surface-hover/60 data-[highlighted]:text-brick-600",
+    // Destructive items say so before the pointer arrives; the highlight only
+    // deepens the tone instead of introducing it.
+    destructive && "text-brick-600 data-[highlighted]:bg-brick-50 data-[highlighted]:text-brick-700",
     "data-[disabled]:pointer-events-none data-[disabled]:opacity-45",
     className,
   );
@@ -47,7 +49,7 @@ export function MenuItemContent({
           className={cn(
             "grid h-[18px] w-[18px] shrink-0 place-items-center text-content-muted transition-colors duration-[var(--menu-item-dur)]",
             "group-data-[highlighted]:text-content-primary",
-            destructive && "text-content-muted group-data-[highlighted]:text-brick-600",
+            destructive && "text-brick-500 group-data-[highlighted]:text-brick-700",
           )}
         >
           {icon}
@@ -62,4 +64,8 @@ export function MenuItemContent({
   );
 }
 
-export const menuSeparatorClassName = "mx-2 my-1 h-px bg-line-subtle";
+/**
+ * Spans the same box as a row highlight. The menu already pads its content, so
+ * an extra horizontal inset would make the rule shorter than the items it splits.
+ */
+export const menuSeparatorClassName = "my-1 h-px bg-line-subtle";
