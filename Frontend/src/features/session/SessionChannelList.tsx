@@ -15,10 +15,15 @@ interface SessionChannelListProps {
   revealAll: boolean;
   selectionMode: boolean;
   selectedSessionIds: ReadonlySet<string>;
+  selectedSessionCount: number;
   onSelectSession: (id: string) => void;
-  onToggleSessionSelection: (id: string) => void;
+  onToggleSessionSelection: (id: string, options?: { shift?: boolean; order?: readonly string[] }) => void;
+  onEnterSelectionMode: (id: string) => void;
+  onClearSelection: () => void;
+  onDeleteSelected: () => void;
   onRenameSession: (session: SessionListEntry, returnFocus: HTMLElement | null) => void;
   onDeleteSession: (session: SessionListEntry, returnFocus: HTMLElement | null) => void;
+  onHoverSessionChange: (sessionId: string | null) => void;
 }
 
 export function SessionChannelList({
@@ -27,10 +32,15 @@ export function SessionChannelList({
   revealAll,
   selectionMode,
   selectedSessionIds,
+  selectedSessionCount,
   onSelectSession,
   onToggleSessionSelection,
+  onEnterSelectionMode,
+  onClearSelection,
+  onDeleteSelected,
   onRenameSession,
   onDeleteSession,
+  onHoverSessionChange,
 }: SessionChannelListProps): JSX.Element {
   const [expandedChannels, setExpandedChannels] = useState<ReadonlySet<EventSourceChannel>>(() => new Set());
   const [collapsedChannels, setCollapsedChannels] = useState<ReadonlySet<EventSourceChannel>>(() => new Set());
@@ -41,6 +51,7 @@ export function SessionChannelList({
     visible: visibleChannelSessions(group, revealAll || expandedChannels.has(group.channel), activeSessionId),
   }));
   const visibleEntries = visibleGroups.flatMap((group) => group.visible);
+  const visibleIds = visibleEntries.map((session) => session.sessionId);
   const indices = new Map(visibleEntries.map((session, index) => [session.sessionId, index]));
   const listRef = useRef<HTMLDivElement>(null);
   const hover = useFluidHover(listRef, { axis: "y", requireContainment: true, gapClick: false });
@@ -119,11 +130,20 @@ export function SessionChannelList({
                         accent={session.accent}
                         selectionMode={selectionMode}
                         selected={selectedSessionIds.has(session.sessionId)}
+                        selectionCount={selectedSessionCount}
                         onClick={() => onSelectSession(session.sessionId)}
-                        onToggleSelected={() => onToggleSessionSelection(session.sessionId)}
+                        onToggleSelected={(shift) =>
+                          onToggleSessionSelection(session.sessionId, { shift, order: visibleIds })
+                        }
+                        onEnterSelectionMode={() => onEnterSelectionMode(session.sessionId)}
+                        onClearSelection={onClearSelection}
+                        onDeleteSelected={onDeleteSelected}
                         onRename={(returnFocus) => onRenameSession(session, returnFocus)}
                         onClose={(returnFocus) => onDeleteSession(session, returnFocus)}
-                        onFocus={() => hover.setActiveIndex(index)}
+                        onFocus={() => {
+                          hover.setActiveIndex(index);
+                          onHoverSessionChange(session.sessionId);
+                        }}
                       />
                     );
                   })}

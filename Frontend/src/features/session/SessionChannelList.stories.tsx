@@ -40,10 +40,15 @@ export const Channels = () => {
             revealAll={Boolean(query)}
             selectionMode={false}
             selectedSessionIds={new Set()}
+            selectedSessionCount={0}
             onSelectSession={setActive}
             onToggleSessionSelection={() => {}}
+            onEnterSelectionMode={() => {}}
+            onClearSelection={() => {}}
+            onDeleteSelected={() => {}}
             onRenameSession={() => {}}
             onDeleteSession={() => {}}
+            onHoverSessionChange={() => {}}
           />
         </ScrollArea>
       </aside>

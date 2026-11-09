@@ -16,7 +16,7 @@ import {
   LogoWordmark,
 } from "../../shared/ui";
 
-type SessionChannelFilter = "all" | EventSourceChannel;
+export type SessionChannelFilter = "all" | EventSourceChannel;
 
 interface SessionHeaderProps {
   collapsed?: boolean;
@@ -26,8 +26,6 @@ interface SessionHeaderProps {
    * Hidden surfaces must drop the attribute or they keep swallowing clicks.
    */
   dragRegion?: boolean;
-  channelFilter: SessionChannelFilter;
-  onChannelFilterChange: (value: SessionChannelFilter) => void;
   onNewSession: () => void;
   onToggleSidebar: () => void;
 }
@@ -36,8 +34,6 @@ export function SessionHeader({
   collapsed = false,
   compactFrame = false,
   dragRegion = true,
-  channelFilter,
-  onChannelFilterChange,
   onNewSession,
   onToggleSidebar,
 }: SessionHeaderProps): JSX.Element {
@@ -53,20 +49,9 @@ export function SessionHeader({
         data-session-rail-header
         data-session-header
       >
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label="Senera"
-              className="grid h-8 w-8 place-items-center rounded-lg text-content-primary transition-colors duration-150 hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
-            >
-              <LogoMark size={18} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="right" className="min-w-[226px]">
-            <SessionChannelMenu value={channelFilter} onChange={onChannelFilterChange} />
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <span className="grid h-8 w-8 place-items-center text-content-primary" aria-hidden="true">
+          <LogoMark size={18} />
+        </span>
 
         <div className="flex flex-col gap-1">
           <IconButton
@@ -108,30 +93,17 @@ export function SessionHeader({
       data-window-drag-region={dragRegion || undefined}
       data-session-header
     >
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            className={cn(
-              "group flex h-8 min-w-0 flex-1 items-center gap-2 rounded-[9px] px-1.5 text-[13px] font-semibold text-content-primary transition-colors duration-150 hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus",
-              isCoarsePointer && "min-h-11",
-            )}
-          >
-            <span className="inline-flex min-w-0 items-center gap-2">
-              <LogoMark size={18} />
-              <LogoWordmark className="truncate" />
-              <DesktopReleaseChannelBadge />
-            </span>
-            <AppIcon
-              icon="chevron-down"
-              className="ml-auto h-3.5 w-3.5 shrink-0 text-content-muted transition-transform duration-150 group-data-[state=open]:rotate-180"
-            />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="min-w-[226px]">
-          <SessionChannelMenu value={channelFilter} onChange={onChannelFilterChange} />
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <div
+        className={cn(
+          "flex h-8 min-w-0 flex-1 items-center gap-2 px-1.5 text-[13px] font-semibold text-content-primary",
+          isCoarsePointer && "min-h-11",
+        )}
+        data-session-brand
+      >
+        <LogoMark size={18} />
+        <LogoWordmark className="truncate" />
+        <DesktopReleaseChannelBadge />
+      </div>
 
       <div className="flex items-center gap-1">
         <IconButton
@@ -164,29 +136,48 @@ export function SessionHeader({
   );
 }
 
-function SessionChannelMenu({
+/**
+ * Channel scope for the session list. It belongs beside the search field
+ * because it narrows the same collection; the title bar no longer owns it.
+ */
+export function SessionChannelFilterMenu({
   value,
   onChange,
 }: {
   value: SessionChannelFilter;
   onChange: (value: SessionChannelFilter) => void;
 }): JSX.Element {
+  const active = value !== "all";
   return (
-    <>
-      <DropdownMenuLabel>{frontendMessage("session.channel.filter")}</DropdownMenuLabel>
-      {(Object.keys(SessionChannelMessageKeys) as SessionChannelFilter[]).map((option) => (
-        <DropdownMenuItem
-          key={option}
-          icon={
-            <span className="grid h-3.5 w-3.5 place-items-center" aria-hidden="true">
-              {option === value ? <AppIcon icon="check" size={14} /> : null}
-            </span>
-          }
-          onSelect={() => onChange(option)}
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <IconButton
+          label={frontendMessage("session.channel.filter")}
+          tooltip={frontendMessage("session.channel.filter")}
+          tooltipSide="bottom"
+          size="md"
+          tone={active ? "primary" : "muted"}
+          aria-haspopup="menu"
         >
-          {frontendMessage(SessionChannelMessageKeys[option])}
-        </DropdownMenuItem>
-      ))}
-    </>
+          <AppIcon icon="filter" className="h-4 w-4" />
+        </IconButton>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[180px]">
+        <DropdownMenuLabel>{frontendMessage("session.channel.filter")}</DropdownMenuLabel>
+        {(Object.keys(SessionChannelMessageKeys) as SessionChannelFilter[]).map((option) => (
+          <DropdownMenuItem
+            key={option}
+            icon={
+              <span className="grid h-3.5 w-3.5 place-items-center" aria-hidden="true">
+                {option === value ? <AppIcon icon="check" size={14} /> : null}
+              </span>
+            }
+            onSelect={() => onChange(option)}
+          >
+            {frontendMessage(SessionChannelMessageKeys[option])}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

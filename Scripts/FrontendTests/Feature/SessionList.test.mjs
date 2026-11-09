@@ -368,7 +368,7 @@ test("keeps failed bulk-delete requests selected for retry", async () => {
   expect(screen.getByRole("button", { name: frontendMessage("session.cancelSelection") })).toBeVisible();
 });
 
-test("moves channel filtering into the Senera menu", async () => {
+test("keeps channel filtering beside the search field", async () => {
   const user = userEvent.setup();
   const first = session("first", "Frontend refactor");
   const second = session("second", "QQ support");
@@ -380,21 +380,54 @@ test("moves channel filtering into the Senera menu", async () => {
   });
   renderWithFrontendProviders(React.createElement(SessionList, createProps()));
 
-  await user.click(screen.getByRole("button", { name: "Senera" }));
+  expect(screen.queryByRole("button", { name: "Senera" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.channel.filter") }));
 
   expect(screen.getByRole("menuitem", { name: frontendMessage("session.channel.all") })).toBeVisible();
   expect(screen.getByRole("menuitem", { name: frontendMessage("session.channel.qq") })).toBeVisible();
-  expect(
-    screen.queryByRole("button", {
-      name: `${frontendMessage("session.channel.filter")}: ${frontendMessage("session.channel.all")}`,
-    }),
-  ).not.toBeInTheDocument();
 
   await user.click(screen.getByRole("menuitem", { name: frontendMessage("session.channel.qq") }));
   await waitFor(() => {
     expect(screen.queryByText("Frontend refactor")).not.toBeInTheDocument();
     expect(screen.getByText("QQ support")).toBeVisible();
   });
+});
+
+test("shift-click extends the selection over the visible order", async () => {
+  const user = userEvent.setup();
+  resetSessionStore({
+    sessions: {
+      first: session("first", "Frontend refactor"),
+      second: session("second", "Provider settings"),
+      third: session("third", "Release notes"),
+      fourth: session("fourth", "Deployment notes"),
+    },
+    sessionOrder: ["first", "second", "third", "fourth"],
+    activeSessionId: "first",
+  });
+  renderWithFrontendProviders(React.createElement(SessionList, createProps()));
+
+  const checkbox = (title) =>
+    screen.getByRole("checkbox", { name: frontendMessage("session.selectConversation", { title }) });
+
+  await user.click(screen.getByRole("button", { name: frontendMessage("session.startSelection") }));
+  await user.click(checkbox("Frontend refactor"));
+  await user.keyboard("{Shift>}");
+  await user.click(checkbox("Release notes"));
+  await user.keyboard("{/Shift}");
+
+  expect(checkbox("Frontend refactor")).toBeChecked();
+  expect(checkbox("Provider settings")).toBeChecked();
+  expect(checkbox("Release notes")).toBeChecked();
+  expect(checkbox("Deployment notes")).not.toBeChecked();
+  expect(screen.getByText(frontendMessage("session.selectedCount", { count: 3 }))).toBeVisible();
+
+  // The count keeps reporting rows the current filter hides.
+  await user.type(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") }), "release");
+  await waitFor(() => expect(screen.queryByText("Provider settings")).not.toBeInTheDocument());
+  expect(
+    screen.getByText(frontendMessage("session.selectedCountHidden", { count: 2 })),
+  ).toBeVisible();
 });
 
 test("switches profile preferences and keeps settings last", async () => {
