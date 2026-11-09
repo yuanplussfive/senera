@@ -52,6 +52,7 @@ export function SessionHeader({
   const headerActionTouchSafe = !compactHeaderActions;
 
   if (collapsed) {
+    const expandLabel = frontendMessage("session.headerExpand");
     return (
       <div
         className="flex shrink-0 flex-col items-center gap-1.5 px-1 pt-3"
@@ -59,9 +60,37 @@ export function SessionHeader({
         data-session-rail-header
         data-session-header
       >
-        <span className="grid h-8 w-8 place-items-center text-content-primary" aria-hidden="true">
-          <LogoMark size={18} />
-        </span>
+        {/* The brand mark sits where the expand action used to be: hovering or focusing it reveals the action. */}
+        <IconButton
+          label={expandLabel}
+          size="md"
+          tone="muted"
+          tooltip={expandLabel}
+          tooltipSide="right"
+          tooltipShortcut="⌘B"
+          onClick={onToggleSidebar}
+          touchSafe={headerActionTouchSafe}
+          data-session-rail-expand
+          className="group/brand"
+        >
+          <span className="relative grid h-[18px] w-[18px] place-items-center">
+            {supportsHover ? (
+              <LogoMark
+                size={18}
+                className="absolute transition-opacity duration-150 group-hover/brand:opacity-0 group-focus-visible/brand:opacity-0"
+              />
+            ) : null}
+            <AppIcon
+              icon="panel-left-open"
+              className={cn(
+                "h-4 w-4 transition-opacity duration-150",
+                supportsHover
+                  ? "absolute opacity-0 group-hover/brand:opacity-100 group-focus-visible/brand:opacity-100"
+                  : "opacity-100",
+              )}
+            />
+          </span>
+        </IconButton>
 
         <div className="flex flex-col gap-1">
           <IconButton
@@ -75,19 +104,6 @@ export function SessionHeader({
             touchSafe={headerActionTouchSafe}
           >
             <AppIcon icon="new-session" className="h-4 w-4" />
-          </IconButton>
-          <IconButton
-            label={frontendMessage("session.headerExpand")}
-            size="md"
-            tone="muted"
-            tooltip={frontendMessage("session.headerExpand")}
-            tooltipSide="right"
-            tooltipShortcut="⌘B"
-            onClick={onToggleSidebar}
-            touchSafe={headerActionTouchSafe}
-            data-session-rail-expand
-          >
-            <AppIcon icon="panel-left-open" className="h-4 w-4" />
           </IconButton>
         </div>
       </div>

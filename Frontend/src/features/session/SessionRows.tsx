@@ -71,7 +71,6 @@ export function SessionRow({
       id: "delete-selected",
       label: frontendMessage("session.deleteSelectedMenu", { count: selectionCount }),
       icon: <AppIcon icon="trash" className="h-3.5 w-3.5" />,
-      destructive: true,
       onSelect: () => {
         pendingDialogActionRef.current = () => onDeleteSelected();
       },
@@ -111,7 +110,6 @@ export function SessionRow({
       id: "delete",
       label: frontendMessage("session.delete"),
       icon: <AppIcon icon="trash" className="h-3.5 w-3.5" />,
-      destructive: true,
       onSelect: () => {
         pendingDialogActionRef.current = () => onClose(selectionFocusRef.current);
       },
@@ -222,7 +220,7 @@ export function SessionRow({
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="min-w-[196px]">
-        <ContextSessionMenuItems actions={actions} separateLast />
+        <ContextSessionMenuItems actions={actions} />
       </ContextMenuContent>
     </ContextMenu>
   );
