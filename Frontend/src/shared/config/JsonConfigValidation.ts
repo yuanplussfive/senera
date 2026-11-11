@@ -4,6 +4,7 @@ import {
   isJsonConfigObject,
   isJsonConfigFieldVisible,
   readDraftOrEffectiveValue,
+  readEffectiveArrayItem,
   readRelativeItemPath,
   readValueAtPath,
   sameOptionValue,
@@ -108,14 +109,14 @@ function validateArrayItem(field: ConfigFormFieldData, value: unknown, index: nu
   const itemType = field.itemType ?? "string";
   if (itemType === "table") {
     if (!isJsonConfigObject(value)) return [frontendMessage("config.validation.objectExpected", { label: itemLabel })];
-    const effectiveItems = Array.isArray(field.effectiveValue) ? field.effectiveValue : [];
-    const effectiveItem = isJsonConfigObject(effectiveItems[index]) ? effectiveItems[index] : {};
+    const effectiveItem = readEffectiveArrayItem(field, value, index);
     return (field.itemFields ?? []).flatMap((itemField) => {
       const relativePath = readRelativeItemPath(field.path, itemField.path);
+      const inheritedValue = readValueAtPath(effectiveItem, relativePath);
       return validateJsonConfigField(
         itemField,
         readValueAtPath(value, relativePath) ??
-          readValueAtPath(effectiveItem, relativePath) ??
+          (inheritedValue === "" ? undefined : inheritedValue) ??
           itemField.effectiveValue,
         value,
         field.path,

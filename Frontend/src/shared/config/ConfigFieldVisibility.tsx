@@ -25,7 +25,7 @@ export function ConfigFieldVisibilityControl({
   onChange: (value: ConfigFieldVisibility) => void;
 }): JSX.Element | null {
   const essentialCount = filterConfigFields(fields, "essential").length;
-  if (fields.length === essentialCount) return null;
+  if (essentialCount === 0 || fields.length === essentialCount) return null;
 
   const options: Array<{ value: ConfigFieldVisibility; label: string; count: number }> = [
     {

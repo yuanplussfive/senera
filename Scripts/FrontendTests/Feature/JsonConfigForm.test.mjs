@@ -131,6 +131,76 @@ test("optional object children become required only when their parent is present
   ]);
 });
 
+test("table items inherit effective values by label instead of array position", () => {
+  const sections = [
+    {
+      name: "models",
+      label: "Models",
+      fields: [
+        {
+          path: ["Providers"],
+          label: "Providers",
+          type: "array",
+          itemType: "table",
+          itemLabelPath: ["Id"],
+          effectiveValue: [
+            { Id: "catalog", Icon: "", ApiKey: "" },
+            { Id: "custom", Icon: "custom-icon", ApiKey: "" },
+          ],
+          itemFields: [
+            { path: ["Providers", "Id"], label: "Provider ID", type: "string" },
+            { path: ["Providers", "Icon"], label: "Icon", type: "string", required: false, minLength: 1 },
+            { path: ["Providers", "ApiKey"], label: "API Key", type: "string", required: false, minLength: 1 },
+          ],
+        },
+      ],
+    },
+  ];
+
+  expect(validateJsonConfigDraft(sections, { Providers: [{ Id: "custom" }] })).toEqual([]);
+  expect(validateJsonConfigDraft(sections, { Providers: [{ Id: "custom", ApiKey: "" }] })).toEqual([
+    "API Key 不能为空",
+  ]);
+});
+
+test("table item controls show effective values of the matching label", () => {
+  render(
+    React.createElement(JsonConfigSettingsView, {
+      sections: [
+        {
+          name: "models",
+          label: "Models",
+          fields: [
+            {
+              path: ["Providers"],
+              label: "Providers",
+              type: "array",
+              itemType: "table",
+              itemLabelPath: ["Id"],
+              effectiveValue: [
+                { Id: "catalog", Icon: "openai" },
+                { Id: "custom", Icon: "custom-icon" },
+              ],
+              addLabel: "添加供应商",
+              defaultItem: { Id: "" },
+              essential: true,
+              itemFields: [
+                { path: ["Providers", "Id"], label: "Provider ID", type: "string", essential: true },
+                { path: ["Providers", "Icon"], label: "Icon", type: "string", essential: true },
+              ],
+            },
+          ],
+        },
+      ],
+      value: { Providers: [{ Id: "custom" }] },
+      onChange: vi.fn(),
+    }),
+  );
+
+  expect(screen.getByDisplayValue("custom-icon")).toBeInTheDocument();
+  expect(screen.queryByDisplayValue("openai")).not.toBeInTheDocument();
+});
+
 test("settings form updates boolean, option, number, array, and record controls", async () => {
   const onChange = vi.fn();
   const user = userEvent.setup();
@@ -223,6 +293,43 @@ test("settings use declared essential visibility independently from required val
 
   expect(screen.getByText("Optional value")).toBeVisible();
   expect(screen.queryByText("可选")).not.toBeInTheDocument();
+});
+
+test("settings without essential fields open on all fields and hide the empty filter", () => {
+  render(
+    React.createElement(JsonConfigSettingsView, {
+      sections: [
+        {
+          name: "retention",
+          label: "Retention",
+          fields: [
+            {
+              path: ["Artifacts", "RetentionHours"],
+              label: "Artifact retention",
+              type: "number",
+              effectiveValue: 168,
+              required: false,
+              essential: false,
+            },
+            {
+              path: ["Uploads", "RetentionHours"],
+              label: "Upload retention",
+              type: "number",
+              effectiveValue: 72,
+              required: false,
+              essential: false,
+            },
+          ],
+        },
+      ],
+      value: {},
+      onChange: vi.fn(),
+    }),
+  );
+
+  expect(screen.getByText("Artifact retention")).toBeVisible();
+  expect(screen.getByText("Upload retention")).toBeVisible();
+  expect(screen.queryByRole("group", { name: "配置范围" })).not.toBeInTheDocument();
 });
 
 test("disabled settings form blocks every mutable control", () => {

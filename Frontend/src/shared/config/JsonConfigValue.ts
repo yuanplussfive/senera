@@ -67,6 +67,32 @@ export function readRelativeItemPath(parentPath: readonly string[], childPath: r
   return childPath.slice(parentPath.length);
 }
 
+/**
+ * Resolves the effective snapshot entry that belongs to a draft array item.
+ * Effective lists may prepend catalog defaults (provider endpoints), so the
+ * index alone is not an identity; match the declared label path first and only
+ * fall back to position.
+ */
+export function readEffectiveArrayItem(
+  field: ConfigFormFieldData,
+  item: unknown,
+  index: number,
+): Record<string, unknown> {
+  const items = Array.isArray(field.effectiveValue) ? field.effectiveValue : [];
+  const indexed = items[index];
+  const identityPath = field.itemLabelPath;
+  const identity = identityPath && isJsonConfigObject(item) ? readValueAtPath(item, identityPath) : undefined;
+  if (identityPath && identity !== undefined && identity !== "") {
+    const labelPath: string[] = identityPath;
+    if (isJsonConfigObject(indexed) && sameJsonValue(readValueAtPath(indexed, labelPath), identity)) return indexed;
+    const matches = items.filter(
+      (candidate) => isJsonConfigObject(candidate) && sameJsonValue(readValueAtPath(candidate, labelPath), identity),
+    );
+    return matches.length === 1 && isJsonConfigObject(matches[0]) ? matches[0] : {};
+  }
+  return isJsonConfigObject(indexed) ? indexed : {};
+}
+
 export function readArrayItemTitle(field: ConfigFormFieldData, record: Record<string, unknown>, index: number): string {
   const title = field.itemLabelPath ? readValueAtPath(record, field.itemLabelPath) : undefined;
   if (typeof title === "string" && title.trim()) return title;
