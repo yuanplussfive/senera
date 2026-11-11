@@ -126,8 +126,7 @@ test("lists every session in catalog order and narrows it by search", async () =
   );
   resetSessionStore({ sessions: records, sessionOrder: Object.keys(records), activeSessionId: "chat-7" });
   renderWithFrontendProviders(React.createElement(SessionList, createProps()));
-  const rows = () =>
-    Array.from(document.querySelectorAll("[data-session-row]")).map((node) => node.dataset.sessionRow);
+  const rows = () => Array.from(document.querySelectorAll("[data-session-row]")).map((node) => node.dataset.sessionRow);
 
   expect(rows()).toEqual(Object.keys(records));
   await user.type(screen.getByRole("searchbox"), "note 3");
@@ -340,9 +339,7 @@ test("shift-click extends the selection over the visible order", async () => {
   // The count keeps reporting rows the current filter hides.
   await user.type(screen.getByRole("searchbox", { name: frontendMessage("session.searchPlaceholder") }), "release");
   await waitFor(() => expect(screen.queryByText("Provider settings")).not.toBeInTheDocument());
-  expect(
-    screen.getByText(frontendMessage("session.selectedCountHidden", { count: 2 })),
-  ).toBeVisible();
+  expect(screen.getByText(frontendMessage("session.selectedCountHidden", { count: 2 }))).toBeVisible();
 });
 
 test("switches profile preferences and keeps settings last", async () => {

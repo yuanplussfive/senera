@@ -45,7 +45,11 @@ export function ChatPanelLoadingSurface({ label = frontendMessage("app.loading")
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden" aria-hidden="true" data-chat-panel-loading-content>
+        <div
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          aria-hidden="true"
+          data-chat-panel-loading-content
+        >
           <ConversationSkeleton />
         </div>
         <ChatLoadingComposer data-chat-panel-loading-composer />

@@ -1,17 +1,6 @@
 {
-  "sourceRoots": [
-    "Apps",
-    "Build",
-    "Frontend/src",
-    "Scripts",
-    "Source"
-  ],
-  "fileExtensions": [
-    ".ts",
-    ".tsx",
-    ".js",
-    ".mjs"
-  ],
+  "sourceRoots": ["Apps", "Build", "Frontend/src", "Scripts", "Source"],
+  "fileExtensions": [".ts", ".tsx", ".js", ".mjs"],
   "ignoredGlobs": [
     "Dist/**",
     "node_modules/**",

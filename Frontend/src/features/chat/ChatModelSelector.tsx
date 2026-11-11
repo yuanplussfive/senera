@@ -71,11 +71,7 @@ export function ChatModelSelector({
           <AppIcon icon="chevron-down" size={10} className="shrink-0 text-content-muted" />
         </MotionButton>
       </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        side="top"
-        className="w-[min(280px,calc(100vw-24px))] p-1"
-      >
+      <DropdownMenuContent align="end" side="top" className="w-[min(280px,calc(100vw-24px))] p-1">
         <div className="min-w-0">
           {chatModels.length > 0 ? (
             <DropdownMenuGroup className="max-h-[min(360px,calc(100dvh-200px))] overflow-y-auto pr-1 ">

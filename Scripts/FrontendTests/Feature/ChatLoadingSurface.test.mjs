@@ -1,7 +1,10 @@
 import React from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { ChatLoadingSurface, ChatPanelLoadingSurface } from "../../../Frontend/src/features/chat/ChatLoadingSurface.tsx";
+import {
+  ChatLoadingSurface,
+  ChatPanelLoadingSurface,
+} from "../../../Frontend/src/features/chat/ChatLoadingSurface.tsx";
 import { frontendMessage } from "../../../Frontend/src/i18n/frontendMessageCatalog.ts";
 
 afterEach(cleanup);
