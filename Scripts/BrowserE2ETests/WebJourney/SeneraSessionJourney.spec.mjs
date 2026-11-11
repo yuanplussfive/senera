@@ -106,7 +106,7 @@ test.describe("session lifecycle and sidebar management", () => {
 
     const menu = page.getByRole("menu");
     await expectPortaledOutsideSessionSidebar(menu);
-    const deleteHistory = menu.getByRole("menuitem", { name: "删除历史" });
+    const deleteHistory = menu.getByRole("menuitem", { name: "删除会话" });
     await expect(deleteHistory).toBeVisible();
     await deleteHistory.focus();
     await expect(deleteHistory).toBeFocused();
