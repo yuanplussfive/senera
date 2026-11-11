@@ -1,6 +1,8 @@
 import { useContext, useState } from "react";
+import { useDesktopHostIntegration } from "../../app/useDesktopHostIntegration";
 import { ExecutionApprovalModes, type ExecutionApprovalMode } from "../../api/executionApprovalMode";
 import type { SandboxStatusSnapshotData } from "../../api/eventTypes";
+import { frontendChatMessage } from "../../i18n/frontendChatMessageCatalog";
 import { frontendMessage, type FrontendMessageKey } from "../../i18n/frontendMessageCatalog";
 import { cn } from "../../lib/util";
 import {
@@ -16,7 +18,8 @@ import {
   type AppIconName,
 } from "../ui";
 import { sandboxStatusDetail } from "../../features/sandbox/sandboxPreparationPresentation";
-import { WorkspaceSwitcher } from "./WorkspaceMenu";
+import { WorkspaceSwitcher, workspaceActionClassName } from "./WorkspaceSwitcher";
+import { prefetchWorkspaceMenuDialogs } from "./WorkspaceMenu";
 import { WorkspaceMenuContext } from "./WorkspaceMenuContext";
 
 const ApprovalModePresentation = {
@@ -85,6 +88,7 @@ export function ExecutionContextChip({
   onOpenExecutionPanel,
 }: ExecutionContextChipProps): JSX.Element {
   const menu = useContext(WorkspaceMenuContext);
+  const host = useDesktopHostIntegration();
   const [contextOpen, setContextOpen] = useState(false);
 
   const snapshot = menu?.workspace.snapshot;
@@ -96,6 +100,42 @@ export function ExecutionContextChip({
 
   const approvalPresentation = ApprovalModePresentation[approval.mode];
   const approvalLabel = frontendMessage(approvalPresentation.labelKey);
+  const hostFooter =
+    host.capabilities?.revealWorkspace || host.capabilities?.externalTerminal ? (
+      <>
+        <div className="mx-2 my-1.5 h-px bg-line-subtle/60" aria-hidden="true" />
+        <div>
+          {host.capabilities.revealWorkspace ? (
+            <button
+              type="button"
+              data-workspace-host-action="reveal"
+              onClick={() => {
+                void host.revealWorkspace();
+                setContextOpen(false);
+              }}
+              className={workspaceActionClassName}
+            >
+              <AppIcon icon="folder" size={16} className="shrink-0 text-content-muted" aria-hidden="true" />
+              {frontendChatMessage("chat.composer.host.revealWorkspace")}
+            </button>
+          ) : null}
+          {host.capabilities.externalTerminal ? (
+            <button
+              type="button"
+              data-workspace-host-action="terminal"
+              onClick={() => {
+                void host.openExternalTerminal();
+                setContextOpen(false);
+              }}
+              className={workspaceActionClassName}
+            >
+              <AppIcon icon="terminal" size={16} className="shrink-0 text-content-muted" aria-hidden="true" />
+              {frontendChatMessage("chat.composer.host.openTerminal")}
+            </button>
+          ) : null}
+        </div>
+      </>
+    ) : undefined;
 
   return (
     <div
@@ -103,7 +143,16 @@ export function ExecutionContextChip({
       data-execution-context
     >
       {menu ? (
-        <Popover open={contextOpen} onOpenChange={setContextOpen}>
+        <Popover
+          open={contextOpen}
+          onOpenChange={(open) => {
+            setContextOpen(open);
+            // Opening the popover is the first gesture that can reach any of the
+            // provider's dialogs (browse, forget, switch confirm), so warm the
+            // lazy chunk now instead of paying the load on the first click.
+            if (open) prefetchWorkspaceMenuDialogs();
+          }}
+        >
           <PopoverTrigger asChild>
             <button
               type="button"
@@ -144,7 +193,7 @@ export function ExecutionContextChip({
               if (target instanceof Element && target.closest("[data-workspace-switcher]")) event.preventDefault();
             }}
           >
-            <WorkspaceSwitcher onClose={() => setContextOpen(false)} />
+            <WorkspaceSwitcher onClose={() => setContextOpen(false)} footer={hostFooter} />
           </PopoverContent>
         </Popover>
       ) : null}

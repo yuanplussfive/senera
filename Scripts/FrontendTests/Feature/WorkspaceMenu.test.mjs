@@ -3,17 +3,24 @@ import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { renderWithFrontendProviders } from "../renderWithFrontendProviders.mjs";
-import { WorkspaceMenuProvider, WorkspaceSwitcher } from "../../../Frontend/src/shared/workspace/WorkspaceMenu.tsx";
+import { WorkspaceMenuProvider } from "../../../Frontend/src/shared/workspace/WorkspaceMenu.tsx";
+import { WorkspaceSwitcher } from "../../../Frontend/src/shared/workspace/WorkspaceSwitcher.tsx";
+import { ExecutionContextChip } from "../../../Frontend/src/shared/workspace/ExecutionContextChip.tsx";
+import { WorkspaceMenuContext } from "../../../Frontend/src/shared/workspace/WorkspaceMenuContext.ts";
 
 const mocks = vi.hoisted(() => ({
   resources: { httpBaseUrl: "http://host/workspaces/a", dirty: false, openResource: vi.fn() },
   bridge: undefined,
   viewport: "desktop",
+  host: { capabilities: undefined, revealWorkspace: vi.fn(), openExternalTerminal: vi.fn() },
 }));
 vi.mock("../../../Frontend/src/shared/workspace/WorkspaceResourceProvider.tsx", () => ({
   useWorkspaceResourceController: () => mocks.resources,
 }));
 vi.mock("../../../Frontend/src/app/desktopBridge.ts", () => ({ readDesktopBridge: () => mocks.bridge }));
+vi.mock("../../../Frontend/src/app/useDesktopHostIntegration.ts", () => ({
+  useDesktopHostIntegration: () => mocks.host,
+}));
 vi.mock("../../../Frontend/src/shared/responsive/index.ts", () => ({
   useResponsiveMode: () => ({ viewport: mocks.viewport }),
 }));
@@ -22,6 +29,9 @@ beforeEach(() => {
   mocks.resources.dirty = false;
   mocks.bridge = undefined;
   mocks.viewport = "desktop";
+  mocks.host.capabilities = undefined;
+  mocks.host.revealWorkspace.mockClear();
+  mocks.host.openExternalTerminal.mockClear();
 });
 afterEach(() => {
   cleanup();
@@ -71,6 +81,38 @@ test("the switcher lists recents with the active one indicated and switches on c
   await user.click(screen.getByRole("button", { name: /demo.*E:\/demo/ }));
   expect(workspace.switchWorkspace).toHaveBeenCalledWith("E:/demo");
   expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+test("desktop host actions live in the workspace control", async () => {
+  mocks.host.capabilities = { revealWorkspace: true, externalTerminal: true };
+  const workspace = controller();
+  const user = userEvent.setup();
+  const menu = {
+    workspace,
+    select: vi.fn(),
+    forgetWorkspace: vi.fn(),
+    requestForget: vi.fn(),
+    openFolder: vi.fn(),
+    error: undefined,
+  };
+  renderWithFrontendProviders(
+    React.createElement(
+      WorkspaceMenuContext.Provider,
+      { value: menu },
+      React.createElement(ExecutionContextChip, {
+        approval: { mode: "agent", disabled: false, onSelect: vi.fn() },
+        prefersCompactControls: false,
+      }),
+    ),
+  );
+
+  await user.click(screen.getByRole("button", { name: "切换工作区：senera" }));
+  await user.click(await screen.findByRole("button", { name: "在文件管理器中打开" }));
+  expect(mocks.host.revealWorkspace).toHaveBeenCalledTimes(1);
+
+  await user.click(screen.getByRole("button", { name: "切换工作区：senera" }));
+  await user.click(await screen.findByRole("button", { name: "在系统终端中打开" }));
+  expect(mocks.host.openExternalTerminal).toHaveBeenCalledTimes(1);
 });
 
 test("search filters recents by name or path and clears back to the full list", async () => {
