@@ -114,7 +114,7 @@
     },
     {
       "path": "Scripts/FrontendTests/Feature/ChatCoreComponents.test.mjs",
-      "baselineLines": 1439,
+      "baselineLines": 1414,
       "owner": "frontend-platform",
       "splitTarget": "Split composer, panel, message list, and interaction ownership scenarios."
     },
@@ -216,7 +216,7 @@
     },
     {
       "path": "Frontend/src/features/chat/ChatComposer.tsx",
-      "baselineLines": 909,
+      "baselineLines": 855,
       "owner": "frontend-platform",
       "splitTarget": "Extract context usage presentation and composer keyboard interaction into focused chat modules."
     },

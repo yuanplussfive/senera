@@ -305,7 +305,6 @@ test("chat header exposes one neutral workflow tool entry for panel toggling", a
 
 test("chat header leaves execution environment details to settings", () => {
   renderWithFrontendProviders(React.createElement(ChatHeader, { title: "Focused conversation" }));
-
   expect(screen.getByRole("heading", { name: "Focused conversation" })).toBeVisible();
   expect(document.querySelector("[data-sandbox-status]")).not.toBeInTheDocument();
   expect(screen.queryByRole("status")).not.toBeInTheDocument();
