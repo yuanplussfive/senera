@@ -246,7 +246,7 @@ test("confirming a forget request reaches the workspace API for that entry", asy
   const entry = screen.getByRole("button", { name: /demo.*E:\/demo/ }).closest("[data-workspace-entry]");
   await user.click(within(entry).getByRole("button", { name: "移除工作区" }));
   const dialog = await screen.findByRole("dialog", { name: "移除这个工作区？" });
-  expect(within(dialog).getByText("E:/demo")).toBeVisible();
+  await waitFor(() => expect(within(dialog).getByText("E:/demo")).toBeVisible());
   await user.click(within(dialog).getByRole("button", { name: "移除" }));
 
   await waitFor(() => expect(forgetRequest).toHaveBeenCalledTimes(1));
