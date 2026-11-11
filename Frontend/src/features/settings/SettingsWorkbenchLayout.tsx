@@ -19,7 +19,6 @@ export interface SettingsWorkbenchLayoutProps {
   overlay?: ReactNode;
   shellActions?: ReactNode;
   shellRef: Ref<HTMLDivElement>;
-  showSectionHeader?: boolean;
 }
 
 export function SettingsWorkbenchLayout({
@@ -32,7 +31,6 @@ export function SettingsWorkbenchLayout({
   overlay,
   shellActions,
   shellRef,
-  showSectionHeader = false,
 }: SettingsWorkbenchLayoutProps): JSX.Element {
   return (
     <div
@@ -75,6 +73,7 @@ export function SettingsWorkbenchLayout({
             <div
               className="flex h-[var(--senera-top-chrome-height)] shrink-0 items-center gap-2 border-b border-line-subtle px-3"
               data-window-drag-region
+              data-settings-navigation-header
             >
               <div className="flex min-w-0 items-center gap-1.5">
                 <span className="min-w-0 truncate pl-2.5 text-[13px] font-semibold text-content-primary">
@@ -88,10 +87,7 @@ export function SettingsWorkbenchLayout({
           </aside>
         ) : null}
 
-        <main className="flex min-w-0 flex-1 flex-col bg-surface-subtle">
-          {showSectionHeader ? <SettingsSectionHeader section={activeSection} /> : null}
-          {children}
-        </main>
+        <main className="flex min-w-0 flex-1 flex-col bg-surface-subtle">{children}</main>
       </div>
 
       <Sheet open={navigationOpen} onOpenChange={onNavigationOpenChange}>
@@ -297,19 +293,6 @@ function SettingsNavItem({
         ))}
       </span>
     </button>
-  );
-}
-
-function SettingsSectionHeader({ section }: { section: SettingsSectionDefinition }): JSX.Element {
-  return (
-    <header
-      className="shrink-0 border-b border-line-subtle bg-surface-canvas px-5 py-4 sm:px-8"
-      data-window-drag-region
-      data-window-controls-inset
-    >
-      <h2 className="truncate text-[13px] font-semibold text-content-primary">{section.label}</h2>
-      <p className="mt-1 max-w-[640px] text-[11px] leading-5 text-content-muted">{section.description}</p>
-    </header>
   );
 }
 

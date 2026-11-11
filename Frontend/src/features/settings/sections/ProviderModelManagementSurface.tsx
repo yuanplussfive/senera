@@ -294,7 +294,7 @@ export function ProviderModelManagementSurface({
       className={cn(
         "grid h-full min-h-0 overflow-hidden",
         embedded
-          ? "w-full bg-surface-soft grid-cols-1"
+          ? "w-full grid-cols-1"
           : cn("bg-paper-50", showProviderList ? "grid-cols-[minmax(210px,260px)_minmax(0,1fr)]" : "grid-cols-1"),
       )}
     >
@@ -308,9 +308,7 @@ export function ProviderModelManagementSurface({
           onSelect={setSelectedProviderId}
         />
       ) : null}
-      <section
-        className={cn("min-h-0 min-w-0 h-full overflow-hidden", embedded ? "w-full bg-surface-soft" : "bg-paper-50")}
-      >
+      <section className={cn("min-h-0 min-w-0 h-full overflow-hidden", embedded ? "w-full" : "bg-paper-50")}>
         <ProviderModelList
           selectedProvider={selectedProvider}
           catalog={selectedList.catalog}

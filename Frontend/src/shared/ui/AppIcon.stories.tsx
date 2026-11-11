@@ -65,7 +65,7 @@ const activityIcons: readonly { icon: AppIconName; label: string }[] = [
 ];
 
 const controlIcons: readonly { icon: AppIconName; label: string }[] = [
-  { icon: "target", label: "模型职责" },
+  { icon: "target", label: "模型" },
   { icon: "vision", label: "图像理解" },
   { icon: "image-output", label: "图像生成" },
   { icon: "token-usage", label: "Token 用量" },

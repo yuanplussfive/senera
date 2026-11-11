@@ -308,6 +308,7 @@ test("chat header leaves execution environment details to settings", () => {
 
   expect(screen.getByRole("heading", { name: "Focused conversation" })).toBeVisible();
   expect(document.querySelector("[data-sandbox-status]")).not.toBeInTheDocument();
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
   expect(document.querySelector("[data-execution-mode]")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: frontendMessage("terminal.panel.open") })).not.toBeInTheDocument();
 });

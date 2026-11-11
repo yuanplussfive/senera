@@ -25,13 +25,11 @@ test("compact provider navigation combines accurate search and add controls in o
   const add = screen.getByRole("button", { name: frontendMessage("settings.provider.add") });
   expect(toolbar).toContainElement(search);
   expect(toolbar).toContainElement(add);
-  expect(screen.queryByText(frontendMessage("settings.model.serviceTitle"))).not.toBeInTheDocument();
 
   await user.click(add);
   expect(onRequestAdd).toHaveBeenCalledTimes(1);
 
   view.rerender(renderList({ ...props, compact: false }));
-  expect(screen.getByText(frontendMessage("settings.model.serviceTitle"))).toBeInTheDocument();
   expect(
     screen.getByRole("textbox", { name: frontendMessage("settings.provider.searchPlaceholder") }),
   ).toBeInTheDocument();

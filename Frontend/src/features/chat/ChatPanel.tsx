@@ -91,7 +91,6 @@ export function ChatPanel({
           runStatus={currentRun?.status}
           waitingForApproval={currentRun?.activeFlags?.includes("waiting_for_approval") === true}
           waitingForInput={currentRun?.activeFlags?.includes("waiting_for_input") === true}
-          sandboxStatus={runtime.sandboxStatus}
           onOpenSessionPanel={navigationActions?.onOpenSessionPanel}
           onOpenWorkflowPanel={navigationActions?.onOpenWorkflowPanel}
         />
@@ -178,8 +177,6 @@ export function ChatPanel({
           activationCatalog={activationCatalog}
           onSend={messageActions.onSend}
           onCancel={messageActions.onCancel}
-          onOpenSettings={navigationActions?.onOpenSettings}
-          onOpenLocalClient={navigationActions?.onOpenLocalClient}
         />
       </main>
     </UploadPreviewProvider>

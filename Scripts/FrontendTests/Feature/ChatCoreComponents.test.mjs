@@ -26,7 +26,6 @@ const { projectAssistantTurns } = await import("../../../Frontend/src/features/c
 const { projectAssistantTurnStages } =
   await import("../../../Frontend/src/features/chat/assistantTurnStageProjection.ts");
 const { frontendMessage, FrontendLocales } = await import("../../../Frontend/src/i18n/frontendMessageCatalog.ts");
-const { frontendChatMessage } = await import("../../../Frontend/src/i18n/frontendChatMessageCatalog.ts");
 const { setFrontendLocale } = await import("../../../Frontend/src/i18n/frontendLocaleStore.ts");
 const { clearPersistedStore, useStore } = await import("../../../Frontend/src/store/sessionStore.ts");
 const { readTestToastCalls, clearTestToastCalls } = await import("../mocks/sonner.mjs");
@@ -455,30 +454,6 @@ test("chat composer preserves a failed draft and leaves Escape to active interac
   preventedEscape.preventDefault();
   window.dispatchEvent(preventedEscape);
   expect(onCancel).not.toHaveBeenCalled();
-});
-
-test("chat composer opens prompt settings only after the tools menu releases interaction ownership", async () => {
-  const onOutsideClick = vi.fn();
-  const onOpenSettings = vi.fn();
-  const user = userEvent.setup();
-  renderWithFrontendProviders(
-    React.createElement(
-      React.Fragment,
-      null,
-      withUploadPreviewProvider(React.createElement(ChatComposer, createComposerProps({ onOpenSettings }))),
-      React.createElement("button", { type: "button", onClick: onOutsideClick }, "外部操作"),
-    ),
-  );
-
-  await user.click(screen.getByRole("button", { name: frontendChatMessage("chat.composer.toolkit.tooltip") }));
-  await user.click(screen.getByRole("menuitem", { name: frontendChatMessage("chat.composer.toolkit.persona") }));
-
-  await waitFor(() => expect(onOpenSettings).toHaveBeenCalledWith("prompt"));
-  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-
-  await waitFor(() => expect(document.body.style.pointerEvents).toBe(""));
-  await user.click(screen.getByRole("button", { name: "外部操作" }));
-  expect(onOutsideClick).toHaveBeenCalledTimes(1);
 });
 
 test("settling composer queues follow-up messages without exposing run interruption", async () => {

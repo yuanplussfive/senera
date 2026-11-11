@@ -160,7 +160,7 @@ export function ChannelsSection({
   if (!channelExtension) {
     return (
       <section className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-canvas">
-        <ChannelsHeader refreshButton={refreshButton} />
+        <ChannelsRefreshToolbar refreshButton={refreshButton} />
         <StateView
           status="empty"
           className="min-h-64"
@@ -198,7 +198,7 @@ export function ChannelsSection({
   if (!selectedId || !selectedSection) {
     return (
       <section className="flex h-full min-h-0 flex-col overflow-hidden bg-surface-canvas" data-channels-directory>
-        <ChannelsHeader refreshButton={refreshButton} />
+        <ChannelsRefreshToolbar refreshButton={refreshButton} />
         <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
           {draftState.localError ? (
             <InlineError className="mx-auto mt-4 max-w-[900px] px-6 lg:px-8">{draftState.localError}</InlineError>
@@ -385,20 +385,8 @@ export function ChannelsSection({
   );
 }
 
-function ChannelsHeader({ refreshButton }: { refreshButton: JSX.Element }): JSX.Element {
-  return (
-    <div className="mx-auto flex w-full max-w-[980px] shrink-0 items-center justify-between gap-4 border-b border-line px-6 py-4 lg:px-8">
-      <div>
-        <h2 className="text-[13px] font-semibold text-content-primary">
-          {frontendMessage("settings.section.channels.label")}
-        </h2>
-        <p className="mt-1 max-w-[640px] text-[11px] leading-5 text-content-muted">
-          {frontendMessage("settings.section.channels.description")}
-        </p>
-      </div>
-      {refreshButton}
-    </div>
-  );
+function ChannelsRefreshToolbar({ refreshButton }: { refreshButton: JSX.Element }): JSX.Element {
+  return <div className="flex shrink-0 justify-end px-5 pt-3 sm:px-8">{refreshButton}</div>;
 }
 
 function ChannelRow({

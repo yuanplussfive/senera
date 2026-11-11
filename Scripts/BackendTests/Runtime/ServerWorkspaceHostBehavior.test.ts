@@ -75,6 +75,11 @@ test("real workspace opening isolates configuration, keeps the listener and surv
     expect(storage.scope).toBe("application-state");
     expect(storage.projectScanIncluded).toBe(false);
     expect(storage.workspaces).toHaveLength(2);
+    expect(typeof storage.measuredAt).toBe("string");
+    const cachedStorage = await (await fetch(new URL("/api/application-storage", app.healthUrl))).json();
+    expect(cachedStorage.measuredAt).toBe(storage.measuredAt);
+    const refreshedStorage = await (await fetch(new URL("/api/application-storage?refresh=1", app.healthUrl))).json();
+    expect(typeof refreshedStorage.measuredAt).toBe("string");
     expect(
       storage.workspaces.every(
         (workspace: { scope: string; stateRoot: string }) =>

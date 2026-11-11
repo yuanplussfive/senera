@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsWorkbench } from "../../../Frontend/src/features/settings/SettingsWorkbench.tsx";
@@ -68,9 +68,11 @@ describe("SettingsWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "打开设置导航" }));
 
     expect(screen.getByRole("dialog", { name: "设置导航" })).toBeInTheDocument();
-    for (const label of ["模型", "能力与运行", "工具", "个人", "系统"]) {
+    for (const label of ["默认模型", "能力与运行", "工具", "个人", "系统"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
+    const navigation = screen.getByRole("dialog", { name: "设置导航" });
+    expect(within(navigation).getAllByText("模型")).toHaveLength(1);
     expect(document.querySelectorAll("[data-settings-navigation-indicator]")).toHaveLength(1);
     expect(screen.queryByText("已同步")).not.toBeInTheDocument();
     expect(screen.queryByText(/迁移/)).not.toBeInTheDocument();
@@ -83,7 +85,7 @@ describe("SettingsWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "打开设置导航" }));
 
     fireEvent.change(screen.getByRole("textbox", { name: "搜索设置" }), { target: { value: "供应商" } });
-    expect(screen.getByText("模型")).toBeInTheDocument();
+    expect(screen.getByText("默认模型")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /供应商/ })).toBeInTheDocument();
     expect(screen.queryByText("个人")).not.toBeInTheDocument();
 

@@ -46,7 +46,6 @@ import { AppAppearanceProvider } from "./shared/theme/useAppearance";
 import { WorkspaceBrowserSurface, WorkspaceRuntimeProvider } from "./shared/workspace/WorkspaceResourceProvider";
 import { useRuntimeUpdate } from "./app/runtimeUpdate";
 import { readDesktopBridge } from "./app/desktopBridge";
-import { openOneBot11Client } from "./app/channelClientNavigation";
 import { activateWorkspaceSessionProjection } from "./store/workspaceSessionProjection";
 import type { WorkspaceSnapshotData } from "./api/workspaceEventTypes";
 import { WorkspaceMenuProvider } from "./shared/workspace/WorkspaceMenu";
@@ -343,19 +342,6 @@ export function App({
     onWorkspaceReady: handleWorkspaceReady,
   });
   const settingsReady = Boolean(settingsRuntime.systemConfig.configSnapshot);
-  const localClientUrl = settingsRuntime.systemConfig.oneBot11ClientUrl;
-  const localClientConnected = settingsRuntime.systemConfig.channelStatuses.some(
-    (channel) => channel.kind === "onebot11" && channel.state === "connected",
-  );
-  const handleOpenLocalClient = useCallback((): void => {
-    if (!localClientUrl || !workspaceIdentity) return;
-    void openOneBot11Client(localClientUrl, workspaceIdentity).then(
-      (result) => {
-        if (!result.ok) toast.error(frontendMessage("settings.channels.localClientUnavailable"));
-      },
-      () => toast.error(frontendMessage("settings.channels.localClientUnavailable")),
-    );
-  }, [localClientUrl, workspaceIdentity]);
   settingsEventHandlerRef.current = settingsRuntime.ingestSettingsEvent;
   const executionResourceCommands = useExecutionResourceCommands({
     activeSessionId: activeId,
@@ -631,8 +617,6 @@ export function App({
                             onRecordMessageFeedback: handleRecordMessageFeedback,
                           }}
                           navigationActions={{
-                            onOpenLocalClient:
-                              localClientConnected && localClientUrl ? handleOpenLocalClient : undefined,
                             onOpenSessionPanel: appShellRenderPlan.showChatSessionPanelAction
                               ? handleOpenSessionPanel
                               : undefined,
@@ -643,11 +627,6 @@ export function App({
                                 : undefined,
                             onRetryHistory: requestSessionHistory,
                             onLoadHistory: requestSessionHistory,
-                            onOpenSettings: (section, returnFocus) => {
-                              void settingsController
-                                .openSettings(section, returnFocus)
-                                .catch(() => toast.error(frontendMessage("settings.loadFailed")));
-                            },
                           }}
                         />
                       </Suspense>

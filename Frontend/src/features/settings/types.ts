@@ -14,14 +14,12 @@ export interface SettingsSectionDefinition {
   label: string;
   icon: AppIconName;
   description: string;
-  headerMode: SettingsSectionHeaderMode;
 }
-
-export type SettingsSectionHeaderMode = "global" | "local" | "none";
 
 const retiredSectionTargets = {
   "mcp-servers": "system-tools",
-  workspace: "storage",
+  workspace: "about",
+  storage: "about",
 } as const;
 
 type RetiredSettingsSectionId = keyof typeof retiredSectionTargets;
@@ -34,7 +32,6 @@ export const settingsSections = [
     "server",
     "settings.section.modelService.label",
     "settings.section.modelService.description",
-    "local",
   ),
   defineSettingsSection(
     "model-roles",
@@ -47,15 +44,8 @@ export const settingsSections = [
     "activity",
     "settings.section.runtime.label",
     "settings.section.runtime.description",
-    "none",
   ),
-  defineSettingsSection(
-    "prompt",
-    "file-text",
-    "settings.section.prompt.label",
-    "settings.section.prompt.description",
-    "none",
-  ),
+  defineSettingsSection("prompt", "file-text", "settings.section.prompt.label", "settings.section.prompt.description"),
   defineSettingsSection(
     "planning",
     "book-open",
@@ -73,38 +63,27 @@ export const settingsSections = [
     "puzzle",
     "settings.section.systemTools.label",
     "settings.section.systemTools.description",
-    "none",
   ),
   defineSettingsSection(
     "dependencies",
     "package",
     "settings.section.dependencies.label",
     "settings.section.dependencies.description",
-    "none",
   ),
   defineSettingsSection(
     "channels",
     "message-square",
     "settings.section.channels.label",
     "settings.section.channels.description",
-    "local",
   ),
-  defineSettingsSection(
-    "general",
-    "sliders",
-    "settings.section.general.label",
-    "settings.section.general.description",
-    "none",
-  ),
+  defineSettingsSection("general", "sliders", "settings.section.general.label", "settings.section.general.description"),
   defineSettingsSection(
     "appearance",
     "palette",
     "settings.section.appearance.label",
     "settings.section.appearance.description",
-    "none",
   ),
-  defineSettingsSection("storage", "folder", "settings.section.storage.label", "settings.section.storage.description"),
-  defineSettingsSection("about", "info", "settings.section.about.label", "settings.section.about.description", "none"),
+  defineSettingsSection("about", "info", "settings.section.about.label", "settings.section.about.description"),
 ] as const satisfies readonly SettingsSectionDefinition[];
 
 function defineSettingsSection(
@@ -112,7 +91,6 @@ function defineSettingsSection(
   icon: AppIconName,
   labelKey: FrontendMessageKey,
   descriptionKey: FrontendMessageKey,
-  headerMode: SettingsSectionHeaderMode = "global",
 ): SettingsSectionDefinition {
   return {
     id,
@@ -123,7 +101,6 @@ function defineSettingsSection(
     get description() {
       return frontendMessage(descriptionKey);
     },
-    headerMode,
   };
 }
 

@@ -20,7 +20,7 @@ describe("DefaultModelSection", () => {
       }),
     );
 
-    expect(screen.getAllByText("必填")).toHaveLength(2);
+    expect(screen.queryByText("必填")).not.toBeInTheDocument();
     expect(container.querySelectorAll("[data-model-assignment-group]")).toHaveLength(2);
     expect(container.querySelectorAll("[data-model-assignment-row]")).toHaveLength(2);
     expect(container.querySelector('[data-model-assignment-icon="assistant"]')?.tagName).toBe("svg");
@@ -56,7 +56,7 @@ describe("DefaultModelSection", () => {
     expect(extensionToggle).toHaveAttribute("aria-expanded", "false");
     await user.click(extensionToggle);
     expect(extensionToggle).toHaveAttribute("aria-expanded", "true");
-    await waitFor(() => expect(screen.getByText("模型池")).toBeVisible());
+    await waitFor(() => expect(screen.getByText("候选模型")).toBeVisible());
     expect(screen.getByText("继承发起模型")).toBeVisible();
     const modelPool = container.querySelector("[data-model-pool-assignment]");
     expect(modelPool).toBeInTheDocument();
@@ -95,6 +95,37 @@ describe("DefaultModelSection", () => {
       "immediate",
     );
   });
+  it("exposes extension model slots through a switch-controlled disclosure", async () => {
+    const updateDraft = vi.fn();
+    const user = userEvent.setup();
+    renderWithFrontendProviders(
+      React.createElement(DefaultModelSection, {
+        draftState: createDraftState(updateDraft),
+        systemConfig: createSystemConfig(vi.fn(), { includeImageModels: true }),
+      }),
+    );
+
+    const imageSwitch = screen.getByRole("switch", { name: "开启 图像 的模型设置" });
+    expect(imageSwitch).toBeChecked();
+    expect(screen.getByRole("combobox", { name: "视觉模型" })).toBeVisible();
+    expect(screen.getByText("留空时优先使用当前会话模型。")).toBeVisible();
+
+    await user.click(imageSwitch);
+    await waitFor(() => expect(screen.queryByRole("combobox", { name: "视觉模型" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("combobox", { name: "图像生成模型" })).not.toBeInTheDocument();
+    expect(screen.getByText("已选择的模型仍会生效。")).toBeVisible();
+
+    await user.click(imageSwitch);
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "视觉模型" })).toBeVisible());
+    await user.click(screen.getByRole("combobox", { name: "视觉模型" }));
+    await user.click(screen.getByRole("option", { name: /Chat Alpha/ }));
+    expect(updateDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        Extensions: { "agent-image-tools": { Configuration: { model: { modelProviderId: "chat-a" } } } },
+      }),
+      "immediate",
+    );
+  });
 });
 
 function createDraftState(updateDraft) {
@@ -126,7 +157,10 @@ function createDraftState(updateDraft) {
   };
 }
 
-function createSystemConfig(setDefaultProviderModel, { includeChildModelPool = false } = {}) {
+function createSystemConfig(
+  setDefaultProviderModel,
+  { includeChildModelPool = false, includeImageModels = false } = {},
+) {
   const draft = createDraftState(vi.fn()).draft;
   return {
     configSnapshot: {
@@ -171,7 +205,10 @@ function createSystemConfig(setDefaultProviderModel, { includeChildModelPool = f
     providerModelErrors: {},
     providerModelLoadingIds: {},
     providerModelOperations: {},
-    systemExtensions: includeChildModelPool ? [createChildModelPoolExtension()] : [],
+    systemExtensions: [
+      ...(includeChildModelPool ? [createChildModelPoolExtension()] : []),
+      ...(includeImageModels ? [createImageModelExtension()] : []),
+    ],
     setDefaultProviderModel,
   };
 }
@@ -232,6 +269,77 @@ function createChildModelPoolExtension() {
               placeholder: { "zh-CN": "添加候选模型", "en-US": "Add a candidate model" },
             },
           ],
+        },
+      ],
+    },
+  };
+}
+
+function createImageModelExtension() {
+  const visionField = {
+    ...createField(
+      ["model", "modelProviderId"],
+      { "zh-CN": "视觉模型", "en-US": "Vision model" },
+      {
+        id: "agent-image-tools.vision-model",
+        capability: "Chat",
+        valueKind: "model-id",
+        mutation: "config",
+        required: false,
+      },
+      "chat-b",
+    ),
+    section: "model",
+    type: "string",
+    placeholder: { "zh-CN": "自动（会话模型优先）", "en-US": "Automatic (prefer conversation model)" },
+  };
+  const generationField = {
+    ...createField(
+      ["generation", "modelProviderId"],
+      { "zh-CN": "图像生成模型", "en-US": "Image generation model" },
+      {
+        id: "agent-image-tools.generation-model",
+        capability: "Chat",
+        valueKind: "model-id",
+        mutation: "config",
+        required: false,
+      },
+      "chat-a",
+    ),
+    section: "generation",
+    type: "string",
+  };
+  return {
+    id: "agent-image-tools",
+    displayName: { "zh-CN": "图像", "en-US": "Images" },
+    description: { "zh-CN": "理解、生成和编辑图片。", "en-US": "Understand, generate, and edit images." },
+    presentation: { icon: "image" },
+    enabled: true,
+    configured: false,
+    tools: [],
+    skillCount: 0,
+    mcpServerCount: 0,
+    configuration: {
+      configured: false,
+      value: { model: { modelProviderId: "chat-b" }, generation: { modelProviderId: "chat-a" } },
+      defaults: {},
+      effectiveValue: {},
+      sections: [
+        {
+          name: "model",
+          label: { "zh-CN": "模型选择", "en-US": "Model selection" },
+          description: {
+            "zh-CN": "留空时优先使用当前会话模型。",
+            "en-US": "Falls back to the conversation model when empty.",
+          },
+          keyCount: 1,
+          fields: [visionField],
+        },
+        {
+          name: "generation",
+          label: { "zh-CN": "生成与编辑", "en-US": "Generation and editing" },
+          keyCount: 1,
+          fields: [generationField],
         },
       ],
     },

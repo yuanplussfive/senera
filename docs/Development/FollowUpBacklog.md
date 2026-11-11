@@ -126,7 +126,7 @@ this.props.onError?.(error, errorInfo);
 
 ## 6. 存储视图（前提不成立）
 
-原先的判断是「存储视图缺少逐工作区数据」。核实后不成立：`Frontend/src/features/settings/sections/StorageSettings.tsx:51` 已渲染 `snapshot.root`，`:54` 渲染总量，`:56-61` 逐条渲染每个工作区的 `root` 与 `formatFileSize(workspace.bytes)`。契约侧也齐备（`AgentApplicationStorageSnapshotSchema` 的 `workspaces` 数组带 `id`、`name`、`root`、`bytes`）。
+原先的判断是「存储视图缺少逐工作区数据」。核实后不成立：`Frontend/src/features/settings/sections/StorageUsageTable.tsx` 渲染 `snapshot.root`、总量，以及每个工作区的 `root` 与 `formatFileSize(workspace.bytes)`。契约侧也齐备（`AgentApplicationStorageSnapshotSchema` 的 `workspaces` 数组带 `id`、`name`、`root`、`bytes`）。该表已并入“关于 → 开发诊断”（仅开发构建可见），不再占用独立导航分区。
 
 剩下的只是排序与聚合方式，属于产品取舍，不是缺陷。
 
@@ -174,7 +174,7 @@ Skills 没有代码执行路径，失败时是 fail-closed。原先排在第 5 �
 
 1. **`isSamePath` 的大小写敏感性**——在 win32 上不成立。`path.relative` 会忽略大小写，判为同一路径。触发条件是文件系统别名，不是大小写。
 2. **`replacePackage` 的存在性**——全仓不存在，任何依赖它存在的前提都不成立。
-3. **存储视图缺少逐工作区数据**——不成立，`StorageSettings.tsx` 已经在渲染。
+3. **存储视图缺少逐工作区数据**——不成立，`StorageUsageTable.tsx` 已经在渲染。
 
 ## 12. 相关文档
 

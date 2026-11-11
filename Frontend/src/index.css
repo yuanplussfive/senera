@@ -912,6 +912,10 @@ body {
   box-shadow: var(--theme-tooltip-shadow);
 }
 
+.theme-tooltip__arrow {
+  fill: var(--theme-tooltip-bg);
+}
+
 :where(
   a[href],
   button:not(:disabled),
@@ -2335,6 +2339,18 @@ html[data-senera-window-controls="custom"] [data-settings-workbench] {
    surface without the custom frame keeps the whole workbench flush at the top. */
 html[data-senera-window-controls="custom"] [data-settings-navigation-rail] {
   margin-top: calc(var(--senera-top-chrome-height) * -1);
+}
+
+/* The settings title band is seamless: the rail header lifting into it drops its
+   divider so the band reads as one surface with the window controls. */
+html[data-senera-window-controls="custom"] [data-settings-navigation-header] {
+  border-bottom-color: transparent;
+}
+
+/* Model assignment value buttons read as text, so the combobox sizes to its value
+   instead of the browser's default field width. Boxed selects keep their column width. */
+[data-model-assignment-row] input[role="combobox"] {
+  field-sizing: content;
 }
 
 /* Full-height split workspaces (such as model-service) manage their own column headers flush to the top

@@ -160,9 +160,9 @@ export function ProviderConnectionEditor({
     "grid h-7 w-7 shrink-0 place-items-center rounded-md border border-transparent bg-transparent text-content-secondary transition hover:border-line-subtle hover:bg-surface-hover hover:text-content-primary disabled:pointer-events-none disabled:opacity-45 active:scale-[0.95]";
 
   return (
-    <div className="bg-surface-soft text-content-primary">
-      <div className="w-full px-0 py-4">
-        <div className="flex min-w-0 items-start justify-between gap-4 border-b border-line-subtle/70 pb-5">
+    <div className="bg-surface-panel text-content-primary">
+      <div className="w-full px-0 pb-6 pt-4">
+        <div className="flex min-w-0 items-start justify-between gap-4 pb-5">
           <div className="flex min-w-0 items-center gap-4">
             <ProviderAvatarPicker
               provider={provider}
@@ -217,13 +217,13 @@ export function ProviderConnectionEditor({
             ) : null}
           </div>
         </div>
-        <div className="grid gap-4 py-5">
+        <div className="grid gap-4">
           <ConnectionField
             label={frontendMessage("settings.provider.apiUrl")}
             hint={frontendMessage("settings.provider.apiUrlHint")}
             inline
           >
-            <div className="flex h-11 min-w-0 items-center overflow-hidden rounded-[10px] border border-line-subtle bg-surface-panel px-3 transition-[border-color,box-shadow]">
+            <div className="flex h-11 min-w-0 items-center overflow-hidden rounded-[10px] border border-line bg-surface-panel px-3 transition-[border-color,box-shadow] focus-within:border-accent-border focus-within:ring-2 focus-within:ring-accent-focus">
               <input
                 value={baseUrlDraft}
                 disabled={disabled}
@@ -536,12 +536,7 @@ function ConnectionField({
   children: React.ReactNode;
 }): JSX.Element {
   return (
-    <div
-      className={cn(
-        "grid min-w-0 gap-1.5",
-        inline && "sm:max-w-[520px] sm:grid-cols-[72px_minmax(0,1fr)] sm:items-center sm:gap-3",
-      )}
-    >
+    <div className={cn("grid min-w-0 gap-1.5", inline && "sm:grid-cols-[72px_minmax(0,1fr)] sm:items-center sm:gap-3")}>
       <div className="flex items-center gap-1.5 text-[13.5px] font-medium text-content-primary">
         <span>{label}</span>
         {hint ? (

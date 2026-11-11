@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import React from "react";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { StreamingMarkdownRenderer } from "../../../Frontend/src/shared/code/StreamingMarkdownRenderer.tsx";
@@ -42,25 +42,20 @@ test("chat composer derives one trailing action for every run phase", () => {
   expect(readComposerAction({ running: true, settling: true, cancelling: true, canSubmit: true })).toBe("cancelling");
 });
 
-test("chat composer opens real settings sections from the toolkit after the menu closes", async () => {
-  const onOpenSettings = vi.fn();
+test("chat composer keeps the toolkit to message input actions", async () => {
   const user = userEvent.setup();
-  renderWithFrontendProviders(
-    withUploadPreviewProvider(React.createElement(ChatComposer, createComposerProps({ onOpenSettings }))),
-  );
+  renderWithFrontendProviders(withUploadPreviewProvider(React.createElement(ChatComposer, createComposerProps())));
 
   await user.click(screen.getByRole("button", { name: frontendChatMessage("chat.composer.toolkit.tooltip") }));
-  await user.click(screen.getByRole("menuitem", { name: frontendChatMessage("chat.composer.toolkit.plugins") }));
-  await waitFor(() => expect(onOpenSettings).toHaveBeenCalledWith("mcp-servers"));
 
-  await user.click(screen.getByRole("button", { name: frontendChatMessage("chat.composer.toolkit.tooltip") }));
-  await user.click(screen.getByRole("menuitem", { name: frontendChatMessage("chat.composer.toolkit.skills") }));
-  await waitFor(() => expect(onOpenSettings).toHaveBeenCalledWith("system-tools"));
-
-  await user.click(screen.getByRole("button", { name: frontendChatMessage("chat.composer.toolkit.tooltip") }));
-  await user.click(screen.getByRole("menuitem", { name: frontendChatMessage("chat.composer.toolkit.persona") }));
-  await waitFor(() => expect(onOpenSettings).toHaveBeenCalledWith("prompt"));
-  expect(onOpenSettings).toHaveBeenCalledTimes(3);
+  expect(
+    screen.getByRole("menuitem", { name: frontendChatMessage("chat.composer.toolkit.fileAndImage") }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("menuitem", { name: /Agent/ })).toBeInTheDocument();
+  expect(screen.queryByRole("menuitem", { name: "提示词预设" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("menuitem", { name: "插件" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("menuitem", { name: "技能" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("menuitem", { name: "打开工作区" })).not.toBeInTheDocument();
 });
 
 test("session rows expose an independent selection button without inline actions", async () => {

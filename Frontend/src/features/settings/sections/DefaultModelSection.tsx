@@ -8,7 +8,6 @@ import { AgentToolPresentationIcon } from "../../../shared/workspace/AgentToolPr
 import { findTopField } from "../../chat/modelConfigData";
 import { ModelProviderIcon } from "../../../shared/models/ModelProviderIcon";
 import { ModelSelect, modelSelectOption, resolveModelIcon } from "../../../shared/models/ModelSelect";
-import { ConfigFieldRequirementLabel } from "../../../shared/config/ConfigFieldVisibility";
 import { cn } from "../../../lib/util";
 import { useFrontendLocale } from "../../../i18n/useFrontendLocale";
 import { SettingsSectionLoading } from "../SettingsLoading";
@@ -19,7 +18,7 @@ import {
   type SystemExtensionRuntimeModelAssignmentSection,
 } from "../systemExtensionConfigurationPresentation";
 import type { ConfigSettingsDraftState } from "./configSettingsDraftState";
-import { readModelServiceState } from "./modelServiceState";
+import { readModelServiceState, type ModelServiceState } from "./modelServiceState";
 import {
   isRuntimeModelAssignmentInheritanceValue,
   isRuntimeModelPoolAssignment,
@@ -54,6 +53,7 @@ interface ExtensionModelAssignmentGroup {
   readonly kind: "extension";
   readonly id: string;
   readonly label: string;
+  readonly description?: string;
   readonly icon: SystemExtensionRuntimeModelAssignmentSection["extensionIcon"];
   readonly sections: readonly ModelAssignmentSection[];
 }
@@ -122,9 +122,9 @@ export function DefaultModelSection({
   }
 
   return (
-    <div className="px-0 py-1 sm:py-2">
+    <div className="px-0">
       <section className="mx-auto w-full max-w-[880px]">
-        <div className="space-y-6">
+        <div className="space-y-11">
           {assignmentGroups.map((group) => (
             <ModelAssignmentGroupSection
               key={group.id}
@@ -151,9 +151,16 @@ interface ModelAssignmentEditorProps {
   readonly draftState: ConfigSettingsDraftState;
   readonly modelTemplate: Record<string, unknown>;
   readonly pendingModelId: string | null;
-  readonly state: ReturnType<typeof readModelServiceState>;
+  readonly state: ModelServiceState;
   readonly systemConfig: SettingsSystemConfigHandle;
   readonly onDefaultModelPending: (modelId: string) => void;
+}
+
+type ModelAssignmentRowVariant = "primary" | "value";
+
+/** Sections that only resolve the default model are the page's primary slot: no caption, boxed control. */
+function isPrimaryModelAssignmentSection(section: ModelAssignmentSection): boolean {
+  return section.fields.every((field) => field.modelSelection.mutation === "default-model");
 }
 
 function ModelAssignmentGroupSection({
@@ -165,10 +172,11 @@ function ModelAssignmentGroupSection({
   }
 
   const section = group.sections[0];
+  const primary = isPrimaryModelAssignmentSection(section);
   return (
-    <section data-model-assignment-group className="border-t border-line-subtle">
-      <h2 className="px-0 pb-2 pt-3 text-[12.5px] font-semibold text-content-secondary">{group.label}</h2>
-      <ModelAssignmentRows section={section} {...editorProps} />
+    <section data-model-assignment-group className="min-w-0">
+      {primary ? null : <h2 className="pb-2 text-[11px] font-medium tracking-[0.08em] text-ink-350">{group.label}</h2>}
+      <ModelAssignmentRows section={section} variant={primary ? "primary" : "value"} {...editorProps} />
     </section>
   );
 }
@@ -177,61 +185,122 @@ function ExtensionModelAssignmentGroupSection({
   group,
   ...editorProps
 }: ModelAssignmentEditorProps & { group: ExtensionModelAssignmentGroup }): JSX.Element {
-  const [open, setOpen] = useState(false);
+  const hasModelSlotRows = group.sections.some((section) =>
+    section.fields.some((field) => !isRuntimeModelPoolAssignment(field)),
+  );
+  const [open, setOpen] = useState(hasModelSlotRows);
   const contentId = useId();
+  const hasConfiguredModelSlot = hasModelSlotRows && hasConfiguredExtensionModelSelection(group, editorProps);
+
+  const header = (
+    <div className="min-w-0 flex-1">
+      <div className="text-[13px] font-medium text-content-primary">{group.label}</div>
+      {group.description ? (
+        <p className="mt-0.5 max-w-[680px] text-[11.5px] leading-5 text-content-muted">{group.description}</p>
+      ) : null}
+    </div>
+  );
 
   return (
-    <section data-model-assignment-group data-model-assignment-extension className="border-t border-line-subtle">
-      <button
-        type="button"
-        className="group flex w-full min-w-0 items-center gap-2.5 py-3 text-left outline-none transition-colors hover:text-content-primary focus-visible:ring-2 focus-visible:ring-accent-focus"
-        aria-controls={contentId}
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <AgentToolPresentationIcon
-          icon={group.icon}
-          size={16}
-          className="shrink-0 text-content-secondary"
-          aria-hidden="true"
-        />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-content-primary">{group.label}</span>
-        <AppIcon
-          icon="chevron-right"
-          size={15}
-          className={cn("shrink-0 text-content-muted transition-transform duration-200", open && "rotate-90")}
-          aria-hidden="true"
-        />
-      </button>
-      <MotionDisclosure id={contentId} open={open} className="border-t border-line-subtle">
-        <div className="pb-1 pt-0.5">
+    <section data-model-assignment-group data-model-assignment-extension className="min-w-0">
+      {hasModelSlotRows ? (
+        <div className="flex items-center gap-3 py-2.5">
+          <AgentToolPresentationIcon
+            icon={group.icon}
+            size={16}
+            className="shrink-0 text-content-secondary"
+            aria-hidden="true"
+          />
+          {header}
+          <Switch
+            checked={open}
+            ariaLabel={frontendMessage("settings.model.extensionModelsToggle", { label: group.label })}
+            onCheckedChange={setOpen}
+          />
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="flex w-full min-w-0 items-center gap-3 rounded-md py-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent-focus"
+          aria-label={group.label}
+          aria-controls={contentId}
+          aria-expanded={open}
+          onClick={() => setOpen((current) => !current)}
+        >
+          <AgentToolPresentationIcon
+            icon={group.icon}
+            size={16}
+            className="shrink-0 text-content-secondary"
+            aria-hidden="true"
+          />
+          {header}
+          <AppIcon
+            icon="chevron-right"
+            size={15}
+            className={cn("shrink-0 text-content-muted transition-transform duration-200", open && "rotate-90")}
+            aria-hidden="true"
+          />
+        </button>
+      )}
+      <MotionDisclosure id={contentId} open={open} className="pl-7 pt-0.5">
+        <div className="space-y-3 pb-1">
           {group.sections.map((section) => (
-            <section key={section.id} className="border-b border-line-subtle/70 last:border-b-0">
-              <header className="pb-1 pt-3">
-                <h3 className="text-[12.5px] font-medium text-content-primary">{section.label}</h3>
-                {section.description ? (
-                  <p className="mt-0.5 max-w-[680px] text-[11.5px] leading-5 text-content-muted">
-                    {section.description}
-                  </p>
-                ) : null}
-              </header>
-              <ModelAssignmentRows section={section} {...editorProps} />
-            </section>
+            <div key={section.id} className="space-y-1">
+              {section.description ? (
+                <p className="max-w-[680px] text-[11.5px] leading-5 text-content-muted">{section.description}</p>
+              ) : null}
+              <ModelAssignmentRows section={section} variant="value" {...editorProps} />
+            </div>
           ))}
         </div>
       </MotionDisclosure>
+      {hasModelSlotRows && !open && hasConfiguredModelSlot ? (
+        <p className="pl-7 text-[11.5px] leading-5 text-content-muted">
+          {frontendMessage("settings.model.extensionModelsStillApplied")}
+        </p>
+      ) : null}
     </section>
+  );
+}
+
+/** A collapsed switch group keeps its configured models; say so instead of hiding the assignment silently. */
+function hasConfiguredExtensionModelSelection(
+  group: ExtensionModelAssignmentGroup,
+  editorProps: ModelAssignmentEditorProps,
+): boolean {
+  const defaultModelId = editorProps.state.defaultModel?.model.Id ?? "";
+  return group.sections.some((section) =>
+    section.fields.some((field) => {
+      if (isRuntimeModelPoolAssignment(field)) return false;
+      const candidates = readRuntimeModelAssignmentCandidates({
+        field,
+        models: editorProps.state.models,
+        providers: editorProps.state.providers,
+        modelTemplate: editorProps.modelTemplate,
+      });
+      const selection = readRuntimeModelAssignmentSelection({
+        field,
+        candidates,
+        defaultModelId,
+        draft: editorProps.draftState.draft,
+      });
+      return Boolean(selection.value) && !selection.inherited;
+    }),
   );
 }
 
 function ModelAssignmentRows({
   section,
+  variant = "value",
   ...editorProps
-}: ModelAssignmentEditorProps & { section: ModelAssignmentSection }): JSX.Element {
+}: ModelAssignmentEditorProps & {
+  section: ModelAssignmentSection;
+  variant?: ModelAssignmentRowVariant;
+}): JSX.Element {
   return (
-    <div className="divide-y divide-line-subtle/70">
+    <div className="min-w-0">
       {section.fields.map((field) => (
-        <ModelAssignmentRow key={field.modelSelection.id} field={field} {...editorProps} />
+        <ModelAssignmentRow key={field.modelSelection.id} field={field} variant={variant} {...editorProps} />
       ))}
     </div>
   );
@@ -271,6 +340,7 @@ function projectModelAssignmentGroups({
       kind: "extension",
       id: `extension:${assignment.extensionId}`,
       label: assignment.extensionLabel,
+      description: assignment.extensionDescription,
       icon: assignment.extensionIcon,
       sections: [section],
     });
@@ -300,6 +370,7 @@ function ModelAssignmentRow({
   pendingModelId,
   state,
   systemConfig,
+  variant = "value",
   onDefaultModelPending,
 }: {
   allFields: readonly ConfigFormFieldData[];
@@ -308,9 +379,10 @@ function ModelAssignmentRow({
   field: RuntimeModelAssignmentField;
   modelTemplate: Record<string, unknown>;
   pendingModelId: string | null;
-  state: ReturnType<typeof readModelServiceState>;
+  state: ModelServiceState;
   systemConfig: SettingsSystemConfigHandle;
   onDefaultModelPending: (modelId: string) => void;
+  variant?: ModelAssignmentRowVariant;
 }): JSX.Element {
   const candidates = readRuntimeModelAssignmentCandidates({
     field,
@@ -376,12 +448,17 @@ function ModelAssignmentRow({
 
   return (
     <div
-      className="grid min-h-[62px] min-w-0 gap-3 py-3 md:grid-cols-[minmax(0,1fr)_minmax(240px,340px)] md:items-center"
+      className={cn(
+        "grid min-w-0 gap-x-6 gap-y-2.5 py-2.5 md:items-center",
+        variant === "primary"
+          ? "md:grid-cols-[minmax(0,1fr)_minmax(280px,320px)]"
+          : "md:grid-cols-[minmax(0,1fr)_auto]",
+      )}
       data-model-assignment-row
     >
       <AssignmentLabel field={field} />
 
-      <div className="min-w-0">
+      <div className={cn("min-w-0", variant === "primary" ? "max-w-[320px]" : "w-fit max-w-full justify-self-end")}>
         <ModelSelect
           value={selection.value}
           placeholder={field.placeholder ?? frontendMessage("settings.model.defaultPlaceholder")}
@@ -389,6 +466,11 @@ function ModelAssignmentRow({
           options={options}
           disabled={candidates.length === 0 || operation?.status === "pending"}
           emptyState={frontendMessage("settings.model.noCandidates")}
+          triggerClassName={
+            variant === "value"
+              ? "border-0 bg-transparent px-1 hover:bg-surface-hover focus-within:border-transparent"
+              : undefined
+          }
           trailing={
             operation?.status === "pending" ? (
               <Spinner size="sm" className="text-ink-400" />
@@ -456,9 +538,9 @@ function ModelPoolAssignmentRow({
 
   return (
     <div className="min-w-0" data-model-pool-assignment>
-      <div className="divide-y divide-line-subtle">
+      <div className="min-w-0">
         {inheritanceField ? (
-          <div className="flex min-h-[58px] min-w-0 items-center gap-4 py-2.5">
+          <div className="flex min-w-0 items-center gap-4 py-2.5">
             <div className="min-w-0 flex-1">
               <div className="text-[12.5px] font-medium text-ink-850">{inheritanceField.label}</div>
               {inheritanceField.description ? (
@@ -474,7 +556,7 @@ function ModelPoolAssignmentRow({
           </div>
         ) : null}
 
-        <div className="py-3">
+        <div className="py-2.5">
           <AssignmentLabel field={field} />
         </div>
 
@@ -483,7 +565,7 @@ function ModelPoolAssignmentRow({
           const unavailable = !candidate;
           const cannotRemove = sourceCount <= 1;
           return (
-            <div key={`${modelId}:${index}`} className="flex min-h-[54px] min-w-0 items-center gap-3 py-2">
+            <div key={`${modelId}:${index}`} className="flex min-w-0 items-center gap-3 py-2">
               <PoolCandidateLabel candidate={candidate} modelId={modelId} unavailable={unavailable} />
               <div className="flex shrink-0 items-center gap-0.5">
                 <IconButton
@@ -536,7 +618,7 @@ function ModelPoolAssignmentRow({
             )}
             disabled={availableCandidates.length === 0}
             emptyState={frontendMessage("settings.model.poolNoAdditionalCandidates")}
-            triggerClassName="border-0 bg-transparent px-0 hover:border-transparent focus-visible:border-transparent focus-visible:ring-0"
+            triggerClassName="border-0 bg-transparent px-0 hover:bg-transparent focus-visible:border-transparent focus-visible:ring-0 focus-within:bg-transparent focus-within:border-transparent"
             onChange={addModel}
           />
           {selection.modelIds.some((modelId) => !candidatesById.has(modelId)) ? (
@@ -579,10 +661,7 @@ function AssignmentLabel({ field }: { field: RuntimeModelAssignmentField }): JSX
         <AssignmentRoleIcon field={field} />
       </span>
       <div className="min-w-0 flex-1 pt-0.5">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-          <span className="text-[13px] font-medium text-content-primary">{field.label}</span>
-          <ConfigFieldRequirementLabel required={field.modelSelection.required} />
-        </div>
+        <span className="block text-[13px] font-medium text-content-primary">{field.label}</span>
         {field.description ? (
           <p className="mt-0.5 text-[11.5px] leading-relaxed text-content-muted">{field.description}</p>
         ) : null}

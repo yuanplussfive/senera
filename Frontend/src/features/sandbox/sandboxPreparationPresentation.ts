@@ -8,12 +8,6 @@ export function sandboxStatusDetail(status?: SandboxStatusSnapshotData | null): 
     : (status?.message ?? frontendMessage("sandbox.status.unsynced"));
 }
 
-export function sandboxStatusAvailabilitySuffix(status?: SandboxStatusSnapshotData | null): string {
-  if (status?.effectiveMode === "host") return frontendMessage("sandbox.status.disabledSuffix");
-  if (status?.effectiveMode !== "sandbox") return frontendMessage("sandbox.status.unavailableSuffix");
-  return frontendMessage("sandbox.status.sandboxSuffix", { provider: sandboxProviderLabel(status.provider) });
-}
-
 export function executionModeLabel(status?: SandboxStatusSnapshotData | null): string {
   if (!status) return frontendMessage("execution.mode.unsynced");
   if (status.state === "preparing") return frontendMessage("execution.mode.preparing");
