@@ -182,7 +182,7 @@ export function ModelServiceSection({
     />
   );
   const providerList = (
-    <section className="flex min-h-0 flex-col overflow-hidden border-r border-line-subtle/70 bg-surface-subtle">
+    <section className="flex min-h-0 flex-col overflow-hidden bg-surface-subtle">
       <ProviderConnectionList
         providers={state.providers}
         selectedProviderId={actions.acceptedProvider?.Id ?? null}
@@ -207,8 +207,8 @@ export function ModelServiceSection({
     </section>
   );
   const detail = (
-    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-surface-soft">
-      <div className="shrink-0 border-b border-line-subtle/70">
+    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-surface-panel">
+      <div className="shrink-0">
         <div className="mx-auto w-full max-w-[800px] px-6 sm:px-8">
           <ProviderConnectionEditor
             acceptedProvider={actions.acceptedProvider}

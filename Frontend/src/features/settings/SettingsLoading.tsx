@@ -76,7 +76,7 @@ function FormSettingsLoading(): JSX.Element {
 function SplitSettingsLoading(): JSX.Element {
   return (
     <div className="flex h-full min-h-[280px] min-w-0" aria-hidden="true">
-      <aside className="hidden w-[32%] min-w-[220px] shrink-0 border-r border-line-subtle bg-surface-subtle p-4 sm:block">
+      <aside className="hidden w-[32%] min-w-[220px] shrink-0 bg-surface-subtle p-4 sm:block">
         <div className="mb-4 flex items-center justify-between gap-3">
           <Skeleton className="h-4 w-32" />
           <Skeleton className="h-7 w-7 rounded-lg" />
@@ -87,7 +87,7 @@ function SplitSettingsLoading(): JSX.Element {
           ))}
         </div>
       </aside>
-      <main className="min-w-0 flex-1 space-y-5 p-5 sm:p-6">
+      <main className="min-w-0 flex-1 space-y-5 bg-surface-panel p-5 sm:p-6">
         <div className="space-y-2">
           <Skeleton className="h-4 w-44" />
           <Skeleton className="h-2.5 w-72 max-w-[80%]" />

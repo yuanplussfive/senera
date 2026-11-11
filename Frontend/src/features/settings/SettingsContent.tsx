@@ -16,7 +16,6 @@ import type { ConfigSettingsDraftState } from "./sections/configSettingsDraftSta
 import { DefaultModelSection } from "./sections/DefaultModelSection";
 import { GeneralSettings } from "./sections/GeneralSettings";
 import { projectSectionConfigFields } from "./sections/runtimeModelAssignments";
-import { StorageSettings } from "./sections/StorageSettings";
 import { RuntimeDependenciesSection } from "./sections/RuntimeDependenciesSection";
 import { PromptPresetSection } from "./sections/PromptPresetSection";
 import { SettingsSectionLoading } from "./SettingsLoading";
@@ -158,15 +157,6 @@ function renderSettingsContent({
       return <PromptPresetSection />;
     case "model-roles":
       return <DefaultModelSection draftState={configDraftState} systemConfig={systemConfig} />;
-    case "storage":
-      return (
-        <StorageSettings
-          workspace={workspace}
-          configuration={
-            <ConfigFormSectionSettings draftState={configDraftState} sectionId="storage" systemConfig={systemConfig} />
-          }
-        />
-      );
     case "model-service":
     case "system-tools":
       return (
@@ -182,7 +172,7 @@ function renderSettingsContent({
     case "channels":
       return <ChannelsSection draftState={configDraftState} systemConfig={systemConfig} />;
     case "about":
-      return <AboutSettings environment={environment} />;
+      return <AboutSettings environment={environment} workspace={workspace} />;
   }
 }
 
@@ -192,7 +182,7 @@ function ConfigFormSectionSettings({
   systemConfig,
 }: {
   draftState: ConfigSettingsDraftState;
-  sectionId: Extract<SettingsSectionId, "runtime" | "planning" | "retrieval" | "storage">;
+  sectionId: Extract<SettingsSectionId, "runtime" | "planning" | "retrieval">;
   systemConfig?: SettingsSystemConfigHandle;
 }): JSX.Element {
   const allSections = systemConfig?.configSnapshot?.form.sections ?? [];
@@ -334,15 +324,18 @@ function sectionWidthClassName(sectionId: SettingsSectionId): string {
   if (sectionId === "appearance") return "mx-auto w-full max-w-[1120px]";
   if (sectionId === "general") return "mx-auto w-full max-w-[1120px]";
   if (sectionId === "about") return "mx-auto w-full max-w-[980px]";
-  if (sectionId === "runtime" || sectionId === "planning" || sectionId === "retrieval" || sectionId === "storage") {
+  if (sectionId === "runtime" || sectionId === "planning" || sectionId === "retrieval") {
     return "mx-auto w-full max-w-[980px]";
   }
   return "mx-auto w-full max-w-[1120px]";
 }
 
 function settingsViewportClassName(sectionId: SettingsSectionId): string {
-  if (sectionId === "runtime" || sectionId === "planning" || sectionId === "retrieval" || sectionId === "storage") {
+  if (sectionId === "runtime" || sectionId === "planning" || sectionId === "retrieval") {
     return "";
+  }
+  if (sectionId === "model-roles") {
+    return "bg-surface-canvas px-5 pb-5 pt-1 sm:px-8 sm:pb-6 sm:pt-1";
   }
   return "bg-surface-canvas px-5 py-5 sm:px-8 sm:py-6";
 }

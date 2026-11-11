@@ -555,6 +555,7 @@ export class AgentWebSocketTransport {
         {
           includeProject: requestedScope === AgentApplicationStorageScopes.Project,
           ...(projectWorkspaceId ? { projectWorkspaceId } : {}),
+          refresh: url.searchParams.get("refresh") === "1",
         },
       );
       response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });

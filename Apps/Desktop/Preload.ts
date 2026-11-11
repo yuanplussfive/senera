@@ -35,6 +35,8 @@ if (process.isMainFrame)
     confirmSettingsClose: () => ipcRenderer.invoke("senera:settings.confirm-close"),
     cancelSettingsClose: () => ipcRenderer.invoke("senera:settings.cancel-close"),
     openExternalUrl: (url: string) => ipcRenderer.invoke("senera:external-url.open", url),
+    openFileExternally: (payload: { name: string; bytes: Uint8Array }) =>
+      ipcRenderer.invoke("senera:file.open-external", payload),
     openQqClient: (workspaceId: string): Promise<{ ok: boolean }> =>
       ipcRenderer.invoke("senera:qq-client.open", workspaceId),
     chooseWorkspaceFolder: () => ipcRenderer.invoke("senera:workspace.choose-folder"),

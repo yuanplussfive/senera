@@ -35,7 +35,7 @@ export function DesktopWindowChrome({
         // window controls opt out.
         <div
           className={`fixed inset-x-0 top-0 z-10 h-[var(--senera-top-chrome-height)] ${
-            surface === "main" ? "pointer-events-none bg-transparent" : "border-b border-line-subtle"
+            surface === "main" ? "pointer-events-none bg-transparent" : ""
           }`}
           data-desktop-window-drag-strip
           data-window-drag-region={surface === "settings" ? true : undefined}

@@ -56,7 +56,6 @@ export function SettingsWorkbench({
     [sectionSearch, settingsSearchEntries],
   );
   const pendingChanges = configDraftState.dirty || entityDraftDirty;
-  const showSectionHeader = activeSection.headerMode === "global";
   useEffect(() => {
     onPendingChangesChange?.(pendingChanges);
   }, [onPendingChangesChange, pendingChanges]);
@@ -114,7 +113,6 @@ export function SettingsWorkbench({
       }
       shellActions={shellActions}
       shellRef={shellRef}
-      showSectionHeader={showSectionHeader}
     >
       <SettingsContent
         activeSection={activeSection}

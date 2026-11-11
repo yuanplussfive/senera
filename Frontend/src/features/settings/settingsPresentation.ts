@@ -49,7 +49,7 @@ export const settingsSectionGroups = [
     "retrieval",
   ]),
   defineSettingsSectionGroup("tools", "settings.group.tools", ["system-tools", "dependencies", "channels"]),
-  defineSettingsSectionGroup("system", "settings.group.system", ["storage", "about"]),
+  defineSettingsSectionGroup("system", "settings.group.system", ["about"]),
 ] as const satisfies readonly SettingsSectionGroupDefinition[];
 
 function defineSettingsSectionGroup(

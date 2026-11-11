@@ -2059,8 +2059,9 @@
       {
         "id": "storage",
         "label": "数据与存储",
-        "description": "查看应用数据位置、工作区占用和文件保留策略。",
+        "description": "内部容量、并发、保留与清理策略；不作为用户设置投递。",
         "icon": "folder-cog",
+        "level": "internal",
         "fields": [
           {
             "path": ["Plugins", "Enabled"],
@@ -2089,16 +2090,6 @@
             "label": "产物目录",
             "type": "string",
             "placeholder": ".senera/artifacts/runs",
-            "required": false,
-            "essential": false,
-            "level": "internal"
-          },
-          {
-            "path": ["Artifacts", "ToolObservationMaxTokens"],
-            "label": "工具反馈 Token 预算",
-            "description": "单个工具反馈最多占用的 Token，同时受本轮 Pi 上下文剩余预算约束。",
-            "type": "number",
-            "step": 64,
             "required": false,
             "essential": false,
             "level": "internal"
@@ -2226,7 +2217,7 @@
             "step": 1,
             "required": false,
             "essential": false,
-            "level": "advanced",
+            "level": "internal",
             "durationUnit": "hours"
           },
           {
@@ -2319,7 +2310,7 @@
             "step": 1,
             "required": false,
             "essential": false,
-            "level": "advanced",
+            "level": "internal",
             "durationUnit": "hours"
           },
           {
@@ -2330,7 +2321,7 @@
             "step": 0.25,
             "required": false,
             "essential": false,
-            "level": "advanced",
+            "level": "internal",
             "durationUnit": "hours"
           },
           {

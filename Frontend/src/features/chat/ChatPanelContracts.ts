@@ -17,7 +17,6 @@ import type { SocketStatus } from "../../api/useAgentSocket";
 import type { FeedbackCategory, FeedbackRating } from "../../api/feedbackEventTypes";
 import type { ApprovalBatchReference, ApprovalDecision } from "../../api/approvalEventTypes";
 import type { MessageQueueMode } from "../../app/useChatCommands";
-import type { SettingsSectionId } from "../settings/settingsSectionContract";
 import type { ChatMessage, UserProfile } from "../../store/sessionStore";
 import type { ExecutionApprovalMode } from "../../api/executionApprovalMode";
 
@@ -30,10 +29,6 @@ export interface ChatModelConfig {
   onSelectModelProvider: (id: string) => void;
   selectedThinkingLevel: ModelThinkingLevel | null;
   onSelectThinkingLevel: (level: ModelThinkingLevel) => void;
-  /** Drops the conversation's own model so it follows the configured default again. */
-  onApplyDefaultModel?: () => void;
-  /** Opens provider settings so another model can be configured. */
-  onAddModel?: () => void;
 }
 
 export interface ChatApprovalConfig {
@@ -96,8 +91,6 @@ export interface ChatNavigationActions {
   onOpenWorkflowPanel?: () => void;
   onRetryHistory?: (sessionId: string) => void;
   onLoadHistory?: (sessionId: string, options: { refresh?: boolean; before?: string }) => boolean;
-  onOpenSettings?: (section: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
-  onOpenLocalClient?: () => void;
 }
 
 export interface ChatPanelProps {

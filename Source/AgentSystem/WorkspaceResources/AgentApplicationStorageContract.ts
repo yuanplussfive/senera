@@ -25,6 +25,7 @@ export const AgentApplicationStorageUsageSchema = z.object({
 export const AgentApplicationStorageSnapshotSchema = z.object({
   root: z.string().min(1),
   scope: z.literal("application-state"),
+  measuredAt: z.string().datetime().optional(),
   ...AgentApplicationStorageUsageSchema.shape,
   workspaces: z.array(
     z.object({

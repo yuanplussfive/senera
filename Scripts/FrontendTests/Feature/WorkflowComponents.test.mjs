@@ -63,7 +63,7 @@ test("completed run summary keeps disclosure semantics when motion is disabled",
   const trigger = document.querySelector("[data-ui-chrome] button[aria-expanded]");
   expect(trigger).toBeInstanceOf(HTMLButtonElement);
   expect(trigger).toHaveAttribute("aria-expanded", "false");
-  expect(trigger).toHaveAccessibleName("Thinking 2.0s");
+  expect(trigger).toHaveAccessibleName(frontendMessage("chat.metrics.elapsed", { duration: "2.0s" }));
   expect(trigger).not.toHaveTextContent("1 步");
 
   await user.click(trigger);
@@ -305,9 +305,9 @@ test("chat header exposes one neutral workflow tool entry for panel toggling", a
 
 test("chat header leaves execution environment details to settings", () => {
   renderWithFrontendProviders(React.createElement(ChatHeader, { title: "Focused conversation" }));
-
   expect(screen.getByRole("heading", { name: "Focused conversation" })).toBeVisible();
   expect(document.querySelector("[data-sandbox-status]")).not.toBeInTheDocument();
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
   expect(document.querySelector("[data-execution-mode]")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: frontendMessage("terminal.panel.open") })).not.toBeInTheDocument();
 });

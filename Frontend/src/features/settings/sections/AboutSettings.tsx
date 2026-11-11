@@ -2,10 +2,18 @@ import { useEffect } from "react";
 import { frontendMessage } from "../../../i18n/frontendMessageCatalog";
 import { cn } from "../../../lib/util";
 import { MotionIconSwap } from "../../../shared/motion";
+import type { WorkspaceControllerHandle } from "../../../app/useWorkspaceController";
 import { AppIcon, Button, IconButton, LogoMark, useClipboardCopy } from "../../../shared/ui";
 import type { SettingsEnvironment } from "../SettingsWorkbenchContracts";
+import { StorageUsageTable } from "./StorageUsageTable";
 
-export function AboutSettings({ environment }: { environment: SettingsEnvironment }): JSX.Element {
+export function AboutSettings({
+  environment,
+  workspace,
+}: {
+  environment: SettingsEnvironment;
+  workspace?: WorkspaceControllerHandle;
+}): JSX.Element {
   const update = environment.runtimeUpdate;
   useEffect(() => {
     if (!update || update.snapshot.state !== "idle") return;
@@ -56,13 +64,19 @@ export function AboutSettings({ environment }: { environment: SettingsEnvironmen
           <summary className="cursor-pointer text-[12.5px] font-medium text-content-primary">
             {frontendMessage("settings.about.devDiagnostics")}
           </summary>
-          <div className="mt-3 divide-y divide-line-subtle border-y border-line-subtle">
-            <CommandRow command="npm run dev.frontend" label={frontendMessage("settings.about.command.frontend")} />
-            <CommandRow command="npm run desktop.live" label={frontendMessage("settings.about.command.desktopLive")} />
-            <CommandRow
-              command="npm run desktop.verify"
-              label={frontendMessage("settings.about.command.desktopVerify")}
-            />
+          <div className="mt-4 space-y-5">
+            <StorageUsageTable workspace={workspace} />
+            <div className="divide-y divide-line-subtle border-y border-line-subtle">
+              <CommandRow command="npm run dev.frontend" label={frontendMessage("settings.about.command.frontend")} />
+              <CommandRow
+                command="npm run desktop.live"
+                label={frontendMessage("settings.about.command.desktopLive")}
+              />
+              <CommandRow
+                command="npm run desktop.verify"
+                label={frontendMessage("settings.about.command.desktopVerify")}
+              />
+            </div>
           </div>
         </details>
       ) : null}

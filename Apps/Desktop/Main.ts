@@ -42,6 +42,7 @@ import { hideDesktopWindows, revealDesktopWindow, showDesktopWindows } from "./D
 import { parseDesktopReleaseChannel } from "./DesktopReleaseChannel.js";
 import { resolveDesktopChannelClientUrl } from "./DesktopChannelClientUrl.js";
 import { desktopMessage, resolveDesktopLocale } from "./DesktopMessageCatalog.js";
+import { readWindowFrameOptions, readWindowState } from "./DesktopWindowChrome.js";
 import {
   readDesktopStartupCanvasColor,
   resolveDesktopStartupTheme,
@@ -54,6 +55,7 @@ import {
 import { DesktopUpdateService } from "./DesktopUpdateService.js";
 import type { DesktopUpdateSnapshot } from "./DesktopUpdateProtocol.js";
 import { DesktopHostIntegrationService, spawnDesktopProcessDetached } from "./DesktopHostIntegrationService.js";
+import { openDesktopExternalFileFromRenderer } from "./DesktopExternalOpen.js";
 import { desktopHostIntegrationFailure } from "./DesktopHostIntegrationProtocol.js";
 import { readAgentProductMetadata } from "../../Source/AgentSystem/Core/AgentProductMetadata.js";
 import { resolveAgentWorkspaceConfigPath } from "../../Source/AgentSystem/Core/AgentWorkspaceLayout.js";
@@ -328,6 +330,12 @@ function registerDesktopIpc(): void {
     const external = resolveAgentExternalUrl(input, DesktopExternalUrlPolicy);
     await shell.openExternal(external.url, { activate: true });
   });
+  ipcMain.handle("senera:file.open-external", (event, payload: unknown) =>
+    openDesktopExternalFileFromRenderer(event, payload, resolveManagedWindow, {
+      tempRoot: path.join(app.getPath("temp"), "senera-opened-files"),
+      openPath: (filePath) => shell.openPath(filePath),
+    }),
+  );
   ipcMain.handle("senera:workspace.choose-folder", async (event) => {
     if (!resolveManagedWindow(event)) return null;
     return (await chooseDesktopWorkspace()) ?? null;
@@ -620,18 +628,10 @@ function presentSettingsWindow({ focus }: { focus: boolean }): void {
   }
 }
 
-function readWindowFrameOptions(): { frame: false } | { titleBarStyle: "hiddenInset" } {
-  return process.platform === "darwin" ? { titleBarStyle: "hiddenInset" } : { frame: false };
-}
-
 function resolveManagedWindow(event: IpcMainInvokeEvent): BrowserWindow | undefined {
   if (event.senderFrame !== event.sender.mainFrame) return undefined;
   const target = BrowserWindow.fromWebContents(event.sender);
   return target && (target === mainWindow || target === settingsWindow) ? target : undefined;
-}
-
-function readWindowState(window: BrowserWindow): { isMaximized: boolean } {
-  return { isMaximized: window.isMaximized() };
 }
 
 function registerWindowStateEvents(window: BrowserWindow): void {

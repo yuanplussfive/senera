@@ -273,6 +273,8 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'
 
 并发写入会按每个文件的最大尺寸预留容量，防止多个请求同时越过总配额。因此 `MaxStoredBytes` 应为当前保留文件留出空间，并至少能容纳一个 `MaxFileBytes`。请求失败时，本次已经写完的文件会回滚；服务异常退出留下的无 manifest 目录会按 `IncompleteRetentionHours` 清理。
 
+保留策略属于内部维护配置，直接在 `senera.config.json` 的 `Uploads`/`Artifacts` 段设置，不出现在设置界面的用户分区。
+
 需要立即释放空间时，可以先停止服务，再备份并清理 `Uploads.RootDir`。不要在服务运行期间手工删除正在写入的子目录。
 
 ## 非 root 容器

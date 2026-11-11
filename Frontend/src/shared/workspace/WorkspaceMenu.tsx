@@ -1,6 +1,4 @@
-import { Tooltip } from "../ui/Tooltip";
-import { createContext, lazy, Suspense, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { z } from "zod/mini";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import type { WorkspaceControllerHandle } from "../../app/useWorkspaceController";
 import { readDesktopBridge } from "../../app/desktopBridge";
@@ -11,49 +9,33 @@ import type {
   AgentWorkspaceId,
 } from "../../../../Source/AgentSystem/WorkspaceResources/AgentWorkspaceCatalogContract";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import { useResponsiveMode } from "../responsive";
-import {
-  AppIcon,
-  Button,
-  Dialog,
-  DialogContent,
-  IconButton,
-  Input,
-  Spinner,
-  StateView,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuItem,
-  ScrollArea,
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "../ui";
 import { useWorkspaceResourceController } from "./WorkspaceResourceProvider";
+import { WorkspaceMenuContext } from "./WorkspaceMenuContext";
+import { DirectoryFailureSchema, DirectoryListingSchema, type DirectoryListing } from "./WorkspaceDirectoryListing";
+import type { WorkspaceMenuDialogs as WorkspaceMenuDialogsComponent } from "./WorkspaceMenuDialogs";
 
-const DirectorySchema = z.object({
-  path: z.string(),
-  parent: z.nullable(z.string()),
-  directories: z.array(z.object({ path: z.string(), name: z.string() })),
-});
-type DirectoryListing = z.infer<typeof DirectorySchema>;
-const DirectoryFailureSchema = z.object({ error: z.object({ message: z.string() }) });
+// Single-flight: the lazy dialogs chunk is loaded at most once per session, so
+// prefetching on user intent and the `lazy()` first mount share one import.
+type DialogsModule = { WorkspaceMenuDialogs: typeof WorkspaceMenuDialogsComponent };
+let dialogsModulePromise: Promise<DialogsModule> | undefined;
+const loadDialogsModule = (): Promise<DialogsModule> => {
+  dialogsModulePromise ??= import("./WorkspaceMenuDialogs");
+  return dialogsModulePromise;
+};
 
-const WorkspaceFileTree = lazy(() =>
-  import("./WorkspaceFileTree").then((module) => ({ default: module.WorkspaceFileTree })),
+const WorkspaceMenuDialogs = lazy(() =>
+  loadDialogsModule().then((module) => ({ default: module.WorkspaceMenuDialogs })),
 );
-const WorkspaceMenuContext = createContext<{
-  workspace: WorkspaceControllerHandle;
-  select: (root: string) => void;
-  forgetWorkspace: (workspaceId: AgentWorkspaceId) => Promise<void>;
-  openFolder: () => Promise<void>;
-  openPanel: () => void;
-  error?: string;
-} | null>(null);
 
-/** Keep folder selection and dirty-edit dialogs alive after the command menu closes. */
+/**
+ * Warm the lazy dialogs chunk once a user gesture makes a dialog plausible
+ * (e.g. the workspace popover opened) — never on first paint.
+ */
+export function prefetchWorkspaceMenuDialogs(): void {
+  void loadDialogsModule();
+}
+
+/** Keep the folder browser and confirmation dialogs alive after the switcher popover closes. */
 export function WorkspaceMenuProvider({
   workspace,
   httpBaseUrl,
@@ -64,12 +46,16 @@ export function WorkspaceMenuProvider({
   children: ReactNode;
 }): JSX.Element {
   const [browsing, setBrowsing] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(false);
   const [directory, setDirectory] = useState<{ path: string }>();
   const [input, setInput] = useState("");
   const [listing, setListing] = useState<DirectoryListing>();
   const [error, setError] = useState<string>();
   const [pendingRoot, setPendingRoot] = useState<string>();
+  const [forgetTarget, setForgetTarget] = useState<AgentWorkspaceDescriptor>();
+  const [forgetting, setForgetting] = useState(false);
+  // Latch: once any dialog has been requested, keep the lazy dialog module
+  // mounted so later opens (and Radix exit animations) stay synchronous.
+  const [dialogsMounted, setDialogsMounted] = useState(false);
   const opening = useRef(false);
   const resources = useWorkspaceResourceController();
   const snapshot = workspace.snapshot;
@@ -90,7 +76,7 @@ export function WorkspaceMenuProvider({
       .then(async (response) => {
         const body: unknown = await response.json();
         if (!response.ok) throw new Error(DirectoryFailureSchema.parse(body).error.message);
-        return DirectorySchema.parse(body);
+        return DirectoryListingSchema.parse(body);
       })
       .then(
         (value) => {
@@ -110,6 +96,9 @@ export function WorkspaceMenuProvider({
     if (workspace.phase === "succeeded") setBrowsing(false);
     if (workspace.phase === "succeeded" || workspace.phase === "failed") opening.current = false;
   }, [workspace.phase]);
+  useEffect(() => {
+    if (browsing || forgetTarget !== undefined || pendingRoot !== undefined) setDialogsMounted(true);
+  }, [browsing, forgetTarget, pendingRoot]);
   const select = (root: string): void => {
     if (root === snapshot?.workspaceRoot) return;
     if (resources?.dirty) {
@@ -118,6 +107,13 @@ export function WorkspaceMenuProvider({
       return;
     }
     if (workspace.switchWorkspace(root)) opening.current = true;
+  };
+  const confirmPendingRoot = (): void => {
+    if (pendingRoot && workspace.switchWorkspace(pendingRoot)) {
+      opening.current = true;
+      setPendingRoot(undefined);
+      setBrowsing(false);
+    }
   };
   const openFolder = async (): Promise<void> => {
     try {
@@ -152,360 +148,35 @@ export function WorkspaceMenuProvider({
         workspace,
         select,
         forgetWorkspace,
+        requestForget: setForgetTarget,
         openFolder,
-        openPanel: () => setPanelOpen(true),
         error: workspace.error?.message ?? error,
       }}
     >
       {children}
-      <Dialog modal={false} open={panelOpen} onOpenChange={setPanelOpen}>
-        <DialogContent
-          title={frontendMessage("resource.workspace")}
-          showHeader={false}
-          className="h-[min(30rem,calc(100dvh-2rem))] w-[min(24rem,calc(100vw-2rem))]"
-          bodyClassName="flex min-h-0 flex-1 flex-col p-0"
-          onFocusOutside={(event) => event.preventDefault()}
-        >
-          {panelOpen ? <WorkspaceMenuPanel onClose={() => setPanelOpen(false)} /> : null}
-        </DialogContent>
-      </Dialog>
-      <Dialog open={browsing} onOpenChange={setBrowsing}>
-        <DialogContent
-          title={frontendMessage("workspace.select")}
-          className="h-[min(520px,calc(100dvh-32px))] w-[min(560px,calc(100vw-32px))]"
-          bodyClassName="flex min-h-0 flex-1 flex-col px-4 pb-2"
-          footerClassName="px-4"
-          footer={
-            <div className="flex justify-end">
-              <Button
-                size="sm"
-                loading={workspace.phase === "switching"}
-                disabled={!listing || input.trim() !== listing.path || !workspace.connected}
-                onClick={() => {
-                  if (listing) select(listing.path);
-                }}
-              >
-                {frontendMessage("workspace.openThisFolder")}
-              </Button>
-            </div>
-          }
-        >
-          <form
-            className="flex shrink-0 items-center gap-1 rounded-lg border border-line px-1"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (input.trim()) navigate(input.trim());
-            }}
-          >
-            <IconButton
-              type="button"
-              label={frontendMessage("workspace.parentFolder")}
-              tooltip={frontendMessage("workspace.parentFolder")}
-              disabled={!listing?.parent || workspace.phase === "switching"}
-              onClick={() => {
-                if (listing?.parent) navigate(listing.parent);
-              }}
-            >
-              <AppIcon icon="arrow-left" size={15} />
-            </IconButton>
-            <Input
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              aria-label={frontendMessage("settings.workspace.pathLabel")}
-              className="min-w-0 flex-1 border-0 bg-transparent px-1 font-mono text-xs shadow-none"
-              disabled={workspace.phase === "switching"}
-            />
-            <IconButton
-              type="submit"
-              label={frontendMessage("workspace.browse")}
-              tooltip={frontendMessage("workspace.browse")}
-              loading={!listing && !error}
-              disabled={!input.trim() || workspace.phase === "switching"}
-            >
-              <AppIcon icon="arrow-right" size={15} />
-            </IconButton>
-          </form>
-          <ScrollArea className="mt-2 min-h-0 flex-1" viewportClassName="overflow-x-hidden">
-            {workspace.error || error ? (
-              <p role="alert" className="px-2 py-3 text-xs text-danger">
-                {workspace.error?.message ?? error}
-              </p>
-            ) : null}
-            {!listing && !error ? <StateView status="loading" /> : null}
-            {listing?.directories.map((entry) => (
-              <Button
-                key={entry.path}
-                variant="ghost"
-                className="w-full min-w-0 justify-start"
-                disabled={workspace.phase === "switching"}
-                onClick={() => navigate(entry.path)}
-              >
-                <AppIcon icon="folder" size={15} />
-                <Tooltip content={entry.path}>
-                  <span className="min-w-0 flex-1 truncate text-left">{entry.name}</span>
-                </Tooltip>
-                <AppIcon icon="chevron-right" size={13} className="text-content-muted" />
-              </Button>
-            ))}
-          </ScrollArea>
-        </DialogContent>
-      </Dialog>
-      <Dialog
-        open={pendingRoot !== undefined}
-        onOpenChange={(open) => {
-          if (!open) setPendingRoot(undefined);
-        }}
-      >
-        <DialogContent
-          title={frontendMessage("workspace.unsavedTitle")}
-          description={frontendMessage("workspace.unsavedDescription")}
-          footer={
-            <>
-              <Button variant="ghost" onClick={() => setPendingRoot(undefined)}>
-                {frontendMessage("ui.cancel")}
-              </Button>
-              <Button
-                onClick={() => {
-                  if (pendingRoot && workspace.switchWorkspace(pendingRoot)) {
-                    opening.current = true;
-                    setPendingRoot(undefined);
-                    setBrowsing(false);
-                  }
-                }}
-              >
-                {frontendMessage("workspace.discardAndOpen")}
-              </Button>
-            </>
-          }
-        />
-      </Dialog>
-    </WorkspaceMenuContext.Provider>
-  );
-}
-
-export function WorkspaceMenu({ onClose }: { onClose: () => void }): JSX.Element | null {
-  const menu = useContext(WorkspaceMenuContext);
-  const resources = useWorkspaceResourceController();
-  const { viewport } = useResponsiveMode();
-  const [open, setOpen] = useState(false);
-  if (!menu || !resources) return null;
-  const { workspace } = menu;
-  const snapshot = workspace.snapshot;
-  const active = snapshot?.workspaces.find((entry) => entry.id === snapshot.workspaceId);
-  const label = frontendMessage("workspace.menu", { name: active?.name ?? frontendMessage("resource.workspace") });
-  if (viewport === "mobile") {
-    return (
-      <DropdownMenuItem
-        icon={<AppIcon icon="folder" size={15} />}
-        aria-label={label}
-        trailing={<span className="max-w-28 truncate text-xs text-content-muted">{active?.name}</span>}
-        data-workspace-menu-trigger
-        onSelect={() => {
-          menu.openPanel();
-          onClose();
-        }}
-      >
-        {frontendMessage("resource.workspace")}
-      </DropdownMenuItem>
-    );
-  }
-  return (
-    <DropdownMenuSub open={open} onOpenChange={setOpen}>
-      <DropdownMenuSubTrigger icon={<AppIcon icon="folder" size={15} />} aria-label={label} data-workspace-menu-trigger>
-        <span className="flex min-w-0 items-center justify-between gap-4">
-          <span className="shrink-0">{frontendMessage("resource.workspace")}</span>
-          <span className="truncate text-xs text-content-muted">{active?.name}</span>
-        </span>
-      </DropdownMenuSubTrigger>
-      <DropdownMenuSubContent
-        className="h-[min(30rem,calc(100dvh-6rem))] w-96 max-w-[calc(100vw-2rem)] overflow-hidden p-0"
-        onFocusOutside={(event) => event.preventDefault()}
-        onKeyDown={(event) => {
-          if (event.key !== "Escape") event.stopPropagation();
-        }}
-      >
-        {open ? (
-          <WorkspaceMenuPanel
-            onClose={() => {
-              setOpen(false);
-              onClose();
-            }}
+      {dialogsMounted ? (
+        <Suspense fallback={null}>
+          <WorkspaceMenuDialogs
+            workspace={workspace}
+            browsing={browsing}
+            setBrowsing={setBrowsing}
+            input={input}
+            setInput={setInput}
+            listing={listing}
+            error={error}
+            navigate={navigate}
+            select={select}
+            forgetTarget={forgetTarget}
+            setForgetTarget={setForgetTarget}
+            forgetting={forgetting}
+            setForgetting={setForgetting}
+            forgetWorkspace={forgetWorkspace}
+            pendingRoot={pendingRoot}
+            setPendingRoot={setPendingRoot}
+            confirmPendingRoot={confirmPendingRoot}
           />
-        ) : null}
-      </DropdownMenuSubContent>
-    </DropdownMenuSub>
-  );
-}
-
-function WorkspaceMenuPanel({ onClose }: { onClose: () => void }): JSX.Element | null {
-  const menu = useContext(WorkspaceMenuContext);
-  const resources = useWorkspaceResourceController();
-  const [forgetTarget, setForgetTarget] = useState<AgentWorkspaceDescriptor>();
-  const [forgetting, setForgetting] = useState(false);
-  if (!menu || !resources) return null;
-  const { workspace, select, forgetWorkspace, openFolder, error } = menu;
-  const snapshot = workspace.snapshot;
-  const activeWorkspace = snapshot?.workspaces.find((entry) => entry.id === snapshot.workspaceId);
-  const locked = !snapshot || !workspace.connected || workspace.phase === "switching";
-  const chooseWorkspaceFolder = readDesktopBridge()?.chooseWorkspaceFolder;
-  const folderLabel = chooseWorkspaceFolder
-    ? frontendMessage("workspace.chooseLocalFolder")
-    : frontendMessage("workspace.browseServerFolder");
-  return (
-    <>
-      <Tabs defaultValue="files" className="flex h-full min-h-0 flex-col" data-workspace-menu>
-        <div className="shrink-0 px-4 pt-4">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <AppIcon icon="folder" size={20} className="text-content-secondary" />
-            <span className="min-w-0 truncate text-[14px] font-semibold text-content-strong">
-              {activeWorkspace?.name}
-            </span>
-          </div>
-          <Tooltip content={snapshot?.workspaceRoot}>
-            <p className="mt-1.5 truncate text-[11px] text-content-muted">{snapshot?.workspaceRoot}</p>
-          </Tooltip>
-          <TabsList
-            variant="underline"
-            className="mt-2 flex w-full justify-start border-b border-line-subtle"
-            aria-label={frontendMessage("resource.workspace")}
-          >
-            <TabsTrigger value="files" className="h-9 flex-none rounded-none px-0">
-              {frontendMessage("workspace.menuFiles")}
-            </TabsTrigger>
-            <TabsTrigger value="switch" className="h-9 flex-none rounded-none px-0">
-              {frontendMessage("workspace.menuSwitch")}
-            </TabsTrigger>
-          </TabsList>
-        </div>
-        <TabsContent value="files" className="min-h-0 flex-1 overflow-hidden">
-          <Suspense fallback={<StateView status="loading" />}>
-            <WorkspaceFileTree
-              httpBaseUrl={resources.httpBaseUrl}
-              onSelect={(path) => {
-                onClose();
-                resources.openResource({ path });
-              }}
-            />
-          </Suspense>
-        </TabsContent>
-        <TabsContent value="switch" className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
-          <ScrollArea className="min-h-0 flex-1 px-2 py-2">
-            {snapshot?.workspaces.map((entry) => {
-              const active = entry.id === snapshot.workspaceId;
-              const protectedEntry = active || entry.id === snapshot.defaultWorkspaceId;
-              return (
-                <div
-                  key={entry.id}
-                  className="group flex min-w-0 items-center rounded-md transition-colors hover:bg-surface-hover"
-                  data-active={active || undefined}
-                  data-workspace-entry={entry.id}
-                >
-                  <Button
-                    variant="ghost"
-                    disabled={locked}
-                    aria-current={active ? "true" : undefined}
-                    className="h-auto min-w-0 flex-1 justify-start gap-3 px-2 py-3 text-left"
-                    onClick={() => select(entry.root)}
-                  >
-                    <AppIcon icon="folder" size={15} className="shrink-0 text-content-muted" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px]">{entry.name}</span>
-                      <Tooltip content={entry.root}>
-                        <span className="mt-0.5 block truncate text-[11px] font-normal text-content-muted">
-                          {entry.root}
-                        </span>
-                      </Tooltip>
-                    </span>
-                    {active ? <AppIcon icon="checkmark" size={16} className="shrink-0 text-content-secondary" /> : null}
-                  </Button>
-                  <IconButton
-                    label={frontendMessage("workspace.forget")}
-                    tooltip={
-                      active || entry.id === snapshot.defaultWorkspaceId
-                        ? frontendMessage(active ? "workspace.forgetActive" : "workspace.forgetDefault")
-                        : frontendMessage("workspace.forget")
-                    }
-                    tone="danger"
-                    size="sm"
-                    disabled={locked || protectedEntry}
-                    className="mr-1 opacity-60 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 disabled:opacity-30 [@media(hover:hover)]:opacity-0"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setForgetTarget(entry);
-                    }}
-                  >
-                    <AppIcon icon="trash" size={14} />
-                  </IconButton>
-                </div>
-              );
-            })}
-          </ScrollArea>
-          {workspace.phase === "switching" ? (
-            <p role="status" className="flex items-center gap-2 px-3 py-2 text-xs text-content-muted">
-              <Spinner size="xs" />
-              {frontendMessage("workspace.opening")}
-            </p>
-          ) : null}
-          {error ? (
-            <p role="alert" className="px-3 py-2 text-xs text-danger">
-              {error}
-            </p>
-          ) : null}
-          <div className="shrink-0 border-t border-line-subtle p-2">
-            <Button
-              variant="ghost"
-              className="w-full justify-start"
-              data-workspace-folder-action
-              disabled={locked || (!chooseWorkspaceFolder && !snapshot?.capabilities.browseDirectories)}
-              onClick={() => {
-                void openFolder();
-                onClose();
-              }}
-            >
-              <AppIcon icon="folder" size={15} />
-              {folderLabel}
-            </Button>
-          </div>
-        </TabsContent>
-      </Tabs>
-      <Dialog
-        open={forgetTarget !== undefined}
-        onOpenChange={(open) => {
-          if (!open && !forgetting) setForgetTarget(undefined);
-        }}
-      >
-        <DialogContent
-          title={frontendMessage("workspace.forgetTitle")}
-          description={frontendMessage("workspace.forgetDescription")}
-          footer={
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" disabled={forgetting} onClick={() => setForgetTarget(undefined)}>
-                {frontendMessage("ui.cancel")}
-              </Button>
-              <Button
-                variant="destructive"
-                loading={forgetting}
-                onClick={() => {
-                  const target = forgetTarget;
-                  if (!target) return;
-                  setForgetting(true);
-                  void forgetWorkspace(target.id)
-                    .then(() => setForgetTarget(undefined))
-                    .catch((reason: unknown) => {
-                      toast.error(reason instanceof Error ? reason.message : frontendMessage("workspace.forgetFailed"));
-                    })
-                    .finally(() => setForgetting(false));
-                }}
-              >
-                {frontendMessage("workspace.forgetConfirm")}
-              </Button>
-            </div>
-          }
-        >
-          <p className="text-sm text-content-secondary">{forgetTarget?.root}</p>
-        </DialogContent>
-      </Dialog>
-    </>
+        </Suspense>
+      ) : null}
+    </WorkspaceMenuContext.Provider>
   );
 }

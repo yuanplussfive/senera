@@ -6,7 +6,6 @@ import { useResponsiveMode } from "../../shared/responsive";
 import {
   ContextMenu,
   ContextMenuContent,
-  ContextMenuLabel,
   ContextMenuTrigger,
   ActivityStatusIcon,
   AppIcon,
@@ -26,8 +25,13 @@ interface SessionRowProps {
   accent: "idle" | "running" | "failed";
   selectionMode?: boolean;
   selected?: boolean;
+  /** Total selected rows; a multi-row selection acts as a set in the context menu. */
+  selectionCount?: number;
   onClick: () => void;
-  onToggleSelected?: () => void;
+  onToggleSelected?: (shift?: boolean) => void;
+  onEnterSelectionMode?: () => void;
+  onClearSelection?: () => void;
+  onDeleteSelected?: () => void;
   onRename: (returnFocus: HTMLElement | null) => void;
   onClose: (returnFocus: HTMLElement | null) => void;
   onFocus?: () => void;
@@ -43,8 +47,12 @@ export function SessionRow({
   accent,
   selectionMode = false,
   selected = false,
+  selectionCount = 0,
   onClick,
   onToggleSelected = () => undefined,
+  onEnterSelectionMode = () => undefined,
+  onClearSelection = () => undefined,
+  onDeleteSelected = () => undefined,
   onRename,
   onClose,
   onFocus = () => undefined,
@@ -56,25 +64,57 @@ export function SessionRow({
   const { isCoarsePointer } = useResponsiveMode();
   const animateSelection = !reduceMotion && !disableMotion;
   const setItemRef = useCallback((node: HTMLDivElement | null) => registerItem(index, node), [index, registerItem]);
-  const actions: SessionMenuAction[] = [
-    {
+  const actions: SessionMenuAction[] = [];
+  if (selected && selectionCount > 1) {
+    // Right-clicking inside the selection acts on the whole set, like a file list.
+    actions.push({
+      id: "delete-selected",
+      label: frontendMessage("session.deleteSelectedMenu", { count: selectionCount }),
+      icon: <AppIcon icon="trash" className="h-3.5 w-3.5" />,
+      onSelect: () => {
+        pendingDialogActionRef.current = () => onDeleteSelected();
+      },
+    });
+    actions.push({
+      id: "clear-selection",
+      label: frontendMessage("session.cancelSelection"),
+      icon: <AppIcon icon="close" className="h-3.5 w-3.5" />,
+      onSelect: () => onClearSelection(),
+    });
+  } else {
+    if (selectionMode && !selected) {
+      actions.push({
+        id: "select",
+        label: frontendMessage("session.addToSelection"),
+        icon: <AppIcon icon="checkmark" className="h-3.5 w-3.5" />,
+        onSelect: () => onToggleSelected(false),
+      });
+    }
+    actions.push({
       id: "rename",
       label: frontendMessage("session.rename"),
       icon: <AppIcon icon="pencil" className="h-3.5 w-3.5" />,
       onSelect: () => {
         pendingDialogActionRef.current = () => onRename(selectionFocusRef.current);
       },
-    },
-    {
+    });
+    if (!selectionMode) {
+      actions.push({
+        id: "enter-selection-mode",
+        label: frontendMessage("session.enterSelectionMode"),
+        icon: <AppIcon icon="list-checks" className="h-3.5 w-3.5" />,
+        onSelect: () => onEnterSelectionMode(),
+      });
+    }
+    actions.push({
       id: "delete",
-      label: frontendMessage("session.deleteHistory"),
+      label: frontendMessage("session.delete"),
       icon: <AppIcon icon="trash" className="h-3.5 w-3.5" />,
-      destructive: true,
       onSelect: () => {
         pendingDialogActionRef.current = () => onClose(selectionFocusRef.current);
       },
-    },
-  ];
+    });
+  }
 
   useEffect(() => {
     if (contextMenuOpen) return;
@@ -122,21 +162,40 @@ export function SessionRow({
               className="pointer-events-none absolute inset-0 z-0 rounded-[10px] bg-[var(--theme-session-active-bg)]"
               data-active-session-indicator
             />
+          ) : selected ? (
+            // Selection reuses the active surface instead of an accent wash: the
+            // sidebar keeps one neutral material and the check mark carries state.
+            <span
+              className="pointer-events-none absolute inset-0 z-0 rounded-[10px] bg-[var(--theme-session-active-bg)] transition-colors duration-150"
+              data-selected-session-indicator
+            />
           ) : null}
           {selectionMode ? (
             <label className="absolute inset-0 z-20 flex min-w-0 cursor-pointer items-center gap-2 overflow-hidden px-3">
-              <input
-                type="checkbox"
-                ref={(node) => {
-                  selectionFocusRef.current = node;
-                }}
-                checked={selected}
-                aria-label={frontendMessage("session.selectConversation", { title })}
-                onChange={onToggleSelected}
-                onFocus={onFocus}
-                onKeyDown={handleContextMenuShortcut}
-                className="h-3.5 w-3.5 shrink-0 accent-content-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
-              />
+              <span className="relative grid h-3.5 w-3.5 shrink-0 place-items-center">
+                <input
+                  type="checkbox"
+                  ref={(node) => {
+                    selectionFocusRef.current = node;
+                  }}
+                  checked={selected}
+                  aria-label={frontendMessage("session.selectConversation", { title })}
+                  onClick={(event) => {
+                    // The click carries the modifier; change does not. Toggling here
+                    // keeps shift and keyboard (Space also fires click) on one path.
+                    onToggleSelected(event.shiftKey);
+                  }}
+                  onChange={() => undefined}
+                  onFocus={onFocus}
+                  onKeyDown={handleContextMenuShortcut}
+                  className="peer h-3.5 w-3.5 shrink-0 cursor-pointer appearance-none rounded-[4px] border border-line-strong bg-transparent transition-[background-color,border-color] duration-150 checked:border-content-secondary checked:bg-content-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-focus"
+                />
+                <AppIcon
+                  icon="checkmark"
+                  className="pointer-events-none absolute h-2.5 w-2.5 text-content-inverse opacity-0 transition-opacity duration-150 peer-checked:opacity-100"
+                  strokeWidth={3}
+                />
+              </span>
               <SessionTitleContent accent={accent} title={title} />
             </label>
           ) : (
@@ -161,8 +220,7 @@ export function SessionRow({
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="min-w-[196px]">
-        <ContextMenuLabel>{frontendMessage("session.actions")}</ContextMenuLabel>
-        <ContextSessionMenuItems actions={actions} separateLast />
+        <ContextSessionMenuItems actions={actions} />
       </ContextMenuContent>
     </ContextMenu>
   );

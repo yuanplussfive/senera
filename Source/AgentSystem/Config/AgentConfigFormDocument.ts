@@ -270,9 +270,9 @@ export function readConfigFormDocument(): ConfigFormDocument {
 }
 
 function assertConfigFormCoverage(document: ConfigFormDocument): void {
-  const declared = new Set<string>();
+  const declared = new Map<string, string>();
   for (const section of document.form.sections ?? []) {
-    for (const field of section.fields ?? []) collectDeclaredFieldPaths(field, [], declared);
+    for (const field of section.fields ?? []) collectDeclaredFieldPaths(field, [], declared, section.id);
   }
 
   const omissions = document.form.coverage?.omissions ?? [];
@@ -300,11 +300,19 @@ function assertConfigFormCoverage(document: ConfigFormDocument): void {
 function collectDeclaredFieldPaths(
   field: ConfigFormFieldDefinition,
   basePath: readonly string[],
-  declared: Set<string>,
+  declared: Map<string, string>,
+  sectionId: string,
 ): void {
   const path = [...basePath, ...field.path];
-  declared.add(configPathKey(path));
-  for (const itemField of field.itemFields ?? []) collectDeclaredFieldPaths(itemField, path, declared);
+  const key = configPathKey(path);
+  const owner = declared.get(key);
+  if (owner !== undefined) {
+    throw new Error(`Agent config form declares ${renderPath(path)} in both "${owner}" and "${sectionId}" sections.`);
+  }
+  declared.set(key, sectionId);
+  for (const itemField of field.itemFields ?? []) {
+    collectDeclaredFieldPaths(itemField, path, declared, sectionId);
+  }
 }
 
 function omissionCoversPath(omission: ConfigFormCoverageOmission, path: readonly string[]): boolean {

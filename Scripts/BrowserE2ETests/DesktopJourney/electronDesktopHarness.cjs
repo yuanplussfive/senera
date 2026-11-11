@@ -59,6 +59,11 @@ function registerDesktopIpc() {
     return window ? { isMaximized: window.isMaximized() } : undefined;
   });
   ipcMain.handle("senera:external-url.open", () => undefined);
+  ipcMain.handle("senera:file.open-external", () => ({ ok: true }));
+  ipcMain.handle("senera:host.capabilities", () => undefined);
+  ipcMain.handle("senera:host.reveal-workspace", () => ({ ok: false, code: "unavailable" }));
+  ipcMain.handle("senera:host.open-terminal", () => ({ ok: false, code: "unavailable" }));
+  ipcMain.handle("senera:qq-client.open", () => ({ ok: false }));
   ipcMain.handle("senera:workspace.choose-folder", () => null);
   ipcMain.handle("senera:update.get-state", () => unsupportedUpdateState);
   ipcMain.handle("senera:update.check", () => unsupportedUpdateState);

@@ -1,12 +1,13 @@
-import { lazy, memo, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { UploadAttachmentData } from "../../api/eventTypes";
 import type {
   AgentActivationCatalogSnapshot,
   ExplicitActivationReference,
   ExplicitActivationSet,
+  SandboxStatusSnapshotData,
 } from "../../api/eventTypes";
-import { WorkspaceMenu } from "../../shared/workspace/WorkspaceMenu";
+import { ExecutionContextChip } from "../../shared/workspace/ExecutionContextChip";
 import { useWorkspaceResourceController } from "../../shared/workspace/WorkspaceResourceProvider";
 import { cn } from "../../lib/util";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
@@ -28,9 +29,7 @@ import {
   Spinner,
   Tooltip,
   AppIcon,
-  BrandIcon,
 } from "../../shared/ui";
-import { DesktopHostMenuItems } from "./DesktopHostMenuItems";
 import { ChatModelSelector } from "./ChatModelSelector";
 import { composerControlClassName, composerIconControlClassName } from "./composerControls";
 import { AgentMenu } from "../agents/AgentMenu";
@@ -39,7 +38,6 @@ import { useStore } from "../../store/sessionStore";
 import { readConversationAgent } from "../../store/session/sessionAgentSelection";
 import type { MessageQueueMode } from "../../app/useChatCommands";
 import type { ChatApprovalConfig, ChatModelConfig } from "./ChatPanelContracts";
-import type { SettingsSectionId } from "../settings/settingsSectionContract";
 import { useComposerAttachments } from "./useComposerAttachments";
 import { ComposerAttachmentTray } from "./ComposerAttachmentTray";
 import type { RuntimeContextUsage, RuntimeUsageSnapshot } from "../observability/runtimeDiagnosticProjection";
@@ -53,8 +51,6 @@ import {
   readActivationTokens,
   stepActivationIndex,
 } from "./ChatActivationPalette";
-
-const ApprovalModeControl = lazy(() => import("./ApprovalModeControl"));
 
 const DESKTOP_TEXTAREA_MAX_HEIGHT = 240;
 const TOUCH_TEXTAREA_MAX_HEIGHT = 160;
@@ -96,6 +92,7 @@ export interface ChatComposerProps {
     socketStatus: string;
     uploadUrl: string;
     uploadCsrfToken?: string;
+    sandboxStatus?: SandboxStatusSnapshotData | null;
   };
   runtimeUsage?: RuntimeUsageSnapshot;
   onSend: (
@@ -105,8 +102,6 @@ export interface ChatComposerProps {
     activations?: ExplicitActivationSet,
   ) => boolean | Promise<boolean>;
   onCancel: () => void;
-  onOpenSettings?: (section: SettingsSectionId, returnFocus?: HTMLElement | null) => void;
-  onOpenLocalClient?: () => void;
   activationCatalog?: AgentActivationCatalogSnapshot | null;
 }
 
@@ -124,8 +119,6 @@ export const ChatComposer = memo(function ChatComposer({
   runtime,
   onSend,
   onCancel,
-  onOpenSettings,
-  onOpenLocalClient,
   activationCatalog,
 }: ChatComposerProps): JSX.Element {
   const locale = useFrontendLocale();
@@ -139,7 +132,6 @@ export const ChatComposer = memo(function ChatComposer({
   const taRef = useRef<HTMLTextAreaElement>(null);
   const textOverlayRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const pendingSettingsSectionRef = useRef<SettingsSectionId | null>(null);
   const pendingAgentManagementRef = useRef(false);
   const [agentManagementOpen, setAgentManagementOpen] = useState(false);
   const activeAgent = useStore(readConversationAgent);
@@ -227,17 +219,10 @@ export const ChatComposer = memo(function ChatComposer({
   }, [controlledValue]);
 
   useEffect(() => {
-    if (toolkitOpen) return;
-    if (pendingAgentManagementRef.current) {
-      pendingAgentManagementRef.current = false;
-      setAgentManagementOpen(true);
-      return;
-    }
-    const pendingSection = pendingSettingsSectionRef.current;
-    if (!pendingSection || !onOpenSettings) return;
-    pendingSettingsSectionRef.current = null;
-    onOpenSettings(pendingSection);
-  }, [onOpenSettings, toolkitOpen]);
+    if (toolkitOpen || !pendingAgentManagementRef.current) return;
+    pendingAgentManagementRef.current = false;
+    setAgentManagementOpen(true);
+  }, [toolkitOpen]);
 
   useEffect(() => {
     setActivationSelection([]);
@@ -541,71 +526,17 @@ export const ChatComposer = memo(function ChatComposer({
                       pendingAgentManagementRef.current = true;
                     }}
                   />
-                  <WorkspaceMenu onClose={() => setToolkitOpen(false)} />
-                  <DesktopHostMenuItems />
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    icon={<AppIcon icon="file-text" size={16} />}
-                    disabled={disabled || running || cancelling || !onOpenSettings}
-                    onSelect={() => {
-                      pendingSettingsSectionRef.current = "prompt";
-                    }}
-                  >
-                    {frontendChatMessage("chat.composer.toolkit.persona")}
-                  </DropdownMenuItem>
-                  {onOpenSettings ? (
-                    <>
-                      <DropdownMenuItem
-                        icon={<AppIcon icon="puzzle" size={16} />}
-                        onSelect={() => {
-                          pendingSettingsSectionRef.current = "mcp-servers";
-                        }}
-                      >
-                        {frontendChatMessage("chat.composer.toolkit.plugins")}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        icon={<AppIcon icon="wand" size={16} />}
-                        onSelect={() => {
-                          pendingSettingsSectionRef.current = "system-tools";
-                        }}
-                      >
-                        {frontendChatMessage("chat.composer.toolkit.skills")}
-                      </DropdownMenuItem>
-                    </>
-                  ) : null}
-                  {onOpenLocalClient ? (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem icon={<BrandIcon brand="qq" size={16} />} onSelect={onOpenLocalClient}>
-                        {frontendMessage("settings.channels.openLocalClient")}
-                      </DropdownMenuItem>
-                    </>
-                  ) : null}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Suspense
-                fallback={
-                  <span
-                    className={cn(
-                      "inline-flex w-24 shrink-0 items-center justify-center text-content-muted",
-                      composerControlClassName(prefersCompactControls),
-                      prefersCompactControls && "w-11",
-                    )}
-                    role="status"
-                    aria-busy="true"
-                    aria-label={frontendMessage("ui.loading")}
-                  >
-                    <Spinner size="xs" />
-                  </span>
-                }
-              >
-                <ApprovalModeControl
-                  disabled={disabled || running || cancelling}
-                  mode={approvalConfig.mode}
-                  onSelect={approvalConfig.onSelectMode}
-                  prefersCompactControls={prefersCompactControls}
-                />
-              </Suspense>
+              <ExecutionContextChip
+                sandboxStatus={runtime.sandboxStatus}
+                approval={{
+                  mode: approvalConfig.mode,
+                  disabled: disabled || running || cancelling,
+                  onSelect: approvalConfig.onSelectMode,
+                }}
+                prefersCompactControls={prefersCompactControls}
+              />
             </div>
 
             <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-1" data-composer-trailing-controls>
@@ -618,8 +549,6 @@ export const ChatComposer = memo(function ChatComposer({
                 selectedThinkingLevel={modelConfig.selectedThinkingLevel}
                 onSelect={modelConfig.onSelectModelProvider}
                 onSelectThinkingLevel={modelConfig.onSelectThinkingLevel}
-                onUseDefault={modelConfig.onApplyDefaultModel}
-                onAddModel={modelConfig.onAddModel}
                 prefersCompactControls={prefersCompactControls}
               />
               {composerAction === "cancelling" ? (

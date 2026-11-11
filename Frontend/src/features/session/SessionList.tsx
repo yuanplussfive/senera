@@ -4,11 +4,10 @@ import { useStore, type ConversationProfileUpdate, type UserProfile } from "../.
 import { cn } from "../../lib/util";
 import { ConfirmationDialog, RenameDialog } from "./SessionDialogs";
 import { UserFooter } from "./ProfileFooter";
-import { SessionHeader } from "./SessionChrome";
+import { SessionHeader, type SessionChannelFilter } from "./SessionChrome";
 import { SessionPanelBody } from "./SessionPanelBody";
 import type { ConfirmationIntent } from "./types";
 import { frontendMessage } from "../../i18n/frontendMessageCatalog";
-import type { EventSourceChannel } from "../../api/eventTypes";
 import type { SocketStatus } from "../../api/useAgentSocket";
 import type { SettingsSectionId } from "../settings/types";
 import { useSessionList, type SessionListEntry } from "../../store/selectors/chatSelectors";
@@ -39,8 +38,6 @@ type RenameIntent = {
   sessionId: string;
   title: string;
 };
-
-type SessionChannelFilter = "all" | EventSourceChannel;
 
 export function SessionList({
   onNewSession,
@@ -74,6 +71,10 @@ export function SessionList({
   const [channelFilter, setChannelFilter] = useState<SessionChannelFilter>("all");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedSessionIds, setSelectedSessionIds] = useState<ReadonlySet<string>>(() => new Set());
+  /** Row the next shift-click extends from; cleared whenever the mode resets. */
+  const selectionAnchorRef = useRef<string | null>(null);
+  /** Row under the pointer, so `X` can toggle it without a focus round-trip. */
+  const hoveredSessionIdRef = useRef<string | null>(null);
 
   const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase();
   const filteredSessions = useMemo(
@@ -87,6 +88,8 @@ export function SessionList({
     [channelFilter, normalizedSearchQuery, sessionList],
   );
   const selectedSessionCount = sessionList.filter((session) => selectedSessionIds.has(session.sessionId)).length;
+  const hiddenSelectedCount =
+    selectedSessionCount - filteredSessions.filter((session) => selectedSessionIds.has(session.sessionId)).length;
 
   useEffect(() => {
     const availableIds = new Set(sessionList.map((session) => session.sessionId));
@@ -197,8 +200,6 @@ export function SessionList({
   }, [compactSidebar, presentation]);
 
   const sessionHeaderProps = {
-    channelFilter,
-    onChannelFilterChange: setChannelFilter,
     onNewSession,
     onToggleSidebar: onClosePanel ?? toggleSidebar,
   };
@@ -209,6 +210,8 @@ export function SessionList({
     catalogSynced: sessionCatalogSynced,
     query: searchQuery,
     onQueryChange: setSearchQuery,
+    channelFilter,
+    onChannelFilterChange: setChannelFilter,
     activeSessionId: active,
     onNewSession,
     onSelectSession: (sessionId: string) => {
@@ -220,21 +223,48 @@ export function SessionList({
     selectionMode,
     selectedSessionIds,
     selectedSessionCount,
+    hiddenSelectedCount,
     onToggleSelectionMode: () => {
       if (selectionMode) {
         setSelectionMode(false);
         setSelectedSessionIds(new Set());
+        selectionAnchorRef.current = null;
       } else {
         setSelectionMode(true);
       }
     },
-    onToggleSessionSelection: (sessionId: string) => {
+    onEnterSelectionMode: (sessionId: string) => {
+      setSelectionMode(true);
+      selectionAnchorRef.current = sessionId;
+      setSelectedSessionIds(new Set([sessionId]));
+    },
+    onToggleSessionSelection: (sessionId: string, options?: { shift?: boolean; order?: readonly string[] }) => {
+      const order = options?.order;
+      const anchorId = selectionAnchorRef.current;
+      if (options?.shift && anchorId && order) {
+        const from = order.indexOf(anchorId);
+        const to = order.indexOf(sessionId);
+        if (from !== -1 && to !== -1) {
+          const [start, end] = from <= to ? [from, to] : [to, from];
+          setSelectedSessionIds((current) => {
+            const next = new Set(current);
+            for (let index = start; index <= end; index += 1) next.add(order[index]);
+            return next;
+          });
+          return;
+        }
+      }
+      selectionAnchorRef.current = sessionId;
       setSelectedSessionIds((current) => {
         const next = new Set(current);
         if (next.has(sessionId)) next.delete(sessionId);
         else next.add(sessionId);
         return next;
       });
+    },
+    onClearSelection: () => {
+      selectionAnchorRef.current = null;
+      setSelectedSessionIds(new Set());
     },
     onToggleVisibleSelection: () => {
       setSelectedSessionIds((current) => {
@@ -247,8 +277,12 @@ export function SessionList({
         }
         return next;
       });
+      selectionAnchorRef.current = null;
     },
     onDeleteSelected: confirmDeleteSelected,
+    onHoverSessionChange: (sessionId: string | null) => {
+      hoveredSessionIdRef.current = sessionId;
+    },
   };
 
   const userFooterProps = {

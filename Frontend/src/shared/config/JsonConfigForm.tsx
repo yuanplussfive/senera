@@ -38,10 +38,13 @@ export function JsonConfigSettingsView({
   onCommit?: () => void;
   readSecret?: (field: ConfigFormFieldData) => Promise<string>;
 }): JSX.Element {
-  const [fieldVisibility, setFieldVisibility] = useState<ConfigFieldVisibility>("essential");
+  const [visibilityPreference, setVisibilityPreference] = useState<ConfigFieldVisibility>();
+  const hasEssentialFields = sections.some((section) => section.fields.some((field) => field.essential));
+  const fieldVisibility: ConfigFieldVisibility =
+    visibilityPreference === "all" || !hasEssentialFields ? "all" : "essential";
   const { allFields, visibleSections } = projectJsonConfigFieldVisibility(sections, fieldVisibility, value);
   const visibilityControl = (
-    <ConfigFieldVisibilityControl fields={allFields} value={fieldVisibility} onChange={setFieldVisibility} />
+    <ConfigFieldVisibilityControl fields={allFields} value={fieldVisibility} onChange={setVisibilityPreference} />
   );
   const content = (
     <div
@@ -82,11 +85,7 @@ export function JsonConfigSettingsView({
           <StateView
             status="empty"
             className="min-h-64 rounded-lg border border-line bg-paper-50"
-            description={
-              fieldVisibility === "essential" && allFields.length > 0
-                ? frontendMessage("settings.config.noEssentialFields")
-                : emptyText
-            }
+            description={emptyText}
           />
         </div>
       )}

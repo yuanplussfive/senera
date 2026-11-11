@@ -132,9 +132,11 @@ export function ProviderConnectionList({
                   ) : (
                     <span className="flex h-8 w-5 shrink-0 items-center justify-center" aria-hidden="true">
                       <span
+                        data-provider-availability={provider.Id}
                         className={cn(
                           "h-1.5 w-1.5 rounded-full",
-                          enabled ? "bg-content-secondary" : "bg-content-disabled",
+                          // Availability is a fixed signal color: it must read the same under every accent theme.
+                          enabled ? "bg-[#72A0E9]" : "bg-content-disabled",
                         )}
                       />
                     </span>
@@ -180,23 +182,16 @@ export function ProviderConnectionList({
           {addProviderButton}
         </div>
       ) : (
-        <>
-          <div className="flex h-[var(--senera-top-chrome-height)] shrink-0 items-center px-3" data-window-drag-region>
-            <div className="min-w-0 flex-1 truncate pl-1 text-[13px] font-semibold text-content-primary">
-              {frontendMessage("settings.model.serviceTitle")}
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2 border-b border-line-subtle/50 px-3 pb-2 pt-1.5">
-            <SearchInput
-              value={providerSearch}
-              disabled={providers.length === 0}
-              placeholder={frontendMessage("settings.provider.searchPlaceholder")}
-              className="flex-1"
-              onChange={setProviderSearch}
-            />
-            {addProviderButton}
-          </div>
-        </>
+        <div className="flex shrink-0 items-center gap-2 px-3 pb-2 pt-3">
+          <SearchInput
+            value={providerSearch}
+            disabled={providers.length === 0}
+            placeholder={frontendMessage("settings.provider.searchPlaceholder")}
+            className="flex-1"
+            onChange={setProviderSearch}
+          />
+          {addProviderButton}
+        </div>
       )}
       <ScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
         {providerRows}

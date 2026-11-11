@@ -23,6 +23,7 @@ import { modelSelectOption, type ModelSelectOption } from "../../shared/models/M
 export interface SystemExtensionRuntimeModelAssignmentSection {
   readonly extensionId: string;
   readonly extensionLabel: string;
+  readonly extensionDescription?: string;
   readonly extensionIcon: SystemExtensionSettingsItem["presentation"]["icon"];
   readonly section: ConfigFormSectionData;
 }
@@ -113,6 +114,7 @@ export function projectSystemExtensionRuntimeModelAssignmentSections(options: {
     }).map((section) => ({
       extensionId: extension.id,
       extensionLabel: displayName,
+      extensionDescription: resolveFrontendLocalizedText(extension.description, options.locale) || undefined,
       extensionIcon: extension.presentation.icon,
       section,
     }));

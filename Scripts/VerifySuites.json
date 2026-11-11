@@ -70,6 +70,7 @@
         "VerifyDesktopLiveFrontendServer.js",
         "VerifyDesktopLiveLifecycle.js",
         "VerifyDesktopServerBundle.js",
+        "VerifyDesktopIpcContract.js",
         "VerifyDesktopStartupSurface.js"
       ]
     },

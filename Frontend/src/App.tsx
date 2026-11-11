@@ -46,7 +46,6 @@ import { AppAppearanceProvider } from "./shared/theme/useAppearance";
 import { WorkspaceBrowserSurface, WorkspaceRuntimeProvider } from "./shared/workspace/WorkspaceResourceProvider";
 import { useRuntimeUpdate } from "./app/runtimeUpdate";
 import { readDesktopBridge } from "./app/desktopBridge";
-import { openOneBot11Client } from "./app/channelClientNavigation";
 import { activateWorkspaceSessionProjection } from "./store/workspaceSessionProjection";
 import type { WorkspaceSnapshotData } from "./api/workspaceEventTypes";
 import { WorkspaceMenuProvider } from "./shared/workspace/WorkspaceMenu";
@@ -118,7 +117,6 @@ export function App({
   const selectedModelProviderId = useStore((s) => s.selectedModelProviderId);
   const defaultModelProviderId = useStore(readConversationDefaultModelId);
   const selectModelProvider = useStore((s) => s.selectModelProvider);
-  const applyDefaultModelToActiveSession = useStore((s) => s.applyDefaultModelToActiveSession);
   const selectedThinkingLevel = useStore((s) => s.selectedThinkingLevel);
   const selectThinkingLevel = useStore((s) => s.selectThinkingLevel);
   const userProfile = useStore((s) => s.userProfile);
@@ -344,19 +342,6 @@ export function App({
     onWorkspaceReady: handleWorkspaceReady,
   });
   const settingsReady = Boolean(settingsRuntime.systemConfig.configSnapshot);
-  const localClientUrl = settingsRuntime.systemConfig.oneBot11ClientUrl;
-  const localClientConnected = settingsRuntime.systemConfig.channelStatuses.some(
-    (channel) => channel.kind === "onebot11" && channel.state === "connected",
-  );
-  const handleOpenLocalClient = useCallback((): void => {
-    if (!localClientUrl || !workspaceIdentity) return;
-    void openOneBot11Client(localClientUrl, workspaceIdentity).then(
-      (result) => {
-        if (!result.ok) toast.error(frontendMessage("settings.channels.localClientUnavailable"));
-      },
-      () => toast.error(frontendMessage("settings.channels.localClientUnavailable")),
-    );
-  }, [localClientUrl, workspaceIdentity]);
   settingsEventHandlerRef.current = settingsRuntime.ingestSettingsEvent;
   const executionResourceCommands = useExecutionResourceCommands({
     activeSessionId: activeId,
@@ -608,12 +593,6 @@ export function App({
                             onSelectModelProvider: selectModelProvider,
                             selectedThinkingLevel,
                             onSelectThinkingLevel: selectThinkingLevel,
-                            onApplyDefaultModel: applyDefaultModelToActiveSession,
-                            onAddModel: () => {
-                              void settingsController
-                                .openSettings("model-service")
-                                .catch(() => toast.error(frontendMessage("settings.loadFailed")));
-                            },
                           }}
                           runtime={{
                             workspaceId: workspaceIdentity,
@@ -638,8 +617,6 @@ export function App({
                             onRecordMessageFeedback: handleRecordMessageFeedback,
                           }}
                           navigationActions={{
-                            onOpenLocalClient:
-                              localClientConnected && localClientUrl ? handleOpenLocalClient : undefined,
                             onOpenSessionPanel: appShellRenderPlan.showChatSessionPanelAction
                               ? handleOpenSessionPanel
                               : undefined,
@@ -650,11 +627,6 @@ export function App({
                                 : undefined,
                             onRetryHistory: requestSessionHistory,
                             onLoadHistory: requestSessionHistory,
-                            onOpenSettings: (section, returnFocus) => {
-                              void settingsController
-                                .openSettings(section, returnFocus)
-                                .catch(() => toast.error(frontendMessage("settings.loadFailed")));
-                            },
                           }}
                         />
                       </Suspense>

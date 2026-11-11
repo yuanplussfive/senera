@@ -1,8 +1,8 @@
 import { type ReactNode } from "react";
 import { cn } from "../../lib/util";
 
-export const menuSurfaceClassName =
-  "menu-surface min-w-[min(200px,var(--radix-popper-available-width))] max-w-[min(calc(100vw-16px),var(--radix-popper-available-width))] max-h-[var(--radix-popper-available-height)] overflow-y-auto overscroll-contain rounded-[var(--menu-surface-radius)] border border-line-subtle bg-surface-panel p-2 shadow-[var(--menu-surface-shadow)]";
+export const overlaySurfaceClassName =
+  "menu-surface min-w-[min(200px,var(--radix-popper-available-width))] max-w-[min(calc(100vw-16px),var(--radix-popper-available-width))] max-h-[var(--radix-popper-available-height)] overflow-y-auto overscroll-contain rounded-[var(--overlay-surface-radius)] border border-line-subtle bg-surface-panel p-2 shadow-[var(--overlay-surface-shadow)]";
 
 export function menuItemClassName({
   className,
@@ -30,12 +30,15 @@ export function MenuItemContent({
   icon,
   shortcut,
   trailing,
+  stacked,
 }: {
   children: ReactNode;
   destructive?: boolean;
   icon?: ReactNode;
   shortcut?: string;
   trailing?: ReactNode;
+  /** Two-line items (title plus consequence) must wrap instead of truncating. */
+  stacked?: boolean;
 }): JSX.Element {
   return (
     <>
@@ -50,7 +53,7 @@ export function MenuItemContent({
           {icon}
         </span>
       ) : null}
-      <div className="min-w-0 flex-1 truncate">{children}</div>
+      <div className={cn("min-w-0 flex-1", !stacked && "truncate")}>{children}</div>
       {shortcut ? (
         <span className="ml-3 shrink-0 font-mono text-[10.5px] tracking-tight text-content-muted">{shortcut}</span>
       ) : null}

@@ -11,6 +11,7 @@ import {
   normalizeJsonConfigFieldValue,
   optionLabel,
   readArrayItemTitle,
+  readEffectiveArrayItem,
   readRelativeItemPath,
   readValueAtPath,
   writeJsonConfigFieldValue,
@@ -89,8 +90,7 @@ export function JsonConfigArrayFieldControl({
       <div className="space-y-3">
         {value.map((item, index) => {
           const record = isJsonConfigObject(item) ? item : {};
-          const effectiveItems = Array.isArray(field.effectiveValue) ? field.effectiveValue : [];
-          const effectiveRecord = isJsonConfigObject(effectiveItems[index]) ? effectiveItems[index] : {};
+          const effectiveRecord = readEffectiveArrayItem(field, item, index);
           const titleRecord = { ...effectiveRecord, ...record };
           return (
             <div

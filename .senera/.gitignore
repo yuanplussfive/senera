@@ -1,0 +1,15 @@
+# Written by Senera the first time it opened this workspace, and never rewritten.
+# Senera keeps its runtime state here: databases, logs, caches and exports. Edit or delete these
+# lines to decide what your own repository tracks.
+*
+!/.gitignore
+!/skills/
+!/skills/**
+!/mcp/
+!/mcp/**
+!/context/
+!/context/**
+!/plugins/
+!/plugins/**
+!/agents/
+!/agents/**

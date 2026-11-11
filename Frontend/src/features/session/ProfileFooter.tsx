@@ -226,13 +226,18 @@ export function UserFooter({
             {frontendMessage("profile.menu.settings")}
           </DropdownMenuItem>
           {httpBaseUrl ? (
-            <DropdownMenuItem icon={<AppIcon icon="link" size={14} />} onSelect={() => setDevicesOpen(true)}>
+            <DropdownMenuItem
+              className="gap-1.5"
+              icon={<AppIcon icon="link" className="h-3.5 w-3.5 text-content-primary" />}
+              onSelect={() => setDevicesOpen(true)}
+            >
               {frontendMessage("mobile.connectPhone")}
             </DropdownMenuItem>
           ) : null}
           {readMobileBridge() ? (
             <DropdownMenuItem
-              icon={<AppIcon icon="server" size={14} />}
+              className="gap-1.5"
+              icon={<AppIcon icon="server" className="h-3.5 w-3.5 text-content-primary" />}
               onSelect={() => {
                 void readMobileBridge()!.openConnections();
               }}
@@ -242,7 +247,8 @@ export function UserFooter({
           ) : null}
           {readMobileBridge()?.openBackgroundSettings ? (
             <DropdownMenuItem
-              icon={<AppIcon icon="settings" size={14} />}
+              className="gap-1.5"
+              icon={<AppIcon icon="settings" className="h-3.5 w-3.5 text-content-primary" />}
               onSelect={() => {
                 void readMobileBridge()!.openBackgroundSettings!().catch((error: unknown) =>
                   toast.error(error instanceof Error ? error.message : String(error)),

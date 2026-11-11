@@ -79,10 +79,7 @@ export function RuntimeDependenciesSection({
   return (
     <ScrollArea className="h-full min-h-0 bg-surface-canvas" viewportClassName="h-full">
       <section className="mx-auto w-full max-w-[920px] px-5 py-5 sm:px-8" data-runtime-dependencies>
-        <header className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-[15px] font-semibold text-content-primary">
-            {frontendMessage("settings.section.dependencies.label")}
-          </h2>
+        <div className="mb-2 flex justify-end">
           <IconButton
             label={frontendMessage("settings.dependencies.refresh")}
             size="sm"
@@ -92,8 +89,8 @@ export function RuntimeDependenciesSection({
           >
             <AppIcon icon="refresh" size={16} />
           </IconButton>
-        </header>
-        <div className="divide-y divide-line-subtle border-y border-line-subtle">
+        </div>
+        <div className="divide-y divide-line-subtle border-b border-line-subtle">
           {dependencies.map((dependency) => {
             const expanded = selectedId === dependency.id;
             return (
